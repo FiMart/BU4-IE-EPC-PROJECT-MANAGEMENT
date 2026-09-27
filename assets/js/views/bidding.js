@@ -1,0 +1,156 @@
+/* bidding.js — Before Award: Inquiry → Estimate → Proposal → Submit */
+(function () {
+  const U = PM.ui, V = PM.common, esc = U.esc;
+  const state = { period: '12m', mode: 'kanban', q: '' };
+
+  PM.views.bidding = function (el) {
+    const db = PM.db, T = PM.today();
+    const { from, to } = V.periodRange(state.period);
+    const bs = PM.bidStats(db.bids, from, to);
+    const q = state.q.toLowerCase();
+    const match = (b) => !q || [b.code, b.name, b.client].join(' ').toLowerCase().includes(q);
+    const inPeriod = (d) => d && (!from || d >= from) && (!to || d <= to);
+    const hoursBy = {};
+    db.timesheets.forEach((t) => { if (t.kind === 'bid') hoursBy[t.refId] = (hoursBy[t.refId] || 0) + t.hours; });
+
+    const pending = db.bids.filter((b) => b.result === 'pending' && match(b));
+    const cols = PM.BID_STAGES.map((s) => ({ key: s.key, label: s.label, th: s.th, items: pending.filter((b) => b.stage === s.key) }));
+    cols.push({ key: 'won', label: 'Won', th: 'ได้งาน', items: db.bids.filter((b) => b.result === 'won' && match(b) && inPeriod(b.resultDate || b.dates.inquiry)) });
+    cols.push({ key: 'lost', label: 'Lost / No-bid', th: 'ไม่ได้งาน / ไม่เสนอราคา', items: db.bids.filter((b) => (b.result === 'lost' || b.result === 'nobid') && match(b) && inPeriod(b.resultDate || b.dates.inquiry)) });
+
+    el.innerHTML = `
+      <div class="row">
+        ${V.seg('period', V.periods, state.period)}
+        ${V.seg('mode', [{ key: 'kanban', label: 'Board' }, { key: 'table', label: 'Table' }], state.mode)}
+        <input type="search" id="bid-q" placeholder="ค้นหา bid / ลูกค้า…" value="${esc(state.q)}" style="width:220px">
+        <span class="spacer"></span>
+        <button class="btn primary" data-action="new">+ New inquiry</button>
+      </div>
+      ${V.flow(PM.BID_STAGES.map((s, i) => ({
+        label: s.label, th: s.th,
+        big: `${bs.reached[s.key]} <small class="muted" style="font-size:12px">งาน</small>`,
+        meta: `avg ${U.days(bs.stageDays[i].avg)} ${i === 3 ? '→ award' : 'in stage'}`,
+        tip: `${s.label}\nBids reaching this stage: ${bs.reached[s.key]}\nConversion from Inquiry: ${U.pct(bs.total ? bs.reached[s.key] / bs.total : null)}\nAvg time: ${U.days(bs.stageDays[i].avg)}`,
+      })).concat([{ n: '→', label: 'Award', th: 'Won / Lost / No-bid', big: `${bs.won} <small class="muted" style="font-size:12px">/ ${bs.lost} / ${bs.nobid}</small>`, meta: `Win rate ${U.pct(bs.winRate)}` }]))}
+      <div class="grid cols-6">
+        ${V.tile({ label: 'Inquiries received', tag: 'Quantity', value: bs.total, sub: `${bs.pipeline} ยังอยู่ระหว่างดำเนินการ` })}
+        ${V.tile({ label: 'Proposals submitted', tag: 'Quantity', value: bs.submitted, sub: `Submit ratio ${U.pct(bs.total ? bs.submitted / bs.total : null)}` })}
+        ${V.tile({ label: 'Avg cycle time', tag: 'Time', value: `${U.num(bs.avgCycle, 1)} <small>days</small>`, sub: 'Inquiry → Submit' })}
+        ${V.tile({ label: 'On-time submission', tag: 'Time', value: U.pct(bs.onTimeRate), sub: 'ยื่นก่อน / ตรง due date' })}
+        ${V.tile({ label: 'Win rate', value: U.pct(bs.winRate), sub: `${bs.won} won / ${bs.won + bs.lost} decided` })}
+        ${V.tile({ label: 'Won value', value: U.money(bs.wonValue), sub: `Pipeline ${U.money(bs.pipelineValue)}` })}
+      </div>
+      <div class="card">
+        <div class="card-h"><h2>${state.mode === 'kanban' ? 'Bid board' : 'Bid register'}</h2><p>${state.mode === 'kanban' ? 'คลิกการ์ดเพื่อแก้ไข · ปุ่ม → เลื่อนไปขั้นถัดไป (บันทึกวันที่ = วันนี้)' : 'รายการ Bid ทั้งหมดในช่วงเวลาที่เลือก + งานที่ยังดำเนินการ'}</p></div>
+        <div class="card-b">${state.mode === 'kanban' ? kanban(cols, hoursBy) : table(db.bids.filter((b) => match(b) && (b.result === 'pending' || inPeriod(b.dates.inquiry))), hoursBy)}</div>
+      </div>
+      <div class="grid cols-2">
+        <div class="card"><div class="card-h"><h2>Win rate by sector</h2><p>เฉพาะงานที่ประกาศผลแล้ว (Won + Lost)</p></div><div class="card-b"><div class="chart" id="c-sector"></div></div></div>
+        <div class="card"><div class="card-h"><h2>Estimator workload</h2><p>จำนวน bid และชั่วโมงจาก Timesheet ในช่วงเวลาที่เลือก</p></div><div class="card-b"><div class="chart" id="c-est"></div></div></div>
+      </div>`;
+
+    if (state.flash) {
+      const moved = el.querySelector('.kcard.flash');
+      if (moved) moved.scrollIntoView({ block: 'nearest', inline: 'nearest', behavior: 'smooth' });
+      state.flash = null;
+    }
+
+    /* charts */
+    const decided = bs.list.filter((b) => b.result === 'won' || b.result === 'lost');
+    PM.charts.hbars(document.getElementById('c-sector'), {
+      max: 1,
+      items: PM.SECTORS.map((s) => {
+        const d = decided.filter((b) => b.sector === s), w = d.filter((b) => b.result === 'won').length;
+        return { label: s, sub: `${w}/${d.length}`, value: d.length ? w / d.length : 0, display: d.length ? U.pct(w / d.length) : '–', tip: `${s}\nWon ${w} of ${d.length} decided` };
+      }).filter((x) => x.sub !== '0/0'),
+    });
+    const ts = db.timesheets.filter((t) => t.kind === 'bid' && inPeriod(t.date));
+    const est = db.resources.map((r) => ({ r, bids: bs.list.filter((b) => b.estimator === r.id).length, hours: PM.sum(ts.filter((t) => t.resourceId === r.id), (t) => t.hours) })).filter((x) => x.bids || x.hours);
+    PM.charts.hbars(document.getElementById('c-est'), {
+      items: est.sort((a, b) => b.hours - a.hours).map((x) => ({ label: x.r.name, sub: `${x.bids} bids`, value: x.hours, display: U.num(x.hours) + ' h', color: 'var(--s2)', tip: `${x.r.name}\nBids as estimator: ${x.bids}\nBidding hours: ${U.num(x.hours)}` })),
+    });
+
+    /* events */
+    const rerender = () => PM.views.bidding(el);
+    el.querySelector('#bid-q').addEventListener('input', (e) => {
+      state.q = e.target.value;
+      clearTimeout(state.t);
+      state.t = setTimeout(() => { rerender(); const i = el.querySelector('#bid-q'); i.focus(); i.setSelectionRange(i.value.length, i.value.length); }, 250);
+    });
+    el.onclick = (e) => {
+      const seg = e.target.closest('[data-seg]');
+      if (seg) { state[seg.dataset.seg] = seg.dataset.val; rerender(); return; }
+      const act = e.target.closest('[data-action]');
+      if (act) {
+        const b = act.dataset.id && PM.find('bids', act.dataset.id);
+        const a = act.dataset.action;
+        if (a === 'new') V.bidForm(null, rerender);
+        if (a === 'next' && b) {
+          const i = PM.BID_STAGES.findIndex((s) => s.key === b.stage);
+          const nx = PM.BID_STAGES[i + 1];
+          b.dates[nx.key] = PM.max(T, b.dates[b.stage]);
+          b.stage = nx.key;
+          PM.upsert('bids', b);
+          state.flash = b.id;
+          U.toast(`${b.code} → ${nx.label}`);
+          rerender();
+        }
+        if ((a === 'won' || a === 'lost') && b) {
+          b.result = a; b.resultDate = T; PM.upsert('bids', b);
+          if (a === 'won' && confirm(`${b.code} ได้งานแล้ว — สร้าง Project จาก bid นี้เลยหรือไม่?`)) V.projectForm(null, b, (p) => (location.hash = '#/projects/' + p.id));
+          rerender();
+        }
+        if (a === 'convert' && b) V.projectForm(null, b, (p) => (location.hash = '#/projects/' + p.id));
+        if (a === 'open-project' && b) location.hash = '#/projects/' + b.projectId;
+        return;
+      }
+      const card = e.target.closest('[data-bid]');
+      if (card) V.bidForm(PM.find('bids', card.dataset.bid), rerender);
+    };
+  };
+
+  function kanban(cols, hoursBy) {
+    return `<div class="kanban">${cols.map((c) => `
+      <div class="kcol">
+        <div class="kcol-h" style="flex-wrap:wrap">${esc(c.label)}<span class="count">${c.items.length}</span><span class="sum">${esc(c.th)} · ${U.money(PM.sum(c.items, (b) => b.value))}</span></div>
+        ${c.items.map((b, k) => card(b, c.key, hoursBy, k)).join('') || '<p class="empty">—</p>'}
+      </div>`).join('')}</div>`;
+  }
+
+  function card(b, col, hoursBy, k) {
+    const stageIdx = PM.BID_STAGES.findIndex((s) => s.key === b.stage);
+    let actions = '';
+    if (b.result === 'pending' && stageIdx < 3) actions = `<button class="btn sm" data-action="next" data-id="${b.id}">→ ${PM.BID_STAGES[stageIdx + 1].label}</button>`;
+    else if (b.result === 'pending') actions = `<button class="btn sm good" data-action="won" data-id="${b.id}">✓ Won</button><button class="btn sm" data-action="lost" data-id="${b.id}">✕ Lost</button>`;
+    else if (b.result === 'won') actions = b.projectId && PM.find('projects', b.projectId)
+      ? `<button class="btn sm" data-action="open-project" data-id="${b.id}">Open project →</button>`
+      : `<button class="btn sm primary" data-action="convert" data-id="${b.id}">+ Create project</button>`;
+    const age = PM.diffDays(b.dates[b.stage], PM.today());
+    const flash = state.flash === b.id ? ' flash' : '';
+    return `<div class="kcard${flash}" style="--k:${k}" data-bid="${b.id}">
+      <div class="code">${esc(b.code)} · ${esc(b.sector)} · ${esc(b.scope)}</div>
+      <div class="name">${esc(b.name)}</div>
+      <div class="client">${esc(b.client)}</div>
+      <div class="foot"><span class="v">${U.money(b.value)}</span>${V.dueBadge(b)}</div>
+      <div class="foot muted">${esc(U.resourceName(b.estimator))}${hoursBy[b.id] ? ` · ${U.num(hoursBy[b.id])} h` : ''}${b.result === 'pending' ? ` · ${age}d in stage` : ''}</div>
+      ${actions ? `<div class="actions">${actions}</div>` : ''}
+    </div>`;
+  }
+
+  function table(list, hoursBy) {
+    if (!list.length) return '<p class="empty">ไม่พบรายการ</p>';
+    list = list.slice().sort((a, b) => (a.dates.inquiry < b.dates.inquiry ? 1 : -1));
+    return `<div class="table-wrap"><table class="tbl"><thead><tr>
+      <th>Bid</th><th>Client</th><th>Sector</th><th class="num">Value</th><th class="num">BOQ items</th>
+      <th>Inquiry</th><th>Submitted</th><th>Due</th><th class="num">Cycle (d)</th><th class="num">Hours</th><th>Status</th><th>Timing</th></tr></thead><tbody>
+      ${list.map((b) => `<tr class="click" data-bid="${b.id}">
+        <td><span class="title">${esc(b.code)}</span><small>${esc(b.name)}</small></td>
+        <td>${esc(b.client)}</td><td>${esc(b.sector)}</td>
+        <td class="num">${U.money(b.value)}</td><td class="num">${U.num(b.boqItems)}</td>
+        <td>${U.date(b.dates.inquiry)}</td><td>${U.date(b.dates.submit)}</td><td>${U.date(b.dueDate)}</td>
+        <td class="num">${b.dates.submit ? PM.diffDays(b.dates.inquiry, b.dates.submit) : '–'}</td>
+        <td class="num">${U.num(hoursBy[b.id] || 0)}</td>
+        <td>${V.resultBadge(b)}</td><td>${V.dueBadge(b)}</td></tr>`).join('')}
+      </tbody></table></div>`;
+  }
+})();
