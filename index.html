@@ -13,12 +13,16 @@
   <link rel="stylesheet" href="assets/css/motion.css">
   <script>
     try { var t = localStorage.getItem('epc-pm-theme'); if (t) document.documentElement.setAttribute('data-theme', t); } catch (e) {}
+    try { if (localStorage.getItem('epc-pm-nav-collapsed') === '1') document.documentElement.classList.add('nav-collapsed'); } catch (e) {}
   </script>
 </head>
 <body>
   <div id="auth-root"></div>
   <div class="app">
     <aside class="sidebar" id="sidebar">
+      <button class="sidebar-toggle" id="sidebar-toggle" type="button" aria-controls="sidebar" aria-expanded="true" aria-label="หุบเมนู" title="หุบเมนู">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 6l-6 6 6 6"/></svg>
+      </button>
       <div class="brand">
         <div class="brand-mark">BU4</div>
         <div><b>BU4 IE/EPC</b><small class="brand-sub">Project Management</small><small id="company-name" class="brand-co">Flowlab &amp; Service Co.,LTD</small></div>

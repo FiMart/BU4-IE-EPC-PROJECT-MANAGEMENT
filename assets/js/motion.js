@@ -5,21 +5,18 @@
 
   /* Re-trigger the staggered entrance on a freshly routed view */
   M.enter = function (el) {
-    Array.from(el.children).forEach((c, i) => c.style.setProperty('--i', Math.min(i, 10)));
     el.classList.remove('view-enter');
-    void el.offsetWidth; // restart CSS animations
+    void el.offsetWidth; // restart the CSS fade
     el.classList.add('view-enter');
     clearTimeout(M._t);
-    // drop the class afterwards so in-page re-renders (filters, search) don't replay the whole entrance
-    M._t = setTimeout(() => el.classList.remove('view-enter'), 1600);
-    const title = document.getElementById('page-title');
-    if (title) { title.classList.remove('title-enter'); void title.offsetWidth; title.classList.add('title-enter'); }
+    // drop the class afterwards so in-page re-renders (filters, search) don't replay it
+    M._t = setTimeout(() => el.classList.remove('view-enter'), 300);
   };
 
   /* Count numbers up from 0, keeping prefix/suffix and formatting (฿, %, commas, decimals) */
   M.countUp = function (root, selector) {
     if (reduced()) return;
-    root.querySelectorAll(selector || '.tile-value, .flow-step .big').forEach((el, idx) => {
+    root.querySelectorAll(selector || '.tile-value, .flow-step .big').forEach((el) => {
       const node = Array.from(el.childNodes).find((n) => n.nodeType === 3 && /\d/.test(n.nodeValue));
       if (!node) return;
       const m = node.nodeValue.match(/^([^\d-]*)(-?[\d,]*\.?\d+)([\s\S]*)$/);
@@ -33,12 +30,12 @@
         ? v.toLocaleString('en-US', { minimumFractionDigits: dec, maximumFractionDigits: dec })
         : v.toFixed(dec)) + post;
       const final = node.nodeValue;
-      const dur = 900, delay = Math.min(idx, 8) * 40;
+      const dur = 450; // short and all at once — readable almost immediately
       let t0 = null;
       node.nodeValue = fmt(0);
       const tick = (now) => {
         if (!node.isConnected) return;
-        if (t0 == null) t0 = now + delay;
+        if (t0 == null) t0 = now;
         const p = Math.max(0, Math.min(1, (now - t0) / dur));
         const e = 1 - Math.pow(1 - p, 3);
         node.nodeValue = p >= 1 ? final : fmt(target * e);

@@ -47,10 +47,7 @@
     el.innerHTML = `
       <div class="row">
         <select id="ts-person" aria-label="Person">${U.options(people.map((r) => ({ value: r.id, label: `${r.name} · ${PM.levelName(r.level)}` })), state.resourceId)}</select>
-        <button class="btn" data-action="prev" aria-label="Previous week">←</button>
-        <strong>Week of ${U.date(state.week)} – ${U.date(dates[6])}</strong>
-        <button class="btn" data-action="next" aria-label="Next week">→</button>
-        <button class="btn ghost" data-action="this">สัปดาห์นี้</button>
+        ${PM.common.weekNav(state.week)}
         <span class="spacer"></span>
         <button class="btn" data-action="from-plan">+ แถวจาก Weekly Plan</button>
         <button class="btn" data-action="copy">Copy rows จากสัปดาห์ก่อน</button>
@@ -106,7 +103,7 @@
       const act = a.dataset.action;
       if (act === 'prev') go(PM.addDays(state.week, -7));
       if (act === 'next') go(PM.addDays(state.week, 7));
-      if (act === 'this') go(PM.monday(T));
+      if (act === 'this' && state.week !== PM.monday(T)) go(PM.monday(T));
       if (act === 'add') {
         const [kind, refId] = itemSel.value.split('|');
         const row = { kind, refId, phase: kind === 'project' ? phaseSel.value : '', hours: [0, 0, 0, 0, 0, 0, 0] };

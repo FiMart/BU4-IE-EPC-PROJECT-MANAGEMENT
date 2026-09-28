@@ -9,20 +9,34 @@
   /* ---------- Supabase error → Thai message ---------- */
   const MSG = [
     [/invalid login credentials/i, 'อีเมลหรือรหัสผ่านไม่ถูกต้อง'],
-    [/email not confirmed/i, 'ยังไม่ได้ยืนยันอีเมล — กรุณาคลิกลิงก์ยืนยันในอีเมลก่อนเข้าสู่ระบบ'],
+    [/email not confirmed/i, 'บัญชีนี้ยังไม่ได้ยืนยันอีเมล — แจ้ง Admin ให้ยืนยันบัญชีใน Supabase (หรือรัน supabase/confirm-users.sql)'],
+    // Supabase's built-in mailer only sends to team members' addresses; other domains fail while "Confirm email" is on
+    [/not authorized/i, 'สมัครด้วยอีเมลนี้ยังไม่ได้ เพราะระบบยังเปิด "Confirm email" อยู่ — แจ้ง Admin ให้ปิดใน Supabase (Authentication → Email)'],
+    [/error sending (confirmation|recovery|magic link)? ?email|sending email/i, 'ระบบส่งอีเมลไม่สำเร็จ — แจ้ง Admin ตรวจสอบการตั้งค่าอีเมลใน Supabase'],
     [/already registered|already been registered|already exists/i, 'อีเมลนี้ถูกใช้สมัครแล้ว — ลองเข้าสู่ระบบ หรือกด "ลืมรหัสผ่าน"'],
     [/password should be at least|password is too short/i, 'รหัสผ่านสั้นเกินไป (อย่างน้อย 6 ตัวอักษร)'],
     [/password.*(weak|pwned|leaked)/i, 'รหัสผ่านนี้คาดเดาง่ายหรือเคยรั่วไหล กรุณาตั้งรหัสผ่านใหม่ที่ปลอดภัยกว่า'],
     [/same.*password|different from the old/i, 'รหัสผ่านใหม่ต้องไม่ซ้ำกับรหัสผ่านเดิม'],
+    [/email rate limit/i, 'ระบบส่งอีเมลครบโควตาแล้ว (ระบบอีเมลพื้นฐานของ Supabase ส่งได้ประมาณ 2 ฉบับ/ชั่วโมง) — รอสักพักแล้วลองใหม่ หรือแจ้ง Admin'],
     [/rate limit|too many requests|security purposes/i, 'ส่งคำขอบ่อยเกินไป กรุณารอสักครู่แล้วลองใหม่'],
     [/failed to fetch|networkerror|load failed/i, 'เชื่อมต่อ Supabase ไม่ได้ — ตรวจสอบอินเทอร์เน็ต หรือ supabaseUrl ใน config.js'],
     [/invalid api key|no api key/i, 'Supabase key ไม่ถูกต้อง — ตรวจสอบ supabaseAnonKey ใน config.js'],
     [/signups? not allowed|signup.*disabled/i, 'ระบบปิดรับสมัครสมาชิก — ติดต่อผู้ดูแลระบบ'],
-    [/email address .* is invalid|unable to validate email|invalid format/i, 'รูปแบบอีเมลไม่ถูกต้อง'],
+    [/unable to validate email|invalid format/i, 'รูปแบบอีเมลไม่ถูกต้อง'],
     [/expired|invalid.*(link|token)/i, 'ลิงก์หมดอายุหรือถูกใช้ไปแล้ว — กรุณาขอลิงก์ใหม่'],
   ];
-  const thai = (err) => {
+  // The browser already checks the e-mail format before submitting, so when Supabase answers
+  // "email_address_invalid" for a well-formed address it is a server policy — almost always
+  // "Confirm email" still ON: the built-in mailer can only send to Supabase team members.
+  const EMAIL_REJECTED = 'Supabase ไม่รับอีเมลนี้ (รูปแบบอีเมลถูกต้องแล้ว) — สาเหตุ: ระบบยังเปิด "Confirm email" อยู่ จึงส่งอีเมลยืนยันไปอีเมลโดเมนนี้ไม่ได้ · แจ้ง Admin ให้ปิด Confirm email ใน Supabase (Authentication → Sign In / Providers → Email)';
+  // Password reset always needs an e-mail, so the fix there is Custom SMTP (not the Confirm-email switch)
+  const RECOVERY_REJECTED = 'ส่งอีเมลรีเซ็ตรหัสผ่านไปอีเมลนี้ไม่ได้ — ระบบอีเมลพื้นฐานของ Supabase ส่งได้เฉพาะอีเมลของสมาชิกทีม Supabase · แจ้ง Admin ให้ตั้ง Custom SMTP หรือให้ Admin ตั้งรหัสผ่านใหม่ให้';
+  const thai = (err, context) => {
+    const code = err && err.code;
     const m = (err && (err.message || err.error_description || err.msg)) || String(err || '');
+    const rejected = code === 'email_address_invalid' || code === 'email_address_not_authorized' || /email address .* (is invalid|not authorized)/i.test(m);
+    if (rejected) return context === 'forgot' ? RECOVERY_REJECTED : EMAIL_REJECTED;
+    if (code === 'over_email_send_rate_limit') return 'ระบบส่งอีเมลครบโควตาแล้ว (ระบบอีเมลพื้นฐานของ Supabase ส่งได้ประมาณ 2 ฉบับ/ชั่วโมง) — รอสักพักแล้วลองใหม่ หรือแจ้ง Admin';
     const hit = MSG.find(([re]) => re.test(m));
     return hit ? hit[1] : m || 'เกิดข้อผิดพลาด กรุณาลองใหม่';
   };
@@ -72,7 +86,8 @@
       <p class="muted">สร้างบัญชีสำหรับใช้งาน ${esc(PM.APP_NAME)}</p>
       <form class="auth-form" data-form="register" novalidate>
         <label><span>ชื่อ-สกุล</span><input name="fullName" autocomplete="name" required></label>
-        <label><span>อีเมล</span><input type="email" name="email" autocomplete="email" required></label>
+        <label><span>อีเมล</span><input type="email" name="email" autocomplete="email" placeholder="name@company.com" required>
+          <small class="muted">ใช้อีเมลโดเมนใดก็ได้ ไม่จำกัดเฉพาะ @flowlabservice.co.th</small></label>
         ${pw('password', 'new-password', 'รหัสผ่าน (อย่างน้อย 6 ตัวอักษร)')}
         ${pw('confirm', 'new-password', 'ยืนยันรหัสผ่าน')}
         <button class="btn primary block" type="submit">สมัครสมาชิก</button>
@@ -98,7 +113,15 @@
     sent: (o) => `
       <h1>ตรวจสอบอีเมลของคุณ</h1>
       <p>${esc(o.text)}</p>
-      <p class="muted small">ไม่พบอีเมล? ลองดูในโฟลเดอร์ Spam / Junk</p>
+      ${o.forgot ? `<div class="auth-help">
+        <b>ไม่ได้รับอีเมลภายใน 5 นาที?</b>
+        <ul>
+          <li>ดูในโฟลเดอร์ Spam / Junk / Promotions</li>
+          <li>ตรวจว่าอีเมลตรงกับที่ใช้สมัคร — ถ้าไม่มีบัญชีนี้ ระบบจะไม่ส่งอีเมล</li>
+          <li>ระบบส่งอีเมลได้จำกัดต่อชั่วโมง ลองใหม่ภายหลัง</li>
+          <li>ยังไม่ได้รับ: แจ้ง Admin ให้ตั้งรหัสผ่านใหม่ให้</li>
+        </ul>
+      </div>` : '<p class="muted small">ไม่พบอีเมล? ลองดูในโฟลเดอร์ Spam / Junk</p>'}
       <p class="auth-switch"><button type="button" class="link-btn" data-go="login">← กลับไปเข้าสู่ระบบ</button></p>`,
   };
 
@@ -171,7 +194,7 @@
       try {
         await ACTIONS[kind](f);
       } catch (err) {
-        if (document.body.contains(form)) showError(form, thai(err));
+        if (document.body.contains(form)) showError(form, thai(err, kind));
       } finally {
         if (document.body.contains(btn)) { btn.disabled = false; btn.textContent = label; btn.classList.remove('loading'); }
       }
@@ -207,7 +230,7 @@
     async forgot(f) {
       const { error } = await A.client.auth.resetPasswordForEmail(f.email, { redirectTo: redirectUrl() });
       if (error) throw error;
-      screen('sent', { text: `ถ้ามีบัญชีที่ใช้อีเมล ${f.email} ระบบได้ส่งลิงก์สำหรับตั้งรหัสผ่านใหม่ไปแล้ว` });
+      screen('sent', { forgot: true, text: `ถ้ามีบัญชีที่ใช้อีเมล ${f.email} ระบบได้ส่งลิงก์สำหรับตั้งรหัสผ่านใหม่ไปแล้ว (ลิงก์ใช้ได้ 1 ชั่วโมง)` });
     },
     async recovery(f) {
       const { data, error } = await A.client.auth.updateUser({ password: f.password });

@@ -37,6 +37,34 @@
   V.seg = (name, items, value) =>
     `<div class="seg" role="group">${items.map((it) => `<button type="button" data-seg="${name}" data-val="${it.key}" class="${it.key === value ? 'on' : ''}">${esc(it.label)}</button>`).join('')}</div>`;
 
+  /* ---------- week navigator (Weekly Plan, Timesheet) — uses data-action prev / next / this ---------- */
+  V.isoWeek = (s) => {
+    const d = PM.parse(s);
+    d.setDate(d.getDate() + 3 - ((d.getDay() + 6) % 7)); // Thursday of this week decides the ISO week
+    const w1 = new Date(d.getFullYear(), 0, 4);
+    return 1 + Math.round(((d - w1) / 86400000 - 3 + ((w1.getDay() + 6) % 7)) / 7);
+  };
+  V.weekNav = function (week) {
+    const T = PM.today();
+    const end = PM.addDays(week, 6);
+    const a = PM.parse(week), b = PM.parse(end);
+    const fmt = (d, o) => d.toLocaleDateString('en-GB', o);
+    const range = a.getMonth() === b.getMonth()
+      ? `${a.getDate()} – ${fmt(b, { day: 'numeric', month: 'short', year: 'numeric' })}`
+      : `${fmt(a, { day: 'numeric', month: 'short' })} – ${fmt(b, { day: 'numeric', month: 'short', year: 'numeric' })}`;
+    const diff = Math.round(PM.diffDays(PM.monday(T), week) / 7);
+    const rel = diff === 0 ? 'สัปดาห์นี้' : diff === 1 ? 'สัปดาห์หน้า' : diff === -1 ? 'สัปดาห์ที่แล้ว' : diff > 0 ? `อีก ${diff} สัปดาห์` : `${-diff} สัปดาห์ก่อน`;
+    const chev = (d) => `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="${d}"/></svg>`;
+    return `<div class="week-nav" role="group" aria-label="เลือกสัปดาห์">
+        <button class="wk-btn" type="button" data-action="prev" aria-label="สัปดาห์ก่อนหน้า" title="สัปดาห์ก่อนหน้า">${chev('M15 6l-6 6 6 6')}</button>
+        <div class="wk-label"><b>${esc(range)}</b><small>สัปดาห์ที่ ${V.isoWeek(week)} · <span class="${diff === 0 ? 'now' : ''}">${esc(rel)}</span></small></div>
+        <button class="wk-btn" type="button" data-action="next" aria-label="สัปดาห์ถัดไป" title="สัปดาห์ถัดไป">${chev('M9 6l6 6-6 6')}</button>
+      </div>
+      <button class="btn wk-today${diff === 0 ? ' is-current' : ''}" type="button" data-action="this" ${diff === 0 ? 'aria-pressed="true" title="กำลังดูสัปดาห์นี้"' : 'title="กลับไปสัปดาห์ปัจจุบัน"'}>
+        <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="5" width="17" height="15.5" rx="2"/><path d="M3.5 9.5h17M8 3v4M16 3v4"/><circle cx="12" cy="15" r="1.6" fill="currentColor" stroke="none"/></svg>
+        สัปดาห์นี้</button>`;
+  };
+
   V.stageOf = (b) => { let s = 'inquiry'; PM.BID_STAGES.forEach((x) => { if (b.dates[x.key]) s = x.key; }); return s; };
   V.resultBadge = (b) => {
     if (b.result === 'won') return U.badge('good', 'Won');

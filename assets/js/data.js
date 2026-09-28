@@ -36,6 +36,12 @@
     { id: 'ENG', name: 'Engineer', rate: 700, target: 85 },
     { id: 'TECH', name: 'Technician', rate: 400, target: 85 },
   ];
+  /* old level → new: junior / technician grades → Technician, everything else → Engineer */
+  PM.mapLegacyLevel = (id) => {
+    const old = PM.db && PM.db.levels.find((x) => x.id === id);
+    const text = `${id || ''} ${old ? old.name : ''}`;
+    return /^L1$|junior|technician|ช่าง/i.test(String(id || '')) || /junior|technician|ช่าง/i.test(text) ? 'TECH' : 'ENG';
+  };
   PM.levelName = (id) => { const l = PM.db && PM.db.levels.find((x) => x.id === id); return l ? l.name : id || '–'; };
 
   PM.PLAN_STATUS = [
@@ -104,8 +110,12 @@
   /* data saved by older versions may miss newer collections */
   PM.ensureShape = () => {
     ['bids', 'projects', 'ncrs', 'safety', 'resources', 'levels', 'timesheets', 'plans'].forEach((c) => { if (!Array.isArray(PM.db[c])) PM.db[c] = []; });
-    // the two person levels offered in "Add person" must always exist
+    // only two person levels exist: Engineer & Technician
     PM.PERSON_LEVELS.forEach((l) => { if (!PM.db.levels.some((x) => x.id === l.id)) PM.db.levels.push(Object.assign({}, l)); });
+    // older data (L1–L5): move people to Engineer / Technician, then drop the old levels
+    const allowed = PM.PERSON_LEVELS.map((l) => l.id);
+    PM.db.resources.forEach((r) => { if (!allowed.includes(r.level)) r.level = PM.mapLegacyLevel(r.level); });
+    PM.db.levels = PM.db.levels.filter((l) => allowed.includes(l.id));
   };
   PM.lockCompany = () => { PM.db.meta = Object.assign({}, PM.db.meta, { company: PM.COMPANY }); };
   PM.find = (coll, id) => PM.db[coll].find((x) => x.id === id);

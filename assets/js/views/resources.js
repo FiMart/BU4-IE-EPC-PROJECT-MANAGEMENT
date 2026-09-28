@@ -153,7 +153,7 @@
     const x = l || { id: 'L' + (PM.db.levels.length + 1), name: '', rate: 500, target: 80 };
     U.modal({
       title: isNew ? 'Add level' : x.name,
-      onDelete: isNew || PM.db.resources.some((r) => r.level === x.id) ? null : () => { PM.remove('levels', x.id); done(); },
+      onDelete: null, // Engineer / Technician are fixed levels (name, rate and target can still be edited)
       body: `
         ${U.field('Code', 'id', x.id, { required: true })}
         ${U.field('Level name', 'name', x.name, { required: true })}

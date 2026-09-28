@@ -63,6 +63,39 @@
   document.addEventListener('keydown', (e) => { if (e.key === 'Escape') setNav(false); });
   window.addEventListener('hashchange', () => setNav(false));
 
+  /* ---------- desktop: collapse / expand the sidebar (remembered per browser) ---------- */
+  const sideBtn = document.getElementById('sidebar-toggle');
+  const applyCollapsed = (on) => {
+    document.documentElement.classList.toggle('nav-collapsed', on);
+    const label = on ? 'ขยายเมนู' : 'หุบเมนู';
+    sideBtn.setAttribute('aria-expanded', String(!on));
+    sideBtn.setAttribute('aria-label', label);
+    sideBtn.title = label;
+    // icons only → show the menu name as a tooltip
+    document.querySelectorAll('#nav a').forEach((a) => {
+      const name = a.querySelector('span') ? a.querySelector('span').textContent : '';
+      if (on) a.setAttribute('data-tip', name); else a.removeAttribute('data-tip');
+    });
+  };
+  applyCollapsed(document.documentElement.classList.contains('nav-collapsed'));
+  // content width changes → redraw charts once the sidebar has finished resizing
+  const appEl = document.querySelector('.app');
+  let collapseTimer = null;
+  const redrawAfterResize = () => {
+    if (collapseTimer === null) return;
+    clearTimeout(collapseTimer);
+    collapseTimer = null;
+    if (PM.booted && PM.auth.user && !document.querySelector('.modal-backdrop')) render();
+  };
+  appEl.addEventListener('transitionend', (e) => { if (e.target === appEl && e.propertyName === 'grid-template-columns') redrawAfterResize(); });
+  sideBtn.addEventListener('click', () => {
+    const on = !document.documentElement.classList.contains('nav-collapsed');
+    applyCollapsed(on);
+    try { localStorage.setItem('epc-pm-nav-collapsed', on ? '1' : '0'); } catch (e) { /* ignore */ }
+    clearTimeout(collapseTimer);
+    collapseTimer = setTimeout(redrawAfterResize, 450); // fallback if no transition runs
+  });
+
   /* ---------- tables → cards on phones ----------
      Copies each column header into data-label on its cells so CSS can show "label : value" rows.
      Grids that must stay tabular (timesheet entry, permission matrix) are skipped. */
@@ -78,6 +111,12 @@
         cell.className = 'cell';
         while (td.firstChild) cell.appendChild(td.firstChild);
         td.appendChild(cell);
+        // on phones: progress bars, dropdowns, buttons and long text take the full card width
+        const text = cell.textContent.trim();
+        const onlyButtons = !!cell.querySelector('.btn') &&
+          Array.from(cell.childNodes).every((n) => (n.nodeType === 1 && n.matches('.btn')) || !n.textContent.trim());
+        if (onlyButtons) td.classList.add('wide', 'actions');
+        else if (cell.querySelector('.pbar-wrap, select, textarea') || text.length > 24) td.classList.add('wide');
       }));
     });
   }

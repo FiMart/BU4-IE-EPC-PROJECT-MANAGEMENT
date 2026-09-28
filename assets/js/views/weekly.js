@@ -78,10 +78,7 @@
     const projects = db.projects.filter((p) => p.status !== 'closed');
     el.innerHTML = `
       <div class="row">
-        <button class="btn" data-action="prev" aria-label="สัปดาห์ก่อน">←</button>
-        <strong>Week of ${U.date(week)} – ${U.date(end)}</strong>
-        <button class="btn" data-action="next" aria-label="สัปดาห์ถัดไป">→</button>
-        ${week !== PM.monday(T) ? '<button class="btn ghost" data-action="this">สัปดาห์นี้</button>' : '<span class="chip">สัปดาห์นี้</span>'}
+        ${V.weekNav(week)}
         <span class="spacer"></span>
         ${canEdit ? `<button class="btn" data-action="carry">ยกงานค้างจากสัปดาห์ก่อน</button>
           <button class="btn primary" data-action="new">+ เพิ่มงาน</button>` : ''}
@@ -171,7 +168,7 @@
         const act = a.dataset.action;
         if (act === 'prev') { state.week = PM.addDays(state.week, -7); rerender(); }
         if (act === 'next') { state.week = PM.addDays(state.week, 7); rerender(); }
-        if (act === 'this') { state.week = PM.monday(T); rerender(); }
+        if (act === 'this' && state.week !== PM.monday(T)) { state.week = PM.monday(T); rerender(); }
         if (act === 'new' && canEdit) planForm(null, rerender);
         if (act === 'edit' && canEdit) planForm(findPlan(a.dataset.id), rerender);
         if (act === 'carry' && canEdit) carryOver(rerender);
@@ -288,7 +285,23 @@
             ${canEdit ? `<button class="cp-add" type="button" data-action="new-on" data-day="${d}" data-person="${esc(r.id)}" aria-label="เพิ่มงานให้ ${esc(r.name)} วันที่ ${U.date(d)}">＋</button>` : ''}
           </div>`).join('')}`;
       }).join('')}
-    </div>`;
+    </div>
+    ${personList(list, week, T, canEdit)}`;
+  }
+
+  /* phone version of "by person": one block per person, tasks listed by day (shown via CSS ≤ 640px) */
+  function personList(list, week, T, canEdit) {
+    const people = PM.db.resources.filter((r) => list.some((p) => p.resourceId === r.id));
+    const addDay = T >= week && T <= PM.addDays(week, 6) ? T : PM.addDays(week, 4);
+    return `<div class="cal-people-list">${people.map((r) => {
+      const mine = list.filter((p) => p.resourceId === r.id).sort((a, b) => (a.dueDate < b.dueDate ? -1 : 1));
+      const hours = PM.sum(mine, (p) => p.plannedHours || 0), cap = r.capacity || 40;
+      return `<section class="cpl-person">
+        <header><b>${esc(r.name)}</b><small>${U.num(hours, 1)} / ${U.num(cap)} h${hours > cap * 1.05 ? ' · <span class="cal-late">เกิน</span>' : ''}</small>
+          ${canEdit ? `<button class="icon-btn cal-add" type="button" data-action="new-on" data-day="${addDay}" data-person="${esc(r.id)}" aria-label="เพิ่มงานให้ ${esc(r.name)}">＋</button>` : ''}</header>
+        ${mine.map((p) => `<div class="cpl-row"><span class="cpl-day${p.dueDate === T ? ' today' : ''}">${esc(dayName(p.dueDate))}<b>${PM.parse(p.dueDate).getDate()}</b></span>${calCard(p, T, canEdit, false, true)}</div>`).join('')}
+      </section>`;
+    }).join('') || '<p class="empty">ยังไม่มีงานในสัปดาห์นี้</p>'}</div>`;
   }
 
   function tasksTable(list, T, canEdit, canStatus) {

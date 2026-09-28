@@ -22,9 +22,24 @@ Web app สำหรับบริหารโครงการแบบ EPC (
 1. สร้างโปรเจกต์ที่ [supabase.com](https://supabase.com)
 2. **Project Settings → API** คัดลอก **Project URL** และ **anon public key** (หรือ publishable key)
    ไปวางใน `assets/js/config.js` — ห้ามใช้ `service_role` / secret key
-3. **Authentication → Sign In / Providers → Email** ต้องเปิดอยู่ (ค่าเริ่มต้นเปิดแล้ว)
-   - ถ้าเปิด **Confirm email** ผู้สมัครต้องคลิกลิงก์ในอีเมลก่อนจึงจะเข้าระบบได้
-   - ถ้าใช้ภายในทีมและอยากให้สมัครแล้วเข้าได้ทันที ปิด Confirm email ได้
+3. **Authentication → Sign In / Providers → Email** ต้องเปิดอยู่ และ **ปิด "Confirm email"** (ระบบนี้ใช้แบบไม่ยืนยันอีเมล)
+   - สมัครแล้วเข้าใช้งานได้ทันที ใช้อีเมลโดเมนใดก็ได้
+   - เหตุผล: ระบบส่งอีเมลในตัวของ Supabase ส่งได้เฉพาะอีเมลของสมาชิกทีม Supabase — ถ้าเปิด Confirm email ไว้ คนที่ใช้อีเมลโดเมนอื่นจะสมัครไม่ได้
+   - คนที่สมัครไว้ก่อนปิด Confirm email: รัน [`supabase/confirm-users.sql`](supabase/confirm-users.sql) ใน SQL Editor เพื่อยืนยันให้
+   - "ลืมรหัสผ่าน" ยังต้องส่งอีเมล — ดูหัวข้อ "ลืมรหัสผ่าน / ส่งอีเมล" ด้านล่าง
+
+### ลืมรหัสผ่าน / ส่งอีเมล
+
+ระบบส่งอีเมลในตัวของ Supabase **ส่งได้เฉพาะอีเมลสมาชิกทีม Supabase** และ **ประมาณ 2 ฉบับต่อชั่วโมง** — ใช้งานจริงต้องตั้ง Custom SMTP:
+
+1. **Project Settings → Authentication → SMTP Settings → Enable Custom SMTP**
+   - Google Workspace / Gmail: Host `smtp.gmail.com` · Port `587` · Username = อีเมลเต็ม · Password = **App Password** (ต้องเปิด 2-Step Verification)
+   - Microsoft 365: Host `smtp.office365.com` · Port `587` · ต้องเปิด SMTP AUTH ให้ mailbox นั้น
+   - Sender email เช่น `noreply@flowlabservice.co.th` · Sender name `BU4 IE/EPC Project Management`
+2. **Authentication → Rate Limits** เพิ่มจำนวนอีเมลต่อชั่วโมง (เช่น 30)
+3. **Authentication → URL Configuration** ตั้ง **Site URL** และ **Redirect URLs** เป็นที่อยู่เว็บจริง — ลิงก์ในอีเมลจะพากลับมาที่นี่ (เปิดแบบ `file://` จะกดลิงก์ไม่ได้)
+
+ระหว่างยังไม่ได้ตั้ง SMTP: Admin ตั้งรหัสผ่านใหม่ให้ผู้ใช้ได้ด้วย [`supabase/reset-password.sql`](supabase/reset-password.sql) (แก้อีเมลและรหัสผ่านในไฟล์แล้ว Run ใน SQL Editor)
 4. **Authentication → URL Configuration** ตั้ง **Site URL** เป็นที่อยู่ที่เปิดแอป และเพิ่มไว้ใน **Redirect URLs**
    ลิงก์ยืนยันอีเมลและลิงก์รีเซ็ตรหัสผ่านจะพากลับมาที่ URL นี้
 
