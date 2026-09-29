@@ -65,6 +65,8 @@ Web app สำหรับบริหารโครงการแบบ EPC (
 | สร้าง / แก้ไขงานใน Weekly Plan | ✓ | ✓ | ✓ | – |
 | ลบงานใน Weekly Plan | เฉพาะ **คนที่สร้างงานนั้น** (งานเดิมที่ไม่มีข้อมูลผู้สร้าง: Admin) — บังคับในฐานข้อมูลด้วย | | | |
 | อัปเดตสถานะงานใน Weekly Plan | ✓ | ✓ | ✓ | ✓ |
+| สร้าง / แก้ไข PO และแนบไฟล์ (ทุกคนดู / ดาวน์โหลดได้) | ✓ | ✓ | ✓ | – |
+| บันทึก / แก้ไขค่าใช้จ่ายโครงการ (ทุกคนดูได้) | ✓ | ✓ | – | – |
 | กำหนด Role ให้ผู้ใช้ | ✓ | – | – | – |
 
 ปรับตารางสิทธิ์ได้ที่ `PM.PERMISSIONS` ใน `assets/js/roles.js`
@@ -72,7 +74,8 @@ Web app สำหรับบริหารโครงการแบบ EPC (
 ## บันทึกข้อมูลบน Cloud
 
 ติดตั้งครั้งเดียว (หลังรัน `roles.sql`): วางเนื้อหาไฟล์ [`supabase/data.sql`](supabase/data.sql) ใน **SQL Editor** แล้วกด **Run**
-(ถ้าเคยรัน `data.sql` ก่อนมี Weekly Plan ให้รันไฟล์นี้ **อีกครั้ง** — ข้อมูลเดิมไม่หาย)
+(ถ้าเคยรัน `data.sql` มาก่อน ให้รันไฟล์นี้ **อีกครั้ง** ทุกครั้งที่มีฟีเจอร์ใหม่ เช่น Weekly Plan, Purchase Orders, รายการค่าใช้จ่าย (v1.13) — ข้อมูลเดิมไม่หาย)
+ไฟล์นี้สร้างที่เก็บไฟล์ PO (Storage bucket `po-files` แบบ private) ด้วย — ดูไฟล์ได้เฉพาะผู้ใช้ที่ login และมี Role
 
 - ทุกการแก้ไขถูกส่งขึ้น Supabase อัตโนมัติภายใน ~1 วินาที — ดูสถานะได้ที่มุมขวาบน (● บันทึกบน Cloud แล้ว)
 - เปิดเว็บใหม่: โหลดข้อมูลล่าสุดจาก Cloud เสมอ · กลับมาที่แท็บหลังจากไปทำอย่างอื่น ระบบดึงข้อมูลที่เพื่อนร่วมทีมแก้ไขให้อัตโนมัติ
@@ -88,9 +91,10 @@ Web app สำหรับบริหารโครงการแบบ EPC (
 | เมนู | เนื้อหา | KPI |
 | --- | --- | --- |
 | **Dashboard** | สรุป 3 ส่วน: Bidding · Execution · Resource | ทั้งหมดในหน้าเดียว |
-| **Bidding** (Before Award) | Board / Table: Inquiry → Estimate → Proposal → Submit → Won/Lost, สร้าง Project จาก bid ที่ชนะได้ทันที | **Quantity**: จำนวน inquiry, proposal, BOQ items · **Time**: วันเฉลี่ยในแต่ละ stage, cycle time, on-time submission · Win rate |
-| **Projects (EPC)** | ทุกโครงการพร้อม phase ปัจจุบัน, progress plan vs actual, SPI/CPI | Portfolio health |
-| **Project detail** | EPC phases (update progress / quantity / cost), S-Curve, NCR log, Safety รายเดือน, ชั่วโมงทีมงาน | **Quantity** · **Time** (SPI) · **Cost** (CPI, EAC) · **Quality** (NCR) · **Safety** (LTIFR, TRIR) |
+| **Bidding** (Before Award) | Board / Table: Inquiry → Estimate → Proposal → Submit → Won/Lost, สร้าง Project จาก bid ที่ชนะได้ทันที · แต่ละ bid มี **Sales ผู้หาลูกค้า** (พิมพ์ชื่อเองหรือเลือกจากรายชื่อ — ถ้าชื่อตรงกับพนักงาน/บัญชีผู้ใช้จะผูกกับคนนั้น ถ้าไม่ตรงจะเก็บเป็นชื่อที่พิมพ์), ที่มาของงาน (Lead source), ผู้ติดต่อฝั่งลูกค้า · กรองตาม Sales | **Quantity**: จำนวน inquiry, proposal, BOQ items · **Time**: วันเฉลี่ยในแต่ละ stage, cycle time, on-time submission · Win rate · **ผลงาน Sales** (inquiry, win rate, won value, pipeline, โครงการที่รับผิดชอบ) |
+| **Projects (EPC)** | ทุกโครงการพร้อม phase ปัจจุบัน, progress plan vs actual, SPI/CPI, PM / Sales ผู้รับผิดชอบ (กรองตาม Sales ได้) | Portfolio health |
+| **Project detail** | EPC phases (update progress / quantity / plan cost), S-Curve, **ค่าใช้จ่าย** (บันทึกทีละรายการ: วันที่ · รายการ · จำนวนเงิน · phase · หมวด · ผู้ขาย · เลขที่เอกสาร · อ้างอิง PO, Export CSV, กราฟต้นทุนสะสม PV / EV / AC), NCR log, Safety รายเดือน, ชั่วโมงทีมงาน | **Quantity** · **Time** (SPI) · **Cost** (CPI, EAC — Actual cost = ผลรวมรายการค่าใช้จ่าย) · **Quality** (NCR) · **Safety** (LTIFR, TRIR) |
+| **Purchase Orders** | PO ของทุกโครงการ (หน้า Purchase Orders + แท็บ PO ในแต่ละโครงการ): ผู้ขาย · รายการ · มูลค่า · วันที่ PO · กำหนดส่ง · สถานะ · จ่ายแล้ว · **ไฟล์แนบ** (PDF/รูป/Excel/Word ≤ 20 MB, เก็บใน Supabase Storage) | มูลค่า PO (Committed) เทียบ Plan cost · เลยกำหนดส่ง · ส่งภายใน 14 วัน · % จ่ายแล้ว — สรุปบน Dashboard |
 | **Weekly Plan** | วางแผนงานรายสัปดาห์ (งาน · โครงการ/bid · phase · ผู้รับผิดชอบ · ชั่วโมง · ปริมาณ · กำหนดเสร็จ), อัปเดตสถานะ Planned → In progress → Done / Not done + สาเหตุ, ยกงานค้างไปสัปดาห์ถัดไป, ดูภาระงานรายคน, ดึงเป็นแถวใน Timesheet | **PPC** = งานเสร็จ ÷ งานในแผน (เป้า ≥ 80%), สาเหตุงานไม่เสร็จ, ชั่วโมงตามแผน vs capacity |
 | **Resource Utilization** | Utilization ตาม **Level**, heatmap loading รายสัปดาห์, รายคน, ตั้งค่า level (rate, target) | Utilization vs target, over/under allocation |
 | **Timesheet** | กรอกชั่วโมงรายสัปดาห์ต่อคน (Project+Phase / Bid / Overhead / Leave), สถานะการกรอกของทั้งทีม | Timesheet completeness |
@@ -98,7 +102,8 @@ Web app สำหรับบริหารโครงการแบบ EPC (
 ## สูตรที่ใช้
 
 - Progress รวม = Σ(weight × progress ของ phase)
-- PV = Σ(budget × planned%) · EV = Σ(budget × actual%) · SPI = EV/PV · CPI = EV/AC · EAC = BAC/CPI
+- PV = Σ(budget × planned%) · EV = Σ(budget × actual%) · AC = Σ(รายการค่าใช้จ่าย) · SPI = EV/PV · CPI = EV/AC · EAC = BAC/CPI
+- โครงการที่มีจากก่อน v1.13: Actual cost ที่เคยกรอกไว้ถูกยกมาเป็นรายการ "Opening balance" (1 รายการต่อ phase, ลงวันที่วันที่อัปเดต)
 - สถานะ: ≥ 0.95 On track · 0.90–0.95 At risk · < 0.90 Off track
 - LTIFR = LTI × 1,000,000 / man-hours · TRIR = (Recordable + LTI) × 200,000 / man-hours
 - Utilization = (Project + Bidding hours) / (Capacity − Leave)
@@ -131,5 +136,5 @@ assets/js/roles.js           Role + ตารางสิทธิ์ + เร�
 assets/js/cloud.js           ซิงค์ข้อมูลทั้งหมดกับ Supabase (บันทึกอัตโนมัติ / โหลดเมื่อเปิดเว็บ)
 supabase/roles.sql           SQL สร้างตาราง profiles, RLS, trigger (รันใน Supabase ก่อน)
 supabase/data.sql            SQL สร้างตาราง app_records สำหรับเก็บข้อมูลทั้งหมด (รันต่อจาก roles.sql)
-assets/js/views/*.js         แต่ละหน้า (weekly.js = Weekly Plan)
+assets/js/views/*.js         แต่ละหน้า (weekly.js = Weekly Plan, costs.js = รายการค่าใช้จ่ายโครงการ)
 ```

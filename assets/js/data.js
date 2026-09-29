@@ -43,6 +43,8 @@
     return /^L1$|junior|technician|ช่าง/i.test(String(id || '')) || /junior|technician|ช่าง/i.test(text) ? 'TECH' : 'ENG';
   };
   PM.levelName = (id) => { const l = PM.db && PM.db.levels.find((x) => x.id === id); return l ? l.name : id || '–'; };
+  /* weekly capacity in hours (0 is valid, e.g. Sales who do not log project time) */
+  PM.cap = (r) => (r && r.capacity != null && r.capacity !== '' ? Number(r.capacity) : 40);
 
   PM.PLAN_STATUS = [
     { key: 'planned', label: 'Planned', th: 'วางแผน', level: 'neutral' },
@@ -52,14 +54,64 @@
   ];
   PM.PLAN_REASONS = ['Material not ready', 'Drawing / design not ready', 'Manpower shortage', 'Equipment breakdown', 'Weather', 'Waiting client approval', 'Previous work not finished', 'Other'];
 
-  PM.NCR_CATEGORIES =['Material', 'Workmanship', 'Design', 'Documentation', 'Supplier', 'Method'];
+  /* Purchase orders */
+  PM.PO_STATUS = [
+    { key: 'draft', label: 'Draft', th: 'ร่าง', level: 'neutral' },
+    { key: 'issued', label: 'Issued', th: 'ออก PO แล้ว', level: 'info' },
+    { key: 'confirmed', label: 'Confirmed', th: 'ผู้ขายยืนยัน', level: 'info' },
+    { key: 'partial', label: 'Partially delivered', th: 'ส่งของบางส่วน', level: 'warning' },
+    { key: 'delivered', label: 'Delivered', th: 'ส่งของครบ', level: 'good' },
+    { key: 'closed', label: 'Closed', th: 'ปิด PO (จ่ายครบ)', level: 'good' },
+    { key: 'cancelled', label: 'Cancelled', th: 'ยกเลิก', level: 'neutral' },
+  ];
+  PM.PO_CATEGORIES = ['Equipment', 'Material', 'Subcontract', 'Service', 'Rental', 'Other'];
+  const PO_OPEN = ['issued', 'confirmed', 'partial'];
+  PM.poStatus = (k) => PM.PO_STATUS.find((s) => s.key === k) || PM.PO_STATUS[0];
+  PM.poIsCommitted = (po) => po.status !== 'draft' && po.status !== 'cancelled';
+  PM.poIsOpen = (po) => PO_OPEN.includes(po.status);
+  PM.poDaysLate = (po, asOf) => (PM.poIsOpen(po) && po.deliveryDue && po.deliveryDue < (asOf || PM.today()) ? PM.diffDays(po.deliveryDue, asOf || PM.today()) : 0);
+  PM.poStats = function (list, asOf) {
+    asOf = asOf || PM.today();
+    const committed = list.filter(PM.poIsCommitted);
+    const open = list.filter(PM.poIsOpen);
+    const late = open.filter((po) => PM.poDaysLate(po, asOf) > 0);
+    const soon = open.filter((po) => po.deliveryDue && po.deliveryDue >= asOf && PM.diffDays(asOf, po.deliveryDue) <= 14);
+    const value = PM.sum(committed, (po) => po.amount || 0);
+    const paid = PM.sum(committed, (po) => po.paidAmount || 0);
+    const delivered = committed.filter((po) => po.status === 'delivered' || po.status === 'closed');
+    return {
+      total: list.length, committed: committed.length, open: open.length, value, paid,
+      paidPct: value ? paid / value : null,
+      delivered: delivered.length, deliveredValue: PM.sum(delivered, (po) => po.amount || 0),
+      late, lateValue: PM.sum(late, (po) => po.amount || 0), soon,
+      files: PM.sum(list, (po) => (po.files || []).length),
+    };
+  };
+
+  PM.NCR_CATEGORIES = ['Material', 'Workmanship', 'Design', 'Documentation', 'Supplier', 'Method'];
   PM.SEVERITY = ['Minor', 'Major', 'Critical'];
   PM.OVERHEAD = [
     { id: 'admin', label: 'Admin / Meeting' },
     { id: 'training', label: 'Training' },
     { id: 'leave', label: 'Leave (ลา)' },
   ];
-  PM.DISCIPLINES = ['Project Management', 'Estimation', 'Civil/Structure', 'Mechanical', 'Electrical', 'Instrument', 'Procurement', 'QA/QC', 'Safety'];
+  PM.DISCIPLINES = ['Project Management', 'Sales', 'Estimation', 'Civil/Structure', 'Mechanical', 'Electrical', 'Instrument', 'Procurement', 'QA/QC', 'Safety'];
+
+  /* Sales — how the customer inquiry was found */
+  PM.LEAD_SOURCES = ['Sales visit', 'Existing customer', 'Referral', 'Tender invitation', 'Website / Inbound', 'Exhibition / Event', 'Other'];
+
+  /* Expense ledger — each entry: date / description / amount; a project's Actual cost = sum of its entries */
+  PM.COST_CATEGORIES = ['Material', 'Equipment', 'Subcontract', 'Labour', 'Rental', 'Service', 'Transport', 'Site expense', 'Other'];
+  PM.COST_OPENING = 'Opening balance'; // actual cost typed in before the ledger existed
+  PM.projectCosts = (projectId) => PM.db.costs.filter((c) => c.projectId === projectId);
+  /* write the ledger totals into each phase's actualCost (kept on the project so every KPI and screen reads one number) */
+  PM.applyLedger = function (p) {
+    const mine = PM.projectCosts(p.id);
+    p.phases.forEach((ph) => { ph.actualCost = Math.round(PM.sum(mine.filter((c) => c.phase === ph.key), (c) => Number(c.amount) || 0) * 100) / 100; });
+    p.costMode = 'ledger';
+  };
+  /* cumulative actual cost up to a date */
+  PM.costToDate = (list, date) => PM.sum(list.filter((c) => c.date <= date), (c) => Number(c.amount) || 0);
 
   /* ---------- date utils (dates are 'YYYY-MM-DD' strings) ---------- */
   const pad = (n) => String(n).padStart(2, '0');
@@ -109,7 +161,21 @@
   };
   /* data saved by older versions may miss newer collections */
   PM.ensureShape = () => {
-    ['bids', 'projects', 'ncrs', 'safety', 'resources', 'levels', 'timesheets', 'plans'].forEach((c) => { if (!Array.isArray(PM.db[c])) PM.db[c] = []; });
+    ['bids', 'projects', 'ncrs', 'safety', 'resources', 'levels', 'timesheets', 'plans', 'pos', 'costs'].forEach((c) => { if (!Array.isArray(PM.db[c])) PM.db[c] = []; });
+    // projects from before the expense ledger: carry the typed-in actual cost over as one "opening balance" entry per phase
+    // (fixed ids, so two browsers doing this at the same time create the same records)
+    PM.db.projects.forEach((p) => {
+      if (p.costMode === 'ledger' || !Array.isArray(p.phases)) return;
+      p.phases.forEach((ph) => {
+        const id = `CO-${p.id}-${ph.key}`;
+        if (!(ph.actualCost > 0) || PM.db.costs.some((c) => c.id === id)) return;
+        PM.db.costs.push({
+          id, projectId: p.id, date: PM.today(), phase: ph.key, category: PM.COST_OPENING,
+          description: 'ยอดยกมา — Actual cost สะสมก่อนเริ่มบันทึกรายการ', vendor: '', ref: '', poId: '', amount: ph.actualCost, note: '',
+        });
+      });
+      p.costMode = 'ledger';
+    });
     // only two person levels exist: Engineer & Technician
     PM.PERSON_LEVELS.forEach((l) => { if (!PM.db.levels.some((x) => x.id === l.id)) PM.db.levels.push(Object.assign({}, l)); });
     // older data (L1–L5): move people to Engineer / Technician, then drop the old levels
@@ -138,7 +204,7 @@
   PM.emptyDb = () => ({
     meta: { version: 1, company: PM.COMPANY, created: PM.today() },
     levels: PM.PERSON_LEVELS.map((l) => Object.assign({}, l)),
-    resources: [], bids: [], projects: [], ncrs: [], safety: [], timesheets: [], plans: [],
+    resources: [], bids: [], projects: [], ncrs: [], safety: [], timesheets: [], plans: [], pos: [], costs: [],
   });
 
   /* Build the 4 EPC phases for a new project from its dates and budget */
@@ -262,6 +328,33 @@
     };
   };
 
+  /* Per salesperson: bids they brought in (in the period) + projects they are responsible for.
+     id '' = bids / projects with no salesperson yet (listed only when there are some). */
+  /* Sales can be a person from the list (id) or a name typed in freely (no id) — group by id, else by name */
+  PM.normName = (s) => String(s || '').trim().replace(/\s+/g, ' ').toLowerCase();
+  PM.salesKey = (x) => (!x ? '' : x.sales || (PM.normName(x.salesName) ? 'n:' + PM.normName(x.salesName) : ''));
+  PM.salesStats = function (from, to) {
+    const db = PM.db;
+    const ids = [];
+    const add = (id) => { if (!ids.includes(id)) ids.push(id); };
+    db.resources.filter((r) => r.discipline === 'Sales' && r.active !== false).forEach((r) => add(r.id));
+    db.bids.forEach((b) => add(PM.salesKey(b)));
+    db.projects.forEach((p) => add(PM.salesKey(p)));
+    return ids.map((id) => {
+      const bids = db.bids.filter((b) => PM.salesKey(b) === id);
+      const projects = db.projects.filter((p) => PM.salesKey(p) === id);
+      const active = projects.filter((p) => p.status !== 'closed');
+      const pending = bids.filter((b) => b.result === 'pending');
+      const named = bids.find((b) => b.salesName) || projects.find((p) => p.salesName);
+      return {
+        id, fallbackName: named ? named.salesName : '', bids, projects, active,
+        bs: PM.bidStats(bids, from, to),
+        pipeline: pending.length, pipelineValue: PM.sum(pending, (b) => b.value || 0),
+        activeValue: PM.sum(active, (p) => p.contractValue || 0),
+      };
+    }).filter((x) => x.id || x.bids.length || x.projects.length);
+  };
+
   PM.utilization = function (from, to) {
     const db = PM.db;
     to = PM.min(to, PM.today());
@@ -273,7 +366,7 @@
       const bid = PM.sum(mine.filter((t) => t.kind === 'bid'), (t) => t.hours);
       const leave = PM.sum(mine.filter((t) => t.kind === 'overhead' && t.refId === 'leave'), (t) => t.hours);
       const overhead = PM.sum(mine.filter((t) => t.kind === 'overhead' && t.refId !== 'leave'), (t) => t.hours);
-      const capacity = ((r.capacity || 40) / 5) * days;
+      const capacity = (PM.cap(r) / 5) * days;
       const available = Math.max(0, capacity - leave);
       const billable = project + bid;
       const level = db.levels.find((l) => l.id === r.level);
@@ -613,6 +706,105 @@
         }
       });
     }
+
+    /* purchase orders — per project, dated inside the procurement phase (demo has no files) */
+    const PO_ITEMS = [
+      ['Main equipment package', 'Equipment'], ['Electrical panels (MDB / DB)', 'Equipment'], ['Power cables & accessories', 'Material'],
+      ['Structural steel', 'Material'], ['Piping, valves & fittings', 'Material'], ['Instruments & control', 'Equipment'],
+      ['Civil materials (rebar, concrete)', 'Material'], ['Installation subcontract', 'Subcontract'], ['Scaffolding rental', 'Rental'],
+      ['Testing & commissioning service', 'Service'],
+    ];
+    const SUPPLIERS = ['EastPower Equipment Co., Ltd.', 'Thai Cable Industry Co., Ltd.', 'Bangkok Steel Trading Co., Ltd.', 'ProTech Instruments Co., Ltd.',
+      'Siam Pipe & Valve Co., Ltd.', 'Grand Concrete Co., Ltd.', 'Rayong Scaffold Service', 'Delta Solar Parts Co., Ltd.', 'Unity M&E Contractor Co., Ltd.'];
+    db.pos = [];
+    db.projects.forEach((p, pi) => {
+      const proc = p.phases.find((ph) => ph.key === 'procurement');
+      if (!proc || proc.planStart > T) return;
+      const until = PM.min(T, proc.planEnd);
+      const span = Math.max(1, PM.diffDays(proc.planStart, until));
+      const full = Math.max(1, PM.diffDays(proc.planStart, proc.planEnd));
+      const n = p.status === 'closed' ? 6 : Math.max(2, Math.round(9 * Math.min(1, span / full)));
+      const shares = Array.from({ length: n }, () => rnd(0.5, 1.5));
+      const total = PM.sum(shares);
+      for (let i = 0; i < n; i++) {
+        const [desc, cat] = PO_ITEMS[i % PO_ITEMS.length];
+        const poDate = PM.min(T, PM.addDays(proc.planStart, Math.round((span * i) / n) + ri(0, 5)));
+        const due = PM.addDays(poDate, ri(30, 90));
+        const amount = Math.round((proc.budget * 0.9 * shares[i]) / total / 1000) * 1000;
+        let status, delivered = '';
+        if (p.status === 'closed') { status = 'closed'; delivered = PM.addDays(due, ri(-5, 5)); }
+        else if (due < PM.addDays(T, -10)) {
+          if (R() < 0.82) { status = R() < 0.5 ? 'closed' : 'delivered'; delivered = PM.min(T, PM.addDays(due, ri(-6, 12))); }
+          else status = 'partial'; // overdue
+        } else if (due < T) status = R() < 0.5 ? 'partial' : 'confirmed';
+        else status = R() < 0.6 ? 'confirmed' : 'issued';
+        const paid = { closed: 1, delivered: 0.9, partial: 0.4, confirmed: 0.1, issued: 0 }[status] || 0;
+        db.pos.push({
+          id: 'PO' + (db.pos.length + 1), projectId: p.id,
+          poNo: `PO-${p.code.replace(/^PJ-/, '')}-${String(i + 1).padStart(3, '0')}`,
+          supplier: SUPPLIERS[(i + pi * 3) % SUPPLIERS.length], description: desc, category: cat, phase: 'procurement',
+          amount, poDate, deliveryDue: due, deliveredDate: delivered, status,
+          paidAmount: Math.round(amount * paid), note: '', files: [],
+        });
+      }
+    });
+
+    /* expense ledger — spending follows progress: every monthly progress step becomes 1–3 dated expense entries */
+    const COST_ITEMS = {
+      engineering: [['Design consultant fee', 'Service'], ['Soil investigation & survey', 'Service'], ['Engineering manhours (in-house)', 'Labour'], ['Document printing & control', 'Other']],
+      construction: [['Subcontract progress payment', 'Subcontract'], ['Site labour wages', 'Labour'], ['Crane & equipment rental', 'Rental'], ['Consumables & small tools', 'Material'], ['Site office & utilities', 'Site expense'], ['Concrete & rebar', 'Material']],
+      closing: [['Commissioning service', 'Service'], ['As-built documentation', 'Service'], ['Client training', 'Labour'], ['Final cleaning & demobilisation', 'Site expense']],
+      procurement: [['Freight & customs clearance', 'Transport'], ['Vendor inspection trip', 'Transport']],
+    };
+    const COST_VENDORS = ['Unity M&E Contractor Co., Ltd.', 'Siam Engineering Consultant Co., Ltd.', 'Eastern Crane Service', 'Rayong Scaffold Service', 'Thai Logistics Express', 'Site petty cash'];
+    db.costs = [];
+    db.projects.forEach((p, pi) => {
+      const d = projDefs[pi];
+      const pos = db.pos.filter((po) => po.projectId === p.id);
+      const prev = {};
+      let prevDate = PM.addDays(p.startDate, -1);
+      p.progressLog.forEach((snap) => {
+        const span = Math.max(0, PM.diffDays(prevDate, snap.date) - 1);
+        p.phases.forEach((ph) => {
+          const delta = ((snap.values[ph.key] || 0) - (prev[ph.key] || 0)) / 100;
+          prev[ph.key] = snap.values[ph.key] || 0;
+          if (delta <= 0) return;
+          const amount = ph.budget * delta * d.cf * rnd(0.97, 1.04);
+          const n = amount > 2e6 ? ri(2, 3) : 1;
+          for (let k = 0; k < n; k++) {
+            const date = PM.min(snap.date, PM.addDays(prevDate, 1 + ri(0, span)));
+            const part = Math.round(amount / n / 100) * 100;
+            // procurement spending is paid against a PO while that PO still has value left
+            const po = ph.key === 'procurement' ? pick(pos.filter((x) => x.poDate <= date && PM.poIsCommitted(x) && (x.amount - (x.billed || 0)) >= part)) : null;
+            if (po) po.billed = (po.billed || 0) + part;
+            const [item, cat] = po ? [`Payment — ${po.description}`, po.category] : pick(COST_ITEMS[ph.key]);
+            db.costs.push({
+              id: 'C' + (db.costs.length + 1), projectId: p.id, date, phase: ph.key, category: cat, description: item,
+              vendor: po ? po.supplier : pick(COST_VENDORS), ref: `INV-${date.slice(2, 4)}${date.slice(5, 7)}-${String(db.costs.length + 1).padStart(4, '0')}`,
+              poId: po ? po.id : '', amount: part, note: '',
+            });
+          }
+        });
+        prevDate = snap.date;
+      });
+      p.phases.forEach((ph) => { ph.actualCost = PM.sum(db.costs.filter((c) => c.projectId === p.id && c.phase === ph.key), (c) => c.amount); });
+      p.costMode = 'ledger';
+    });
+    db.costs.sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
+    db.pos.forEach((po) => { delete po.billed; });
+
+    /* Sales — who found each customer / inquiry, and who looks after each project (capacity 0 = not in utilization) */
+    const SALES = [['R15', 'ชัยวัฒน์ ศรีสมบูรณ์'], ['R16', 'ปวีณา วัฒนกุล']];
+    SALES.forEach(([id, name]) => db.resources.push({ id, name, level: 'ENG', discipline: 'Sales', capacity: 0, active: true }));
+    const owner = {}, customers = new Set(); // each customer account belongs to one salesperson
+    db.bids.forEach((b) => { // oldest inquiry first
+      if (!owner[b.client]) owner[b.client] = SALES[Object.keys(owner).length % SALES.length];
+      [b.sales, b.salesName] = owner[b.client];
+      b.leadSource = customers.has(b.client) ? 'Existing customer' : pick(['Sales visit', 'Sales visit', 'Referral', 'Tender invitation', 'Website / Inbound', 'Exhibition / Event']);
+      b.contact = '';
+      if (b.result === 'won') customers.add(b.client);
+    });
+    db.projects.forEach((p) => { const b = db.bids.find((x) => x.id === p.bidId); if (b) { p.sales = b.sales; p.salesName = b.salesName; } });
     return db;
   };
 })();

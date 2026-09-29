@@ -27,7 +27,7 @@
         <span class="muted">${U.date(from)} – ${U.date(ut.to)} · ${ut.days} working days</span>
         <span class="spacer"></span>
         <a class="btn" href="#/timesheet">บันทึก Timesheet</a>
-        <button class="btn primary" data-action="new-person">+ Add person</button>
+        <button class="btn primary fab" data-action="new-person" aria-label="Add person"><span class="fab-i">+</span><span class="fab-t">Add person</span></button>
       </div>
       <div class="grid cols-6">
         ${V.tile({ label: 'Utilization', value: U.pct(ut.total.util), sub: 'Billable ÷ Available', tip: 'Available = capacity − leave\nBillable = Project + Bidding hours' })}
@@ -122,7 +122,7 @@
       ${rows.map((x) => {
         const st = U.utilLevel(x.util, x.target);
         return `<tr class="click" data-action="edit-person" data-id="${esc(x.r.id)}">
-          <td><span class="title">${esc(x.r.name)}</span></td><td>${esc(x.level ? x.level.name : x.r.level)}</td><td>${esc(x.r.discipline)}</td>
+          <td><span class="title">${esc(x.r.name)}</span>${PM.cap(x.r) === 0 ? '<small>capacity 0 — ไม่คิด utilization</small>' : ''}</td><td>${esc(x.level ? x.level.name : x.r.level)}</td><td>${esc(x.r.discipline)}</td>
           <td class="num">${U.num(x.available)}</td><td class="num">${U.num(x.project)}</td><td class="num">${U.num(x.bid)}</td>
           <td class="num">${U.num(x.overhead)}</td><td class="num">${U.num(x.leave)}</td>
           <td><div class="pbar-wrap">${U.progress(Math.min(1, x.util || 0), x.target, `${x.r.name}\nUtilization ${U.pct(x.util)} · target ${U.pct(x.target)}`)}<span class="num">${U.pct(x.util)}</span></div></td>
@@ -143,7 +143,7 @@
         ${U.field('ชื่อ-สกุล', 'name', p.name, { required: true, full: true })}
         ${U.field('Level', 'level', p.level, { options: levelOptions })}
         ${U.field('Discipline', 'discipline', p.discipline, { options: PM.DISCIPLINES })}
-        ${U.field('Capacity (hours/week)', 'capacity', p.capacity, { type: 'number', min: 0, max: 80 })}`,
+        ${U.field('Capacity (hours/week)', 'capacity', p.capacity, { type: 'number', min: 0, max: 80, hint: 'ใส่ 0 สำหรับคนที่ไม่ลง Timesheet เช่น Sales (ไม่นับใน utilization)' })}`,
       onSubmit: (f) => { Object.assign(p, f, { active: true }); PM.upsert('resources', p); U.toast('บันทึกแล้ว'); done(); },
     });
   }

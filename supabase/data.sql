@@ -3,10 +3,11 @@
 -- Run AFTER roles.sql, in Supabase Dashboard → SQL Editor → New query → Run.
 -- Safe to re-run (idempotent).
 --
--- Every record of the app (bids, projects, NCR, safety, people, levels, timesheets, meta)
+-- Every record of the app (bids, projects, NCR, safety, people, levels, timesheets, weekly plans, POs, expenses, meta)
 -- is stored as one row: (collection, id) → data (jsonb).
 --  - Any signed-in user who has a role (row in public.profiles) can read & edit records.
 --  - Bulk replace (Reset / Import) goes through app_replace_all() — Admin & Project Manager only.
+--  - PO file attachments: private Storage bucket "po-files" (section at the end).
 -- =====================================================================
 
 do $$ begin
@@ -24,10 +25,10 @@ create table if not exists public.app_records (
   updated_by uuid references auth.users (id) on delete set null,
   primary key (collection, id)
 );
--- allowed collections (re-running this file updates the list, e.g. 'plans' for Weekly Plan)
+-- allowed collections (re-running this file updates the list, e.g. 'plans' for Weekly Plan, 'costs' for the expense ledger)
 alter table public.app_records drop constraint if exists app_records_collection_check;
 alter table public.app_records add constraint app_records_collection_check
-  check (collection in ('meta','bids','projects','ncrs','safety','resources','levels','timesheets','plans'));
+  check (collection in ('meta','bids','projects','ncrs','safety','resources','levels','timesheets','plans','pos','costs'));
 
 create index if not exists app_records_collection_ord_idx on public.app_records (collection, ord);
 alter table public.app_records enable row level security;
@@ -103,3 +104,31 @@ begin
 end $$;
 revoke all on function public.app_replace_all(jsonb) from public, anon;
 grant execute on function public.app_replace_all(jsonb) to authenticated;
+
+-- =====================================================================
+-- PO file attachments — Supabase Storage (private bucket "po-files")
+-- Files live at: <projectId>/<poId>/<timestamp>-<file name>
+--  - any signed-in user with a role can view / download and upload
+--  - delete: the person who uploaded the file, or Admin / Project Manager
+-- =====================================================================
+insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+values ('po-files', 'po-files', false, 20971520, array[
+  'application/pdf', 'image/png', 'image/jpeg', 'image/webp',
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'application/vnd.ms-excel',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document', 'application/msword',
+  'text/csv', 'application/zip'])
+on conflict (id) do update
+  set public = false, file_size_limit = excluded.file_size_limit, allowed_mime_types = excluded.allowed_mime_types;
+
+drop policy if exists "po-files: read"   on storage.objects;
+drop policy if exists "po-files: upload" on storage.objects;
+drop policy if exists "po-files: delete" on storage.objects;
+create policy "po-files: read" on storage.objects for select to authenticated
+  using (bucket_id = 'po-files' and public.has_app_role());
+create policy "po-files: upload" on storage.objects for insert to authenticated
+  with check (bucket_id = 'po-files' and public.has_app_role());
+create policy "po-files: delete" on storage.objects for delete to authenticated
+  using (bucket_id = 'po-files' and (
+    owner_id = auth.uid()::text
+    or exists (select 1 from public.profiles where id = auth.uid() and role in ('admin', 'project_manager'))
+  ));

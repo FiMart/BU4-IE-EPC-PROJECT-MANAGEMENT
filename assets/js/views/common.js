@@ -85,20 +85,29 @@
   const people = () => PM.db.resources.filter((r) => r.active !== false).map((r) => ({ value: r.id, label: r.name }));
 
   /* ---------- bid form ---------- */
-  V.bidForm = function (bid, onSaved) {
+  V.bidForm = async function (bid, onSaved) {
+    await PM.roles.loadTeam(); // user accounts for the Sales list
     const T = PM.today();
     const isNew = !bid;
     const b = bid || {
       id: PM.uid('B'), code: 'BD-' + T.slice(2, 4) + '-' + String(PM.db.bids.length + 1).padStart(3, '0'),
       name: '', client: '', sector: 'Industrial', scope: 'EPC', value: 0, margin: 10, estimator: '', boqItems: 0,
       dueDate: PM.addDays(T, 30), dates: { inquiry: T, estimate: '', proposal: '', submit: '' }, stage: 'inquiry',
-      result: 'pending', resultDate: '', projectId: null, notes: '',
+      result: 'pending', resultDate: '', projectId: null, notes: '', sales: '', salesName: '', leadSource: 'Sales visit', contact: '',
     };
+    // a salesperson opening "New inquiry" is most likely adding their own lead
+    if (isNew) { const me = PM.auth && PM.auth.user; const r = me && PM.db.resources.find((x) => x.discipline === 'Sales' && x.name === PM.auth.displayName(me)); if (r) b.sales = r.id; }
+    const sources = PM.LEAD_SOURCES.includes(b.leadSource) || !b.leadSource ? PM.LEAD_SOURCES : PM.LEAD_SOURCES.concat(b.leadSource);
     const body = `
       <div class="sub-h">ข้อมูลงานประมูล</div>
       ${U.field('Bid No.', 'code', b.code, { required: true })}
       ${U.field('ลูกค้า (Client)', 'client', b.client, { required: true })}
       ${U.field('ชื่องาน / Scope of work', 'name', b.name, { required: true, full: true })}
+      <div class="sub-h">Sales — ผู้หาลูกค้า / งานนี้มาจากไหน</div>
+      <label><span>Sales ผู้รับผิดชอบลูกค้า</span>${V.salesInput(b)}<small class="muted">${PM.teamError ? esc(PM.teamError) : 'พิมพ์ชื่อได้เลย หรือเลือกจากรายชื่อที่ขึ้นมา'}</small></label>
+      ${U.field('ที่มาของงาน (Lead source)', 'leadSource', b.leadSource || '', { options: sources, placeholder: '— เลือก —' })}
+      ${U.field('ผู้ติดต่อฝั่งลูกค้า (Contact)', 'contact', b.contact || '', { placeholder: 'ชื่อ / ตำแหน่ง / เบอร์โทร', full: true })}
+      <div class="sub-h">ประมาณราคา</div>
       ${U.field('Sector', 'sector', b.sector, { options: PM.SECTORS })}
       ${U.field('Contract scope', 'scope', b.scope, { options: PM.SCOPES })}
       ${U.field('มูลค่าประมาณการ (THB)', 'value', b.value, { type: 'number', min: 0, step: 'any' })}
@@ -127,7 +136,8 @@
           code: f.code, name: f.name, client: f.client, sector: f.sector, scope: f.scope, value: f.value, margin: f.margin,
           estimator: f.estimator, boqItems: f.boqItems, dueDate: f.dueDate, dates, result: f.result,
           resultDate: f.result === 'pending' ? '' : f.resultDate || T, notes: f.notes,
-        });
+          leadSource: f.leadSource, contact: f.contact,
+        }, V.resolveSales(f.salesName, b));
         b.stage = V.stageOf(b);
         PM.upsert('bids', b);
         U.toast('บันทึกแล้ว');
@@ -144,8 +154,96 @@
     return prefix + String(max + 1).padStart(4, '0');
   };
 
+  /* ---------- people pickers (Project Manager, Sales): user accounts (Supabase) + employees from Resource ---------- */
+  const lookupName = (id) => {
+    const acc = id && (PM.team || []).find((u) => u.id === id);
+    if (acc) return acc.full_name;
+    const res = id && PM.find('resources', id);
+    return res ? res.name : null;
+  };
+  V.personName = (id, fallback) => (id && lookupName(id)) || fallback || '–';
+  V.pmName = (p) => V.personName(p && p.pm, p && p.pmName);
+  V.salesName = (x) => V.personName(x && x.sales, x && x.salesName);
+  /* Project Manager picker: PM accounts first, then other accounts, then employees */
+  V.personSelect = function (name, value, storedName) {
+    const team = PM.team || [];
+    const opt = (v, label) => `<option value="${esc(v)}"${v === value ? ' selected' : ''}>${esc(label)}</option>`;
+    const resources = PM.db.resources.filter((r) => r.active !== false || r.id === value);
+    const accLabel = (u) => `${u.full_name} · ${PM.roleLabel(u.role)}`;
+    const groups = [
+      ['Project Manager (บัญชีผู้ใช้)', team.filter((u) => u.role === 'project_manager').map((u) => [u.id, u.full_name])],
+      ['บัญชีผู้ใช้อื่น', team.filter((u) => u.role !== 'project_manager').map((u) => [u.id, accLabel(u)])],
+      ['พนักงาน (Resource Utilization)', resources.map((r) => [r.id, r.name])],
+    ];
+    const known = new Set([...team.map((u) => u.id), ...resources.map((r) => r.id)]);
+    return `<select name="${esc(name)}">
+      <option value="">— เลือก —</option>
+      ${groups.filter((g) => g[1].length).map(([label, items]) => `<optgroup label="${esc(label)}">${items.map(([v, l]) => opt(v, l)).join('')}</optgroup>`).join('')}
+      ${value && !known.has(value) ? opt(value, `${storedName || 'ไม่พบรายชื่อ'} (เดิม)`) : ''}
+    </select>`;
+  };
+  /* Sales: free text with suggestions (Sales staff, user accounts, other employees, names typed before).
+     A name that matches someone on the list is stored with their id; anything else is kept as the typed name. */
+  const salesCandidates = () => {
+    const team = PM.team || [];
+    const res = PM.db.resources.filter((r) => r.active !== false);
+    const list = [
+      ...res.filter((r) => r.discipline === 'Sales').map((r) => ({ id: r.id, name: r.name, note: 'Sales' })),
+      ...team.map((u) => ({ id: u.id, name: u.full_name, note: 'บัญชีผู้ใช้ · ' + PM.roleLabel(u.role) })),
+      ...res.filter((r) => r.discipline !== 'Sales').map((r) => ({ id: r.id, name: r.name, note: r.discipline || 'พนักงาน' })),
+      ...PM.db.bids.concat(PM.db.projects).filter((x) => !x.sales && x.salesName).map((x) => ({ id: '', name: x.salesName, note: 'เคยกรอกไว้' })),
+    ];
+    const seen = new Set();
+    return list.filter((c) => { const k = PM.normName(c.name); if (!k || seen.has(k)) return false; seen.add(k); return true; });
+  };
+  V.salesInput = function (x) {
+    const opts = salesCandidates();
+    return `<input name="salesName" list="dl-sales" value="${esc(V.salesName(x) === '–' ? '' : V.salesName(x))}" placeholder="พิมพ์ชื่อ หรือเลือกจากรายชื่อ" autocomplete="off">
+      <datalist id="dl-sales">${opts.map((c) => `<option value="${esc(c.name)}">${esc(c.note)}</option>`).join('')}</datalist>`;
+  };
+  /* typed name → { sales: id or '', salesName } ; keeps the previous id when the name did not change */
+  V.resolveSales = function (typed, prev) {
+    const name = String(typed || '').trim().replace(/\s+/g, ' ');
+    if (!name) return { sales: '', salesName: '' };
+    const k = PM.normName(name);
+    if (prev && prev.sales && PM.normName(V.salesName(prev)) === k) return { sales: prev.sales, salesName: lookupName(prev.sales) || name };
+    const hit = salesCandidates().find((c) => c.id && PM.normName(c.name) === k);
+    return hit ? { sales: hit.id, salesName: hit.name } : { sales: '', salesName: name };
+  };
+
+  /* Sales performance table (Bidding page + Dashboard). rows = PM.salesStats(); selected = highlighted id */
+  V.salesTable = function (rows, selected) {
+    if (!rows.length) return '<p class="empty">ยังไม่มีข้อมูล Sales — เพิ่มพนักงาน Discipline = Sales ที่ Resource Utilization แล้วเลือก Sales ในแต่ละ Bid</p>';
+    rows = rows.slice().sort((a, b) => (b.bs.wonValue - a.bs.wonValue) || (b.pipelineValue - a.pipelineValue));
+    return `<table class="tbl"><thead><tr><th>Sales</th><th class="num">Inquiries</th><th class="num">ยื่นซอง</th><th class="num">Won / Lost</th><th class="num">Win rate</th>
+      <th class="num">Won value</th><th class="num">Pipeline (รอผล)</th><th>โครงการที่รับผิดชอบ</th><th class="num">มูลค่าโครงการ Active</th></tr></thead><tbody>
+      ${rows.map((x) => `<tr class="click sales-row${selected != null && selected === x.id ? ' on' : ''}" data-sales="${esc(x.id || '-')}">
+        <td><span class="title">${x.id ? esc(V.personName(x.id, x.fallbackName)) : '<span class="muted">ไม่ระบุ Sales</span>'}</span></td>
+        <td class="num">${x.bs.total}</td><td class="num">${x.bs.submitted}</td>
+        <td class="num">${x.bs.won} / ${x.bs.lost}</td><td class="num">${U.pct(x.bs.winRate)}</td>
+        <td class="num">${U.money(x.bs.wonValue)}</td>
+        <td class="num">${U.money(x.pipelineValue)}<small>${x.pipeline} งาน</small></td>
+        <td>${x.active.length ? x.active.map((p) => `<a class="chip" href="#/projects/${esc(p.id)}" title="${esc(p.name)}">${esc(p.code)}</a>`).join(' ') : '<span class="muted">–</span>'}${x.projects.length > x.active.length ? `<small>ปิดแล้ว ${x.projects.length - x.active.length} โครงการ</small>` : ''}</td>
+        <td class="num">${U.money(x.activeValue)}</td></tr>`).join('')}
+      </tbody></table>`;
+  };
+
+  /* name to store next to the id, so it still shows offline / after the account is gone */
+  V.personLabel = (id, prevId, prevName) => (!id ? '' : lookupName(id) || (id === prevId ? prevName || '' : ''));
+
+  /* change a project's plan cost and keep the phase split (proportional; default split if no phase budget yet) */
+  PM.rescaleBudgets = function (p, total) {
+    const current = PM.sum(p.phases, (ph) => ph.budget || 0);
+    p.phases.forEach((ph) => {
+      const share = current > 0 ? (ph.budget || 0) / current : PM.PHASE_DEFAULTS[ph.key].budget;
+      ph.budget = Math.round(total * share);
+    });
+    p.budget = total;
+  };
+
   /* ---------- project form ---------- */
-  V.projectForm = function (project, fromBid, onSaved) {
+  V.projectForm = async function (project, fromBid, onSaved) {
+    await PM.roles.loadTeam(); // user accounts for the Project Manager list
     const T = PM.today();
     const isNew = !project;
     const p = project || {
@@ -154,15 +252,20 @@
       contractValue: fromBid ? fromBid.value : 0,
       budget: fromBid ? Math.round(fromBid.value * (1 - (fromBid.margin || 10) / 100)) : 0,
       startDate: T, endDate: PM.addDays(T, 365), pm: '', status: 'active', bidId: fromBid ? fromBid.id : null, phases: null, progressLog: [],
+      sales: fromBid ? fromBid.sales || '' : '', salesName: fromBid ? fromBid.salesName || '' : '', costMode: 'ledger',
     };
+    const planNow = p.phases ? PM.sum(p.phases, (ph) => ph.budget || 0) : p.budget;
+    const actualNow = p.phases ? PM.sum(p.phases, (ph) => ph.actualCost || 0) : 0;
     const body = `
       ${U.field('Project No.', 'code', p.code, { required: true })}
       ${U.field('Status', 'status', p.status, { options: [{ value: 'active', label: 'Active' }, { value: 'onhold', label: 'On hold' }, { value: 'closed', label: 'Closed' }] })}
       ${U.field('ชื่อโครงการ', 'name', p.name, { required: true, full: true })}
       ${U.field('ลูกค้า (Client)', 'client', p.client, { required: true })}
-      ${U.field('Project Manager', 'pm', p.pm, { options: people(), placeholder: '— เลือก —' })}
+      <label><span>Project Manager</span>${V.personSelect('pm', p.pm, p.pmName)}${PM.teamError ? `<small class="muted">${esc(PM.teamError)}</small>` : ''}</label>
+      <label><span>Sales ผู้รับผิดชอบ</span>${V.salesInput(p)}<small class="muted">${fromBid && PM.salesKey(fromBid) ? `จาก ${esc(fromBid.code)} — Sales ที่หางานนี้มา` : 'พิมพ์ชื่อได้เลย หรือเลือกจากรายชื่อที่ขึ้นมา'}</small></label>
       ${U.field('มูลค่าสัญญา (THB)', 'contractValue', p.contractValue, { type: 'number', min: 0, step: 'any' })}
-      ${U.field('งบประมาณต้นทุน / BAC (THB)', 'budget', p.budget, { type: 'number', min: 0, step: 'any', hint: isNew ? 'ระบบจะแบ่งงบให้ E / P / C / Closing อัตโนมัติ (แก้ไขได้ภายหลัง)' : '' })}
+      ${U.field('Plan cost — งบประมาณต้นทุน (THB)', 'budget', planNow, { type: 'number', min: 0, step: 'any', hint: isNew ? 'ระบบแบ่งให้ E / P / C / Closing อัตโนมัติ (แก้รายละเอียดได้ที่ "ต้นทุน Plan / Actual")' : 'ถ้าเปลี่ยน ระบบปรับงบของแต่ละ phase ตามสัดส่วนเดิม' })}
+      ${isNew ? '' : `<label><span>Actual cost — ต้นทุนจริง (THB)</span><input value="${esc(U.num(actualNow))}" disabled><small class="muted">รวมจากรายการในแท็บ "ค่าใช้จ่าย" ของโครงการ</small></label>`}
       ${U.field('Start date', 'startDate', p.startDate, { type: 'date', required: true })}
       ${U.field('Finish date', 'endDate', p.endDate, { type: 'date', required: true })}
       ${isNew ? '' : '<p class="full muted" style="margin:0">หมายเหตุ: การแก้วันที่โครงการไม่เปลี่ยนแผนของแต่ละ phase — แก้ได้ที่ตาราง EPC Phases</p>'}`;
@@ -172,6 +275,10 @@
         PM.remove('projects', p.id);
         PM.db.ncrs = PM.db.ncrs.filter((n) => n.projectId !== p.id);
         PM.db.safety = PM.db.safety.filter((s) => s.projectId !== p.id);
+        const pos = PM.db.pos.filter((po) => po.projectId === p.id);
+        PM.poFiles.remove(pos.flatMap((po) => (po.files || []).map((f) => f.path))).catch(() => { /* best effort */ });
+        PM.db.pos = PM.db.pos.filter((po) => po.projectId !== p.id);
+        PM.db.costs = PM.db.costs.filter((c) => c.projectId !== p.id);
         PM.save();
         location.hash = '#/projects';
       },
@@ -180,8 +287,12 @@
         if (PM.db.projects.some((x) => x.id !== p.id && String(x.code).toUpperCase() === f.code.toUpperCase())) {
           alert(`Project No. ${f.code} ถูกใช้แล้ว`); return false;
         }
-        Object.assign(p, f);
+        const planChanged = p.phases && Math.round(f.budget) !== Math.round(planNow);
+        // names are kept next to the ids so they still show offline
+        const names = Object.assign({ pmName: V.personLabel(f.pm, p.pm, p.pmName) }, V.resolveSales(f.salesName, p));
+        Object.assign(p, f, names);
         if (!p.phases) p.phases = PM.buildPhases(p.startDate, p.endDate, p.budget);
+        else if (planChanged) PM.rescaleBudgets(p, f.budget);
         PM.upsert('projects', p);
         if (fromBid) { fromBid.projectId = p.id; fromBid.result = 'won'; if (!fromBid.resultDate) fromBid.resultDate = T; PM.upsert('bids', fromBid); }
         U.toast('บันทึกแล้ว');

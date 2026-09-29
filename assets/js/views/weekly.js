@@ -68,7 +68,7 @@
       return {
         r, mine,
         planned: PM.sum(mine, (p) => p.plannedHours || 0),
-        cap: Math.max(0, (r.capacity || 40) - leave),
+        cap: Math.max(0, PM.cap(r) - leave),
         actual: PM.sum(ts.filter((t) => t.resourceId === r.id && t.refId !== 'leave'), (t) => t.hours),
         done: mine.filter((p) => p.status === 'done').length,
       };
@@ -81,7 +81,7 @@
         ${V.weekNav(week)}
         <span class="spacer"></span>
         ${canEdit ? `<button class="btn" data-action="carry">ยกงานค้างจากสัปดาห์ก่อน</button>
-          <button class="btn primary" data-action="new">+ เพิ่มงาน</button>` : ''}
+          <button class="btn primary fab" data-action="new" aria-label="เพิ่มงาน"><span class="fab-i">+</span><span class="fab-t">เพิ่มงาน</span></button>` : ''}
       </div>
       <div class="row">
         <select id="wp-project" aria-label="Filter work item">
@@ -278,7 +278,7 @@
       ${people.map((r) => {
         const mine = list.filter((p) => p.resourceId === r.id);
         const hours = PM.sum(mine, (p) => p.plannedHours || 0);
-        const cap = r.capacity || 40;
+        const cap = PM.cap(r);
         return `<div class="cp-who"><b>${esc(r.name)}</b><small>${U.num(hours, 1)} / ${U.num(cap)} h${hours > cap * 1.05 ? ' · <span class="cal-late">เกิน</span>' : ''}</small></div>
           ${days.map((d, i) => `<div class="cp-cell${d === T ? ' today' : ''}${i > 4 ? ' weekend' : ''}" data-drop-day="${d}" data-drop-person="${esc(r.id)}">
             ${mine.filter((p) => p.dueDate === d).map((p) => calCard(p, T, canEdit, false, true)).join('')}
@@ -295,7 +295,7 @@
     const addDay = T >= week && T <= PM.addDays(week, 6) ? T : PM.addDays(week, 4);
     return `<div class="cal-people-list">${people.map((r) => {
       const mine = list.filter((p) => p.resourceId === r.id).sort((a, b) => (a.dueDate < b.dueDate ? -1 : 1));
-      const hours = PM.sum(mine, (p) => p.plannedHours || 0), cap = r.capacity || 40;
+      const hours = PM.sum(mine, (p) => p.plannedHours || 0), cap = PM.cap(r);
       return `<section class="cpl-person">
         <header><b>${esc(r.name)}</b><small>${U.num(hours, 1)} / ${U.num(cap)} h${hours > cap * 1.05 ? ' · <span class="cal-late">เกิน</span>' : ''}</small>
           ${canEdit ? `<button class="icon-btn cal-add" type="button" data-action="new-on" data-day="${addDay}" data-person="${esc(r.id)}" aria-label="เพิ่มงานให้ ${esc(r.name)}">＋</button>` : ''}</header>

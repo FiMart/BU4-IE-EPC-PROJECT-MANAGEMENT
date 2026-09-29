@@ -3,9 +3,11 @@
   const U = PM.ui, V = PM.common, esc = U.esc;
   const TABS = [
     { key: 'overview', label: 'Overview & EPC' },
+    { key: 'cost', label: 'ค่าใช้จ่าย · Cost' },
     { key: 'quality', label: 'Quality · NCR' },
     { key: 'safety', label: 'Safety' },
     { key: 'team', label: 'Team & Hours' },
+    { key: 'po', label: 'PO' },
   ];
 
   PM.views.project = function (el, params) {
@@ -22,19 +24,22 @@
         <a href="#/projects">← Projects</a>
         <span class="spacer"></span>
         ${p.status === 'closed' ? U.badge('neutral', 'Closed') : p.status === 'onhold' ? U.badge('warning', 'On hold') : U.badge(h, U.healthLabel[h])}
+        ${PM.can('cost.edit') ? '<button class="btn" data-action="new-cost">+ ค่าใช้จ่าย</button>' : ''}
+        <button class="btn" data-action="edit-costs">Plan cost</button>
         <button class="btn" data-action="edit-project">แก้ไขโครงการ</button>
       </div>
       <div class="card"><div class="card-b">
         <dl class="kv kv-4">
           <dt>Client</dt><dd>${esc(p.client)}</dd>
-          <dt>Project Manager</dt><dd>${esc(U.resourceName(p.pm))}</dd>
+          <dt>Project Manager</dt><dd>${esc(V.pmName(p))}</dd>
           <dt>Contract value</dt><dd>${U.money(p.contractValue)}</dd>
-          <dt>Budget (BAC)</dt><dd>${U.money(m.bac)}</dd>
+          <dt>From bid</dt><dd>${bid ? esc(bid.code) : '–'}</dd>
           <dt>Start</dt><dd>${U.date(p.startDate)}</dd>
           <dt>Finish</dt><dd>${U.date(p.endDate)}</dd>
           <dt>Time elapsed</dt><dd>${U.pct(Math.max(0, Math.min(1, PM.diffDays(p.startDate, PM.today()) / (PM.diffDays(p.startDate, p.endDate) || 1))))}</dd>
-          <dt>From bid</dt><dd>${bid ? esc(bid.code) : '–'}</dd>
+          <dt>Sales</dt><dd>${esc(V.salesName(p))}</dd>
         </dl>
+        ${costStrip(m, PM.poStats(PM.db.pos.filter((po) => po.projectId === p.id)), PM.projectCosts(p.id).length)}
       </div></div>
       ${phaseFlow(p, m)}
       <nav class="tabs">${TABS.map((t) => `<a href="#/projects/${p.id}/${t.key}" class="${t.key === tab ? 'active' : ''}">${t.label}</a>`).join('')}</nav>
@@ -42,13 +47,15 @@
 
     const tabEl = el.querySelector('#tab');
     const rerender = () => PM.views.project(el, params);
-    ({ overview, quality, safety, team })[tab](tabEl, p, m, rerender);
+    ({ overview, cost: costTab, quality, safety, team, po: poTab })[tab](tabEl, p, m, rerender);
 
     el.onclick = (e) => {
       const a = e.target.closest('[data-action]');
       if (!a) return;
       const act = a.dataset.action, id = a.dataset.id;
       if (act === 'edit-project') V.projectForm(p, null, rerender);
+      if (act === 'edit-costs') costForm(p, rerender);
+      if (act === 'new-cost') PM.costEntryForm(p, null, rerender);
       if (act === 'edit-phase') phaseForm(p, id, rerender);
       if (act === 'phase') phaseForm(p, a.dataset.key, rerender);
       if (act === 'new-ncr') ncrForm(p, null, rerender);
@@ -58,6 +65,72 @@
       if (act === 'edit-safety') safetyForm(p, PM.find('safety', id), rerender);
     };
   };
+
+  /* expense ledger tab lives in costs.js */
+  const costTab = (...args) => PM.costTab(...args);
+
+  /* ---------------- Purchase orders of this project ---------------- */
+  function poTab(el, p, m, rerender) {
+    const list = PM.db.pos.filter((po) => po.projectId === p.id)
+      .sort((a, b) => (PM.poDaysLate(b) - PM.poDaysLate(a)) || String(b.poDate).localeCompare(String(a.poDate)));
+    const st = PM.poStats(list);
+    const canEdit = PM.can('po.edit');
+    el.innerHTML = `
+      <div class="row"><p class="muted" style="margin:0">PO ที่สั่งแล้ว ${U.money(st.value)} = ${U.pct(m.bac ? st.value / m.bac : null)} ของ Plan cost ทั้งโครงการ</p>
+        <span class="spacer"></span>${canEdit ? '<button class="btn primary" data-action="new-po">+ New PO</button>' : ''}</div>
+      ${PM.poTiles(st)}
+      <div class="card"><div class="card-h"><h2>Purchase Orders — ${esc(p.code)}</h2><p>คลิกที่ PO เพื่อดูรายละเอียดและไฟล์แนบ</p></div>
+        <div class="card-b flush table-wrap">${PM.poTable(list, { empty: canEdit ? 'ยังไม่มี PO — กด "+ New PO" เพื่อเพิ่ม' : 'ยังไม่มี PO' })}</div></div>`;
+    el.onchange = (e) => PM.poHandleChange(e, rerender);
+    el.onclick = (e) => {
+      if (e.target.closest('select, input')) return;
+      if (e.target.closest('[data-action="new-po"]')) { e.stopPropagation(); PM.poForm(null, p.id, rerender); return; }
+      const row = e.target.closest('tr[data-po]');
+      if (row) PM.poForm(PM.find('pos', row.dataset.po), p.id, rerender);
+    };
+  }
+
+  function costStrip(m, po, entries) {
+    const left = m.bac - m.ac;
+    const used = m.bac ? m.ac / m.bac : null;
+    const over = left < 0;
+    return `<div class="cost-strip">
+      <div><span>Plan cost</span><b>${U.money(m.bac)}</b><small>งบประมาณต้นทุน (BAC)</small></div>
+      <div><span>Actual cost</span><b>${U.money(m.ac)}</b><small>ใช้ไปแล้ว ${U.pct(used)} ของแผน · ${U.num(entries)} รายการ</small></div>
+      <div><span>${over ? 'เกินงบ' : 'คงเหลือ'}</span><b class="${over ? 'neg' : ''}">${U.money(Math.abs(left))}</b><small>Plan − Actual</small></div>
+      <div><span>คาดว่าจะใช้ทั้งหมด (EAC)</span><b>${U.money(m.eac)}</b><small>${m.cpi ? (m.eac > m.bac ? U.badge('critical', 'เกินงบ ' + U.money(m.eac - m.bac)) : U.badge('good', 'อยู่ในงบ')) : 'ยังไม่มีต้นทุนจริง'}</small></div>
+      <div><span>PO ที่สั่งแล้ว (Committed)</span><b>${U.money(po.value)}</b><small>${po.committed} PO · ${U.pct(m.bac ? po.value / m.bac : null)} ของแผน${po.late.length ? ' · ' + U.badge('critical', po.late.length + ' เลยกำหนดส่ง') : ''}</small></div>
+      <div class="cost-bar" data-tip="${esc(`Plan cost ${U.money(m.bac)}\nActual cost ${U.money(m.ac)} (${U.pct(used)})\nEarned value ${U.money(m.ev)}`)}">${U.progress(Math.min(1, used || 0), m.bac ? m.ev / m.bac : null, `Actual ${U.pct(used)} of plan cost\nEarned value ${U.pct(m.bac ? m.ev / m.bac : null)}`)}</div>
+    </div>`;
+  }
+
+  /* edit the Plan cost of all phases in one form — Actual cost comes from the expense ledger (read-only here) */
+  function costForm(p, done) {
+    const rows = p.phases.map((ph) => `
+      <div class="cost-row">
+        <b>${esc(U.phaseLabel(ph.key))}</b>
+        <label><span>Plan cost</span><input type="number" min="0" step="any" name="plan_${ph.key}" value="${Math.round(ph.budget || 0)}"></label>
+        <div><span>Actual cost (จากรายการ)</span><b>${U.money(ph.actualCost || 0)}</b></div>
+      </div>`).join('');
+    const form = U.modal({
+      title: `Plan cost — ${p.code}`, wide: true, submitLabel: 'บันทึก Plan cost',
+      body: `<p class="full muted" style="margin:0">กรอกต้นทุนตามแผน (Plan cost) ของแต่ละ phase — หน่วยบาท · Actual cost คำนวณจากรายการค่าใช้จ่ายในแท็บ "ค่าใช้จ่าย"</p>
+        <div class="full cost-grid">${rows}
+          <div class="cost-row total"><b>รวม</b><div><span>Plan cost</span><b id="cf-plan"></b></div><div><span>Actual cost</span><b>${U.money(PM.sum(p.phases, (ph) => ph.actualCost || 0))}</b></div></div>
+        </div>`,
+      onSubmit: (f) => {
+        p.phases.forEach((ph) => { ph.budget = Math.max(0, f['plan_' + ph.key] || 0); });
+        p.budget = PM.sum(p.phases, (ph) => ph.budget);
+        PM.snapshotProgress(p);
+        PM.upsert('projects', p);
+        U.toast('บันทึก Plan cost แล้ว');
+        done();
+      },
+    });
+    const update = () => { form.querySelector('#cf-plan').textContent = U.money(Array.from(form.querySelectorAll('input[name^="plan_"]')).reduce((s, i) => s + (Number(i.value) || 0), 0)); };
+    form.addEventListener('input', update);
+    update();
+  }
 
   function phaseFlow(p, m) {
     return V.flow(m.phases.map((ph) => {
@@ -88,13 +161,13 @@
       </div>
       <div class="grid cols-2">
         <div class="card"><div class="card-h"><h2>S-Curve</h2><p>Cumulative progress — Planned vs Actual (weighted by phase)</p></div><div class="card-b"><div class="chart" id="c-scurve"></div></div></div>
-        <div class="card"><div class="card-h"><h2>Cost by phase</h2><p>Budget vs Earned Value vs Actual Cost</p></div><div class="card-b"><div class="chart" id="c-cost"></div></div></div>
+        <div class="card"><div class="card-h"><h2>Cost by phase</h2><p>Plan cost vs Earned value vs Actual cost</p></div><div class="card-b"><div class="chart" id="c-cost"></div></div></div>
       </div>
       <div class="card">
         <div class="card-h"><h2>EPC Phases</h2><p>อัปเดตความคืบหน้า, ปริมาณงาน และต้นทุนจริงของแต่ละ phase (บันทึก snapshot สำหรับ S-curve อัตโนมัติ)</p></div>
         <div class="card-b flush table-wrap"><table class="tbl"><thead><tr>
           <th>Phase</th><th class="num">Weight</th><th>Plan</th><th>Actual</th><th style="min-width:150px">Progress</th>
-          <th class="num">Quantity</th><th class="num">Budget</th><th class="num">Actual cost</th><th class="num">SPI</th><th class="num">CPI</th><th></th></tr></thead><tbody>
+          <th class="num">Quantity</th><th class="num">Plan cost</th><th class="num">Actual cost</th><th class="num">คงเหลือ</th><th class="num">SPI</th><th class="num">CPI</th><th></th></tr></thead><tbody>
           ${m.phases.map((ph) => `<tr>
             <td><span class="title">${esc(U.phaseLabel(ph.key))}</span></td>
             <td class="num">${ph.weight}%</td>
@@ -103,11 +176,13 @@
             <td><div class="pbar-wrap">${U.progress(ph.actualPct, ph.plannedPct)}<span class="num">${U.pct(ph.actualPct)}</span></div></td>
             <td class="num">${U.num(ph.qtyDone)} / ${U.num(ph.qtyPlan)}<small>${esc(ph.qtyUnit)}</small></td>
             <td class="num">${U.money(ph.budget)}</td><td class="num">${U.money(ph.actualCost)}</td>
+            <td class="num${(ph.budget || 0) - (ph.actualCost || 0) < 0 ? ' neg' : ''}">${U.money((ph.budget || 0) - (ph.actualCost || 0))}</td>
             <td class="num">${U.ratio(ph.spi)}</td><td class="num">${U.ratio(ph.cpi)}</td>
             <td><button class="btn sm" data-action="edit-phase" data-id="${ph.key}">Update</button></td></tr>`).join('')}
           </tbody><tfoot><tr><td>Total</td><td class="num">${PM.sum(m.phases, (x) => x.weight)}%</td><td></td><td></td>
             <td><div class="pbar-wrap">${U.progress(m.act, m.plan)}<span class="num">${U.pct(m.act)}</span></div></td><td></td>
-            <td class="num">${U.money(m.bac)}</td><td class="num">${U.money(m.ac)}</td><td class="num">${U.ratio(m.spi)}</td><td class="num">${U.ratio(m.cpi)}</td><td></td></tr></tfoot>
+            <td class="num">${U.money(m.bac)}</td><td class="num">${U.money(m.ac)}</td>
+            <td class="num${m.bac - m.ac < 0 ? ' neg' : ''}">${U.money(m.bac - m.ac)}</td><td class="num">${U.ratio(m.spi)}</td><td class="num">${U.ratio(m.cpi)}</td><td></td></tr></tfoot>
         </table></div>
       </div>`;
 
@@ -137,7 +212,7 @@
     PM.charts.columns(document.getElementById('c-cost'), {
       stacked: false, categories: m.phases.map((ph) => U.phaseLabel(ph.key)), fmt: U.money, axisFmt: U.money, label: 'Cost by phase',
       series: [
-        { name: 'Budget', color: 'var(--s1)', values: m.phases.map((ph) => ph.budget) },
+        { name: 'Plan cost', color: 'var(--s1)', values: m.phases.map((ph) => ph.budget) },
         { name: 'Earned value', color: 'var(--s3)', values: m.phases.map((ph) => ph.ev) },
         { name: 'Actual cost', color: 'var(--s2)', values: m.phases.map((ph) => ph.actualCost) },
       ],
@@ -152,24 +227,24 @@
       body: `
         <div class="sub-h">Progress & Quantity (อัปเดตประจำงวด)</div>
         ${U.field('Actual progress (%)', 'progress', ph.progress, { type: 'number', min: 0, max: 100, step: 0.1 })}
-        ${U.field('Actual cost (THB)', 'actualCost', ph.actualCost, { type: 'number', min: 0, step: 'any' })}
         ${U.field('Quantity unit', 'qtyUnit', ph.qtyUnit)}
-        <span></span>
         ${U.field('Quantity — planned', 'qtyPlan', ph.qtyPlan, { type: 'number', min: 0, step: 'any' })}
         ${U.field('Quantity — done', 'qtyDone', ph.qtyDone, { type: 'number', min: 0, step: 'any' })}
+        <label><span>Actual cost (THB)</span><input value="${esc(U.num(ph.actualCost || 0))}" disabled><small class="muted">รวมจากรายการค่าใช้จ่ายของ phase นี้ (แท็บ "ค่าใช้จ่าย")</small></label>
         <div class="sub-h">Plan / Baseline</div>
         ${U.field('Plan start', 'planStart', ph.planStart, { type: 'date', required: true })}
         ${U.field('Plan finish', 'planEnd', ph.planEnd, { type: 'date', required: true })}
         ${U.field('Actual start', 'actStart', ph.actStart, { type: 'date' })}
         ${U.field('Actual finish', 'actEnd', ph.actEnd, { type: 'date' })}
         ${U.field('Weight (%)', 'weight', ph.weight, { type: 'number', min: 0, max: 100, hint: 'น้ำหนักของ phase ในความคืบหน้ารวม' })}
-        ${U.field('Budget (THB)', 'budget', ph.budget, { type: 'number', min: 0, step: 'any' })}`,
+        ${U.field('Plan cost (THB)', 'budget', ph.budget, { type: 'number', min: 0, step: 'any' })}`,
       onSubmit: (f) => {
         if (f.planEnd < f.planStart) { alert('Plan finish ต้องอยู่หลัง Plan start'); return false; }
         f.progress = Math.max(0, Math.min(100, f.progress));
         if (f.progress > 0 && !f.actStart) f.actStart = PM.today();
         if (f.progress >= 100 && !f.actEnd) f.actEnd = PM.today();
         Object.assign(ph, f);
+        p.budget = PM.sum(p.phases, (x) => x.budget || 0); // project plan cost = sum of phases
         PM.snapshotProgress(p);
         PM.upsert('projects', p);
         U.toast('อัปเดต phase แล้ว');

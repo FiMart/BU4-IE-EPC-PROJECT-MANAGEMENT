@@ -102,5 +102,20 @@ update public.profiles set role = 'admin'
 where id = (select id from public.profiles order by created_at asc limit 1)
   and not exists (select 1 from public.profiles where role = 'admin');
 
+-- 9) team list for pickers (e.g. "Project Manager" of a project):
+--    any signed-in member can read names + roles of the team — but not e-mails
+create or replace function public.list_team()
+returns table (id uuid, full_name text, role public.app_role)
+language sql stable security definer set search_path = public as $$
+  select p.id,
+         coalesce(nullif(trim(p.full_name), ''), split_part(p.email, '@', 1)) as full_name,
+         p.role
+    from public.profiles p
+   where exists (select 1 from public.profiles me where me.id = auth.uid())
+   order by 2;
+$$;
+revoke all on function public.list_team() from public, anon;
+grant execute on function public.list_team() to authenticated;
+
 -- Manual option — make a specific person admin:
 -- update public.profiles set role = 'admin' where email = 'someone@example.com';

@@ -63,6 +63,7 @@
             <dt>NCR</dt><dd>${db.ncrs.length}</dd><dt>Safety records</dt><dd>${db.safety.length}</dd>
             <dt>People</dt><dd>${db.resources.length}</dd><dt>Timesheet entries</dt><dd>${U.num(db.timesheets.length)}</dd>
             <dt>Weekly plan tasks</dt><dd>${U.num((db.plans || []).length)}</dd>
+            <dt>Purchase orders</dt><dd>${U.num((db.pos || []).length)}</dd><dt>Expense entries</dt><dd>${U.num((db.costs || []).length)}</dd>
             <dt>Storage used</dt><dd>${U.num(size / 1024, 0)} KB</dd>
           </dl>
         </div></div>
@@ -100,7 +101,7 @@
       <div class="callout">
         <b>สูตร KPI ที่ใช้</b><br>
         <b>Bidding</b> — Quantity: จำนวน Inquiry / Proposal ที่ยื่น / BOQ items · Time: วันเฉลี่ยในแต่ละ stage, Cycle time (Inquiry → Submit), On-time submission (Submit ≤ Due date) · Win rate = Won ÷ (Won + Lost)<br>
-        <b>Execution</b> — Progress รวม = Σ(weight × progress ของแต่ละ phase) · PV = Σ(budget × planned%) · EV = Σ(budget × actual%) · SPI = EV ÷ PV · CPI = EV ÷ AC · EAC = BAC ÷ CPI · สถานะ: ≥ 0.95 On track, 0.90–0.95 At risk, &lt; 0.90 Off track<br>
+        <b>Execution</b> — Progress รวม = Σ(weight × progress ของแต่ละ phase) · PV = Σ(budget × planned%) · EV = Σ(budget × actual%) · AC (Actual cost) = ผลรวมรายการค่าใช้จ่ายของโครงการ · SPI = EV ÷ PV · CPI = EV ÷ AC · EAC = BAC ÷ CPI · สถานะ: ≥ 0.95 On track, 0.90–0.95 At risk, &lt; 0.90 Off track<br>
         <b>Quality</b> — NCR open / total, Avg days to close · <b>Safety</b> — LTIFR = LTI × 1,000,000 ÷ Man-hours, TRIR = (Recordable + LTI) × 200,000 ÷ Man-hours<br>
         <b>Resource</b> — Utilization = (Project + Bidding hours) ÷ (Capacity − Leave) · Timesheet completeness = Logged ÷ Capacity
       </div>`;

@@ -5,6 +5,7 @@
     [/^#\/bidding$/, 'bidding', 'Bidding Performance', 'Before Award · Inquiry → Estimate → Proposal → Submit'],
     [/^#\/projects$/, 'projects', 'Projects (EPC Execution)', 'Engineering → Procurement → Construction → Closing'],
     [/^#\/projects\/([\w-]+)(?:\/(\w+))?$/, 'project', 'Project', 'Execution'],
+    [/^#\/pos$/, 'pos', 'Purchase Orders', 'ติดตาม PO · ส่งของ · การจ่ายเงิน · ไฟล์แนบ'],
     [/^#\/weekly$/, 'weekly', 'Weekly Plan', 'แผนงานรายสัปดาห์ · PPC · ภาระงาน'],
     [/^#\/resources$/, 'resources', 'Resource Utilization', 'Level · Utilization · Loading'],
     [/^#\/timesheet$/, 'timesheet', 'Timesheet', 'Resource Utilization'],
@@ -31,7 +32,9 @@
       lastAnimated = hash;
       PM.motion.enter(el);
       PM.motion.countUp(el);
+      PM.motion.reveal(el);
     }
+    PM.motion.centerTabs(el);
   }
   let lastAnimated = null;
   PM.render = render;

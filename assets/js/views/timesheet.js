@@ -170,7 +170,7 @@
   }
 
   function updateTotals(el, dates, res) {
-    const perDay = (res.capacity || 40) / 5;
+    const perDay = PM.cap(res) / 5;
     let grand = 0, billable = 0, leave = 0;
     state.rows.forEach((r, ri) => {
       const t = PM.sum(r.hours);
@@ -185,7 +185,7 @@
       if (c) { c.innerHTML = U.num(t, 1) + (t > perDay + 2 ? ' <span class="badge critical" title="Overtime"><i>!</i>OT</span>' : ''); }
     });
     const g = el.querySelector('[data-grand]'); if (g) g.textContent = U.num(grand, 1);
-    const cap = (res.capacity || 40) - leave;
+    const cap = PM.cap(res) - leave;
     el.querySelector('#ts-summary').textContent = `Total ${U.num(grand, 1)} h · Billable ${U.num(billable, 1)} h · Utilization ${U.pct(cap > 0 ? billable / cap : null)}${state.dirty ? ' · ยังไม่ได้บันทึก' : ''}`;
   }
 

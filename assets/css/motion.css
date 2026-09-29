@@ -173,8 +173,68 @@ select:focus, input:focus, textarea:focus { outline: none; border-color: var(--a
 .auth-preview .mini-bars i { flex: 1; border-radius: 3px 3px 0 0; background: linear-gradient(180deg, rgba(111, 178, 255, .9), rgba(28, 111, 220, .35)); transform-origin: bottom; animation: growY .45s var(--ease-out) .15s both !important; }
 .auth-preview .mini-bars i:nth-child(3n) { background: linear-gradient(180deg, rgba(34, 184, 240, .9), rgba(34, 184, 240, .3)); }
 
+/* ---------- mobile motion (phones & tablets) ----------
+   Same principles, tuned for touch: sections rise in on page change, cards below the fold reveal
+   (and their charts draw) as they scroll into view, touch feedback, a sliding bottom sheet and drawer. */
+@keyframes riseIn { from { opacity: 0; transform: translateY(14px); } to { opacity: 1; transform: none; } }
+@keyframes navItemIn { from { opacity: 0; transform: translateX(-16px); } to { opacity: 1; transform: none; } }
+@keyframes sheetIn { from { transform: translateY(100%); } to { transform: none; } }
+@keyframes sheetOut { from { transform: none; } to { transform: translateY(100%); } }
+@keyframes fabIn { from { opacity: 0; transform: translateY(16px) scale(.7); } to { opacity: 1; transform: none; } }
+
+@media (max-width: 900px) {
+  /* page change: sections rise in one after another (--i set by motion.js, capped at 8) */
+  .view-enter { animation: none; }
+  .view-enter > * { animation: riseIn .34s var(--ease-out) both; animation-delay: calc(var(--i, 0) * 45ms); }
+  .view-enter > .row { animation-name: fadeIn; } /* toolbar holds the floating button — no transform on its parent */
+
+  /* scroll reveal (classes added by motion.js only for content that starts below the fold) */
+  .rv { opacity: 0; transform: translateY(20px); }
+  .rv.rv-in { opacity: 1; transform: none; transition: opacity .4s ease-out, transform .5s var(--ease-out); transition-delay: var(--rv-d, 0ms); }
+
+  /* drawer: the panel slides, then the menu items follow */
+  .scrim { -webkit-backdrop-filter: blur(2px); backdrop-filter: blur(2px); }
+  body.nav-open .nav > * { animation: navItemIn .32s var(--ease-out) both; animation-delay: calc(70ms + var(--i, 0) * 18ms); }
+  body.nav-open .brand, body.nav-open .user-box { animation: fadeIn .3s .08s both; }
+
+  /* topbar lifts once content scrolls under it */
+  .topbar { transition: box-shadow .2s; }
+  body.scrolled .topbar { box-shadow: 0 1px 0 var(--border), 0 6px 18px rgba(12, 40, 84, .10); }
+
+  /* tabs: active underline grows in, the tab strip scrolls the active tab into view (motion.js) */
+  .tabs a.active::after { transform-origin: center; animation: growX .28s var(--ease-out) both; }
+}
+
+/* touch feedback */
+@media (hover: none) {
+  .tile, .kcard, .flow-step, .phase-card, .cal-card, .tbl tr.click, .btn, .seg button, .nav a { -webkit-tap-highlight-color: transparent; }
+  .tile, .kcard, .flow-step.link, .cal-card[tabindex], .sales-row { transition: transform .12s ease-out, box-shadow .15s, border-color .15s; }
+  .tile:active, .kcard:active, .flow-step.link:active, .cal-card[tabindex]:active { transform: scale(.975); }
+  .tbl tbody tr.click:active td, .tbl.stack tbody tr.click:active { background: var(--surface-2); }
+  .btn:active:not([disabled]) { transform: scale(.97); }
+  .nav a:active { background: rgba(120, 170, 255, .16); }
+}
+
+@media (max-width: 640px) {
+  /* bottom sheet slides up (with a grab handle) and back down */
+  .modal, .modal.wide { animation: sheetIn .32s var(--ease-out) both; }
+  .modal-backdrop.closing .modal { animation: sheetOut .18s ease-in both; }
+  .modal header { position: relative; padding-top: 22px; }
+  .modal header::before { content: ''; position: absolute; top: 8px; left: 50%; width: 40px; height: 4px; margin-left: -20px; border-radius: 2px; background: var(--border-strong); }
+
+  /* floating "+ New" button pops in, and folds to a round "+" while scrolling down */
+  .btn.fab { animation: fabIn .36s .18s var(--ease-out) backwards; transition: padding .22s var(--ease-out), gap .22s var(--ease-out), box-shadow .15s; }
+  .fab .fab-t { display: inline-block; max-width: 170px; overflow: hidden; white-space: nowrap; transition: max-width .25s var(--ease-out), opacity .18s; }
+  body.scroll-down .btn.fab { padding: 0 14px; gap: 0; }
+  body.scroll-down .fab .fab-t { max-width: 0; opacity: 0; }
+  .btn.fab:active:not([disabled]) { transform: scale(.94); }
+
+  .toast { max-width: calc(100vw - 32px); text-align: center; }
+}
+
 /* ---------- reduced motion ---------- */
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: .01ms !important; animation-delay: 0s !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }
   .auth-preview .spark { stroke-dashoffset: 0; }
+  .rv { opacity: 1; transform: none; }
 }

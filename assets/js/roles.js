@@ -16,6 +16,8 @@
     'data.export': { label: 'Export JSON / Timesheet CSV', roles: ['admin', 'project_manager', 'engineer', 'technician'] },
     'plan.edit': { label: 'สร้าง / แก้ไขงานใน Weekly Plan', roles: ['admin', 'project_manager', 'engineer'] },
     'plan.status': { label: 'อัปเดตสถานะงานใน Weekly Plan', roles: ['admin', 'project_manager', 'engineer', 'technician'] },
+    'po.edit': { label: 'สร้าง / แก้ไข PO และแนบไฟล์', roles: ['admin', 'project_manager', 'engineer'] },
+    'cost.edit': { label: 'บันทึก / แก้ไขค่าใช้จ่ายโครงการ (Actual cost)', roles: ['admin', 'project_manager'] },
     'roles.manage': { label: 'กำหนด Role ให้ผู้ใช้', roles: ['admin'] },
   };
 
@@ -47,6 +49,28 @@
       .select('id, email, full_name, role, created_at').order('created_at', { ascending: true });
     if (error) throw new Error(setupError(error));
     return data || [];
+  };
+
+  /* Team members (accounts) for pickers such as "Project Manager".
+     Uses the list_team() function (roles.sql); Admin can fall back to reading profiles directly. */
+  PM.team = [];
+  R.loadTeam = async function () {
+    const client = PM.auth && PM.auth.client;
+    if (!client || typeof client.rpc !== 'function') return PM.team;
+    try {
+      const { data, error } = await client.rpc('list_team');
+      if (!error && Array.isArray(data)) { PM.team = data; PM.teamError = null; return PM.team; }
+      if (PM.can('roles.manage')) {
+        const rows = await R.list();
+        PM.team = rows.map((u) => ({ id: u.id, full_name: u.full_name || (u.email || '').split('@')[0], role: u.role }));
+        PM.teamError = null;
+        return PM.team;
+      }
+      PM.teamError = 'ยังโหลดรายชื่อบัญชีผู้ใช้ไม่ได้ — ให้ Admin รัน supabase/roles.sql อีกครั้ง';
+    } catch (e) {
+      PM.teamError = e.message;
+    }
+    return PM.team;
   };
 
   R.set = async function (userId, role) {

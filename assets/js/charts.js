@@ -12,6 +12,8 @@
   };
   const scaleMax = (max, n = 4) => { const s = niceStep(max || 1, n); return { max: Math.ceil((max || 1) / s) * s, step: s }; };
   const width = (el) => Math.max(260, Math.floor(el.clientWidth || el.getBoundingClientRect().width || 600));
+  // phones: a slightly shorter plot keeps the chart in proportion with the narrow width
+  const fitH = (W, h) => (W < 440 ? Math.round(h * 0.8) : h);
   const topRounded = (x, y, w, h, r) => {
     r = Math.min(r, h, w / 2);
     if (h <= 0) return '';
@@ -25,7 +27,7 @@
   /* Vertical columns — stacked (default) or grouped.
      opts: { categories:[label], series:[{name,color,values:[]}], stacked, height, fmt, tipTitle:[] } */
   C.columns = function (el, o) {
-    const W = width(el), H = o.height || 230;
+    const W = width(el), H = fitH(W, o.height || 230);
     const m = { t: 10, r: 6, b: 26, l: 46 };
     const n = o.categories.length;
     const stacked = o.stacked !== false;
@@ -84,7 +86,7 @@
 
   /* Lines — e.g. S-curve. opts: { labels:[x], series:[{name,color,values,dash}], yMax, fmt, height, marker:index, markerLabel } */
   C.lines = function (el, o) {
-    const W = width(el), H = o.height || 260;
+    const W = width(el), H = fitH(W, o.height || 260);
     const m = { t: 14, r: 64, b: 26, l: 44 };
     const n = o.labels.length;
     const fmt = o.fmt || ((v) => PM.ui.num(v));

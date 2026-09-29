@@ -7,7 +7,7 @@
   const U = PM.ui;
   const C = (PM.cloud = { enabled: false, state: 'idle', blocking: false });
   const TABLE = 'app_records';
-  const COLLS = ['bids', 'projects', 'ncrs', 'safety', 'resources', 'levels', 'timesheets', 'plans'];
+  const COLLS = ['bids', 'projects', 'ncrs', 'safety', 'resources', 'levels', 'timesheets', 'plans', 'pos', 'costs'];
   const outdated = new Set(); // collections the cloud table doesn't accept yet (data.sql needs re-running)
   const isCheckError = (e) => /app_records_collection_check|violates check constraint/i.test((e && e.message) || '');
   const BASE_KEY = 'epc-pm-sync-base-v1';
@@ -143,7 +143,7 @@
     offline: ['warn', 'ยังส่งขึ้น Cloud ไม่ได้ — เก็บไว้ในเครื่องแล้ว จะลองใหม่อัตโนมัติ'],
     denied: ['warn', 'ไม่มีสิทธิ์บันทึกข้อมูลบน Cloud (บัญชียังไม่มี Role)'],
     forbidden: ['warn', 'Reset / Import บน Cloud ได้เฉพาะ Admin และ Project Manager'],
-    outdated: ['warn', 'ต้องอัปเดตฐานข้อมูล — รัน supabase/data.sql อีกครั้ง (Weekly Plan ยังไม่ขึ้น Cloud)'],
+    outdated: ['warn', 'ต้องอัปเดตฐานข้อมูล — รัน supabase/data.sql อีกครั้ง (ข้อมูลใหม่บางส่วนยังไม่ขึ้น Cloud)'],
     setup: ['warn', 'ยังไม่ได้ติดตั้ง Cloud (รัน supabase/data.sql) — ข้อมูลเก็บเฉพาะเครื่องนี้'],
     local: ['warn', 'ข้อมูลเก็บเฉพาะเครื่องนี้'],
   };
