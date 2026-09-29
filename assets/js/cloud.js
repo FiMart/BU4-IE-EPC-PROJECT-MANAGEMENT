@@ -128,7 +128,7 @@
     const changed = Object.keys(nb).length !== Object.keys(base).length || Object.keys(nb).some((k) => nb[k] !== base[k]);
     base = nb; ords = no; saveBase();
     PM.db = db;
-    PM.ensureShape(); // e.g. adds the Engineer / Technician levels if the cloud data predates them
+    PM.ensureShape(); // e.g. adds the Engineer / Technician / Other levels if the cloud data predates them
     PM.lockCompany();
     PM.saveLocal();
     if (hasLocalChanges()) C.schedule(); // send those additions up

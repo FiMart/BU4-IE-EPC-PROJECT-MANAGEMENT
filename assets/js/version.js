@@ -2,9 +2,24 @@
    When the website changes: bump PM.VERSION and add a new entry at the TOP of PM.CHANGELOG.
    type: 'feature' (ฟีเจอร์ใหม่) · 'improve' (ปรับปรุง) · 'fix' (แก้ไข) */
 (function () {
-  PM.VERSION = '1.14.0';
+  PM.VERSION = '1.14.2';
 
   PM.CHANGELOG = [
+    {
+      version: '1.14.2', date: '2026-09-29', type: 'improve', title: 'เพิ่ม Level "Other"',
+      items: [
+        'Level ของพนักงานมี 3 ระดับ: Engineer · Technician · Other — เลือกได้ใน Add person และแสดงในกราฟ Utilization by level (หน้า Resource Utilization และ Dashboard) และตาราง Levels',
+        'Level Other ตั้งต้น Rate 500 บาท/ชม. · Target 80% (แก้ได้ที่ตาราง Levels) · ข้อมูลเดิมไม่เปลี่ยน — พนักงานเดิมยังอยู่ Level เดิม',
+      ],
+    },
+    {
+      version: '1.14.1', date: '2026-09-29', type: 'improve', title: 'เลือก Project Manager จาก Resource Utilization',
+      items: [
+        'ฟอร์ม New / Edit project: รายชื่อ Project Manager มาจาก Resource Utilization เป็นหลัก — พนักงาน Discipline "Project Management" อยู่บนสุด ตามด้วยพนักงานอื่น',
+        'แต่ละชื่อแสดง Level · Utilization 4 สัปดาห์ล่าสุด · จำนวนโครงการอื่นที่เป็น PM อยู่ และใต้ช่องแสดงรายละเอียดของคนที่เลือก (เทียบเป้า, งานล้น / ยังรับงานเพิ่มได้, รหัสโครงการ)',
+        'บัญชีผู้ใช้ที่มีชื่อตรงกับพนักงานใน Resource Utilization ถูกรวมเป็นคนเดียวกัน (โครงการเดิมที่ผูกกับบัญชีจะเลือกพนักงานคนนั้นให้อัตโนมัติเมื่อเปิดแก้ไข) · บัญชีที่ยังไม่มีใน Resource ยังเลือกได้ในกลุ่มท้ายสุด',
+      ],
+    },
     {
       version: '1.14.0', date: '2026-09-29', type: 'improve', title: 'ปรับ layout และ animation บนมือถือ · พิมพ์ชื่อ Sales ได้เอง',
       items: [

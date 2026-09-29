@@ -133,7 +133,7 @@
   function personForm(r, done) {
     const isNew = !r;
     const p = r || { id: PM.uid('R'), name: '', level: 'ENG', discipline: PM.DISCIPLINES[0], capacity: 40, active: true };
-    // only Engineer / Technician; a person still on an older level keeps it listed so it isn't changed by accident
+    // only Engineer / Technician / Other; a person still on an older level keeps it listed so it isn't changed by accident
     const levelOptions = PM.PERSON_LEVELS.map((l) => ({ value: l.id, label: PM.levelName(l.id) }));
     if (!isNew && !PM.PERSON_LEVELS.some((l) => l.id === p.level)) levelOptions.push({ value: p.level, label: `${PM.levelName(p.level)} (เดิม)` });
     U.modal({
@@ -153,7 +153,7 @@
     const x = l || { id: 'L' + (PM.db.levels.length + 1), name: '', rate: 500, target: 80 };
     U.modal({
       title: isNew ? 'Add level' : x.name,
-      onDelete: null, // Engineer / Technician are fixed levels (name, rate and target can still be edited)
+      onDelete: null, // Engineer / Technician / Other are fixed levels (name, rate and target can still be edited)
       body: `
         ${U.field('Code', 'id', x.id, { required: true })}
         ${U.field('Level name', 'name', x.name, { required: true })}

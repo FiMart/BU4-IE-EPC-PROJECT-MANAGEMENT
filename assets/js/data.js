@@ -31,10 +31,11 @@
     closing: { range: [0.9, 1], weight: 5, budget: 0.05, unit: 'Handover docs' },
   };
 
-  /* Person levels — "Add person" offers only these two */
+  /* Person levels — "Add person" offers only these three */
   PM.PERSON_LEVELS = [
     { id: 'ENG', name: 'Engineer', rate: 700, target: 85 },
     { id: 'TECH', name: 'Technician', rate: 400, target: 85 },
+    { id: 'OTHER', name: 'Other', rate: 500, target: 80 },
   ];
   /* old level → new: junior / technician grades → Technician, everything else → Engineer */
   PM.mapLegacyLevel = (id) => {
@@ -176,7 +177,7 @@
       });
       p.costMode = 'ledger';
     });
-    // only two person levels exist: Engineer & Technician
+    // fixed person levels: Engineer, Technician & Other
     PM.PERSON_LEVELS.forEach((l) => { if (!PM.db.levels.some((x) => x.id === l.id)) PM.db.levels.push(Object.assign({}, l)); });
     // older data (L1–L5): move people to Engineer / Technician, then drop the old levels
     const allowed = PM.PERSON_LEVELS.map((l) => l.id);
@@ -382,7 +383,7 @@
       const av = PM.sum(ps, (p) => p.available);
       const bl = PM.sum(ps, (p) => p.billable);
       return { level: l, n: ps.length, available: av, billable: bl, util: av ? bl / av : null, target: l.target / 100 };
-    }).filter((x) => x.n > 0);
+    }).filter((x) => x.n > 0 || PM.PERSON_LEVELS.some((l) => l.id === x.level.id)); // fixed levels always listed
     const total = {
       capacity: PM.sum(people, (p) => p.capacity),
       available: PM.sum(people, (p) => p.available),
@@ -795,7 +796,7 @@
 
     /* Sales — who found each customer / inquiry, and who looks after each project (capacity 0 = not in utilization) */
     const SALES = [['R15', 'ชัยวัฒน์ ศรีสมบูรณ์'], ['R16', 'ปวีณา วัฒนกุล']];
-    SALES.forEach(([id, name]) => db.resources.push({ id, name, level: 'ENG', discipline: 'Sales', capacity: 0, active: true }));
+    SALES.forEach(([id, name]) => db.resources.push({ id, name, level: 'OTHER', discipline: 'Sales', capacity: 0, active: true }));
     const owner = {}, customers = new Set(); // each customer account belongs to one salesperson
     db.bids.forEach((b) => { // oldest inquiry first
       if (!owner[b.client]) owner[b.client] = SALES[Object.keys(owner).length % SALES.length];

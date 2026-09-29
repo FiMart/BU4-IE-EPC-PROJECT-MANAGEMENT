@@ -164,23 +164,64 @@
   V.personName = (id, fallback) => (id && lookupName(id)) || fallback || '–';
   V.pmName = (p) => V.personName(p && p.pm, p && p.pmName);
   V.salesName = (x) => V.personName(x && x.sales, x && x.salesName);
-  /* Project Manager picker: PM accounts first, then other accounts, then employees */
-  V.personSelect = function (name, value, storedName) {
+  /* ---------- Project Manager picker — based on Resource Utilization ----------
+     Employees come first (discipline "Project Management" on top), each with level, utilization (last 4 weeks)
+     and how many active projects they already manage. User accounts are only a fallback for people
+     who are not in Resource Utilization yet. */
+  V.pmLoad = function (exceptProjectId) {
+    const T = PM.today();
+    const ut = PM.utilization(PM.addDays(T, -27), T);
+    const out = {};
+    ut.people.forEach((x) => { out[x.r.id] = { util: x.util, target: x.target, projects: [] }; });
+    PM.db.projects.filter((p) => p.status !== 'closed' && p.id !== exceptProjectId && p.pm).forEach((p) => {
+      if (out[p.pm]) out[p.pm].projects.push(p);
+    });
+    return out;
+  };
+  /* an account id whose name matches an employee → that employee (so old projects pick up the resource data) */
+  V.pmResourceId = function (id) {
+    if (!id || PM.find('resources', id)) return id;
+    const acc = (PM.team || []).find((u) => u.id === id);
+    const r = acc && PM.db.resources.find((x) => PM.normName(x.name) === PM.normName(acc.full_name));
+    return r ? r.id : id;
+  };
+  V.pmSelect = function (name, value, storedName, exceptProjectId) {
+    value = V.pmResourceId(value);
+    const load = V.pmLoad(exceptProjectId);
     const team = PM.team || [];
     const opt = (v, label) => `<option value="${esc(v)}"${v === value ? ' selected' : ''}>${esc(label)}</option>`;
-    const resources = PM.db.resources.filter((r) => r.active !== false || r.id === value);
-    const accLabel = (u) => `${u.full_name} · ${PM.roleLabel(u.role)}`;
+    const resources = PM.db.resources.filter((r) => (r.active !== false && r.discipline !== 'Sales') || r.id === value);
+    const resLabel = (r) => {
+      const l = load[r.id];
+      const bits = [PM.levelName(r.level)];
+      if (r.discipline && r.discipline !== 'Project Management') bits.push(r.discipline);
+      if (l && l.util != null) bits.push('Util ' + U.pct(l.util));
+      if (l && l.projects.length) bits.push(`PM อีก ${l.projects.length} โครงการ`);
+      return `${r.name} — ${bits.join(' · ')}`;
+    };
+    const resNames = new Set(PM.db.resources.map((r) => PM.normName(r.name)));
     const groups = [
-      ['Project Manager (บัญชีผู้ใช้)', team.filter((u) => u.role === 'project_manager').map((u) => [u.id, u.full_name])],
-      ['บัญชีผู้ใช้อื่น', team.filter((u) => u.role !== 'project_manager').map((u) => [u.id, accLabel(u)])],
-      ['พนักงาน (Resource Utilization)', resources.map((r) => [r.id, r.name])],
+      ['Project Management (Resource Utilization)', resources.filter((r) => r.discipline === 'Project Management').map((r) => [r.id, resLabel(r)])],
+      ['พนักงานอื่น (Resource Utilization)', resources.filter((r) => r.discipline !== 'Project Management').map((r) => [r.id, resLabel(r)])],
+      ['บัญชีผู้ใช้ที่ยังไม่มีใน Resource Utilization', team.filter((u) => !resNames.has(PM.normName(u.full_name))).map((u) => [u.id, `${u.full_name} · ${PM.roleLabel(u.role)}`])],
     ];
-    const known = new Set([...team.map((u) => u.id), ...resources.map((r) => r.id)]);
+    const known = new Set(groups.flatMap((g) => g[1].map((x) => x[0])));
     return `<select name="${esc(name)}">
       <option value="">— เลือก —</option>
       ${groups.filter((g) => g[1].length).map(([label, items]) => `<optgroup label="${esc(label)}">${items.map(([v, l]) => opt(v, l)).join('')}</optgroup>`).join('')}
-      ${value && !known.has(value) ? opt(value, `${storedName || 'ไม่พบรายชื่อ'} (เดิม)`) : ''}
+      ${value && !known.has(value) ? opt(value, `${lookupName(value) || storedName || 'ไม่พบรายชื่อ'} (เดิม)`) : ''}
     </select>`;
+  };
+  /* one line about the chosen PM, from Resource Utilization */
+  V.pmInfo = function (id, exceptProjectId) {
+    const r = id && PM.find('resources', id);
+    if (!id) return 'รายชื่อจาก Resource Utilization — Util = ชั่วโมง billable ÷ ชั่วโมงที่ว่าง (4 สัปดาห์ล่าสุด)';
+    if (!r) return 'บัญชีผู้ใช้นี้ยังไม่มีใน Resource Utilization — เพิ่มได้ที่ Resource Utilization → Add person (ชื่อเดียวกัน) เพื่อดูภาระงาน';
+    const l = V.pmLoad(exceptProjectId)[r.id] || { util: null, target: 0.8, projects: [] };
+    const util = l.util == null ? 'ยังไม่มี Timesheet'
+      : `Util 4 สัปดาห์ ${U.pct(l.util)} (เป้า ${U.pct(l.target)})${l.util > 1.05 ? ' — งานล้น' : l.util < l.target ? ' — ยังรับงานเพิ่มได้' : ''}`;
+    const prj = l.projects.length ? `เป็น PM โครงการอื่นอยู่ ${l.projects.length} โครงการ: ${l.projects.map((p) => p.code).join(', ')}` : 'ยังไม่ได้เป็น PM โครงการอื่น';
+    return `${PM.levelName(r.level)} · ${r.discipline || '–'} · ${util} · ${prj}`;
   };
   /* Sales: free text with suggestions (Sales staff, user accounts, other employees, names typed before).
      A name that matches someone on the list is stored with their id; anything else is kept as the typed name. */
@@ -260,8 +301,8 @@
       ${U.field('Project No.', 'code', p.code, { required: true })}
       ${U.field('Status', 'status', p.status, { options: [{ value: 'active', label: 'Active' }, { value: 'onhold', label: 'On hold' }, { value: 'closed', label: 'Closed' }] })}
       ${U.field('ชื่อโครงการ', 'name', p.name, { required: true, full: true })}
-      ${U.field('ลูกค้า (Client)', 'client', p.client, { required: true })}
-      <label><span>Project Manager</span>${V.personSelect('pm', p.pm, p.pmName)}${PM.teamError ? `<small class="muted">${esc(PM.teamError)}</small>` : ''}</label>
+      ${U.field('ลูกค้า (Client)', 'client', p.client, { required: true, full: true })}
+      <label class="full"><span>Project Manager <small class="muted">— จาก Resource Utilization</small></span>${V.pmSelect('pm', p.pm, p.pmName, p.id)}<small class="muted" id="pm-info">${esc(V.pmInfo(V.pmResourceId(p.pm), p.id))}</small></label>
       <label><span>Sales ผู้รับผิดชอบ</span>${V.salesInput(p)}<small class="muted">${fromBid && PM.salesKey(fromBid) ? `จาก ${esc(fromBid.code)} — Sales ที่หางานนี้มา` : 'พิมพ์ชื่อได้เลย หรือเลือกจากรายชื่อที่ขึ้นมา'}</small></label>
       ${U.field('มูลค่าสัญญา (THB)', 'contractValue', p.contractValue, { type: 'number', min: 0, step: 'any' })}
       ${U.field('Plan cost — งบประมาณต้นทุน (THB)', 'budget', planNow, { type: 'number', min: 0, step: 'any', hint: isNew ? 'ระบบแบ่งให้ E / P / C / Closing อัตโนมัติ (แก้รายละเอียดได้ที่ "ต้นทุน Plan / Actual")' : 'ถ้าเปลี่ยน ระบบปรับงบของแต่ละ phase ตามสัดส่วนเดิม' })}
@@ -269,7 +310,7 @@
       ${U.field('Start date', 'startDate', p.startDate, { type: 'date', required: true })}
       ${U.field('Finish date', 'endDate', p.endDate, { type: 'date', required: true })}
       ${isNew ? '' : '<p class="full muted" style="margin:0">หมายเหตุ: การแก้วันที่โครงการไม่เปลี่ยนแผนของแต่ละ phase — แก้ได้ที่ตาราง EPC Phases</p>'}`;
-    U.modal({
+    const form = U.modal({
       title: isNew ? (fromBid ? `Create project from ${fromBid.code}` : 'New project') : `Edit ${p.code}`, body,
       onDelete: isNew ? null : () => {
         PM.remove('projects', p.id);
@@ -299,5 +340,6 @@
         onSaved && onSaved(p);
       },
     });
+    form.pm.addEventListener('change', () => { form.querySelector('#pm-info').textContent = V.pmInfo(form.pm.value, p.id); });
   };
 })();
