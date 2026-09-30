@@ -91,7 +91,7 @@
     const isNew = !bid;
     const b = bid || {
       id: PM.uid('B'), code: 'BD-' + T.slice(2, 4) + '-' + String(PM.db.bids.length + 1).padStart(3, '0'),
-      name: '', client: '', sector: 'Industrial', scope: 'EPC', value: 0, margin: 10, estimator: '', boqItems: 0,
+      name: '', client: '', sector: 'Industrial', value: 0, margin: 10, estimator: '', boqItems: 0,
       dueDate: PM.addDays(T, 30), dates: { inquiry: T, estimate: '', proposal: '', submit: '' }, stage: 'inquiry',
       result: 'pending', resultDate: '', projectId: null, notes: '', sales: '', salesName: '', leadSource: 'Sales visit', contact: '',
     };
@@ -107,9 +107,9 @@
       <label><span>Sales ผู้รับผิดชอบลูกค้า</span>${V.salesInput(b)}<small class="muted">${PM.teamError ? esc(PM.teamError) : 'พิมพ์ชื่อได้เลย หรือเลือกจากรายชื่อที่ขึ้นมา'}</small></label>
       ${U.field('ที่มาของงาน (Lead source)', 'leadSource', b.leadSource || '', { options: sources, placeholder: '— เลือก —' })}
       ${U.field('ผู้ติดต่อฝั่งลูกค้า (Contact)', 'contact', b.contact || '', { placeholder: 'ชื่อ / ตำแหน่ง / เบอร์โทร', full: true })}
+      ${PM.poFiles.boxHtml(true, 'ไฟล์แนบ — ใบเสนอราคา / เอกสาร Inquiry', 'ใบเสนอราคาที่ส่งให้ลูกค้า, TOR, แบบ, BOQ')}
       <div class="sub-h">ประมาณราคา</div>
-      ${U.field('Sector', 'sector', b.sector, { options: PM.SECTORS })}
-      ${U.field('Contract scope', 'scope', b.scope, { options: PM.SCOPES })}
+      ${U.field('Sector', 'sector', b.sector, { options: PM.SECTORS, full: true })}
       ${U.field('มูลค่าประมาณการ (THB)', 'value', b.value, { type: 'number', min: 0, step: 'any' })}
       ${U.field('Margin (%)', 'margin', b.margin, { type: 'number', step: 0.1 })}
       ${U.field('Estimator', 'estimator', b.estimator, { options: people(), placeholder: '— เลือก —' })}
@@ -119,31 +119,46 @@
       ${U.field('Estimate started', 'd_estimate', b.dates.estimate, { type: 'date' })}
       ${U.field('Proposal started', 'd_proposal', b.dates.proposal, { type: 'date' })}
       ${U.field('Submitted', 'd_submit', b.dates.submit, { type: 'date' })}
-      ${U.field('กำหนดยื่นซอง (Due date)', 'dueDate', b.dueDate, { type: 'date' })}
+      ${U.field('กำหนดยื่นใบเสนอราคา (Due date)', 'dueDate', b.dueDate, { type: 'date' })}
       <span></span>
       <div class="sub-h">ผลการประมูล (Award)</div>
       ${U.field('Result', 'result', b.result, { options: Object.keys(PM.BID_RESULTS).map((k) => ({ value: k, label: PM.BID_RESULTS[k] })) })}
       ${U.field('Result date', 'resultDate', b.resultDate, { type: 'date' })}
       ${U.field('หมายเหตุ', 'notes', b.notes, { type: 'textarea', full: true, rows: 2 })}`;
-    U.modal({
+    let files = null;
+    const form = U.modal({
       title: isNew ? 'New inquiry' : `${b.code} · ${b.name}`, body, wide: true,
-      onDelete: isNew ? null : () => { PM.remove('bids', b.id); U.toast('ลบแล้ว'); onSaved && onSaved(); },
-      onSubmit: (f) => {
+      onDelete: isNew ? null : () => {
+        PM.poFiles.remove((b.files || []).map((f) => f.path)).catch(() => { /* files may already be gone */ });
+        PM.remove('bids', b.id); U.toast('ลบแล้ว'); onSaved && onSaved();
+      },
+      onSubmit: (f, frm) => {
         const dates = { inquiry: f.d_inquiry, estimate: f.d_estimate, proposal: f.d_proposal, submit: f.d_submit };
         const order = PM.BID_STAGES.map((s) => dates[s.key]).filter(Boolean);
         if (order.some((d, i) => i && d < order[i - 1])) { alert('วันที่แต่ละขั้นต้องเรียงตามลำดับ Inquiry → Estimate → Proposal → Submit'); return false; }
-        Object.assign(b, {
-          code: f.code, name: f.name, client: f.client, sector: f.sector, scope: f.scope, value: f.value, margin: f.margin,
-          estimator: f.estimator, boqItems: f.boqItems, dueDate: f.dueDate, dates, result: f.result,
-          resultDate: f.result === 'pending' ? '' : f.resultDate || T, notes: f.notes,
-          leadSource: f.leadSource, contact: f.contact,
-        }, V.resolveSales(f.salesName, b));
-        b.stage = V.stageOf(b);
-        PM.upsert('bids', b);
-        U.toast('บันทึกแล้ว');
-        onSaved && onSaved(b);
+        save(f, dates, frm);
+        return false; // closed by save() once the files are uploaded
       },
     });
+    files = PM.poFiles.box(form, b.files, true);
+
+    async function save(f, dates, frm) {
+      const btn = frm.querySelector('[type=submit]');
+      btn.disabled = true; btn.classList.add('loading');
+      const { files: kept, problems } = await files.commit(`bids/${b.id}`, btn);
+      Object.assign(b, {
+        code: f.code, name: f.name, client: f.client, sector: f.sector, value: f.value, margin: f.margin,
+        estimator: f.estimator, boqItems: f.boqItems, dueDate: f.dueDate, dates, result: f.result,
+        resultDate: f.result === 'pending' ? '' : f.resultDate || T, notes: f.notes,
+        leadSource: f.leadSource, contact: f.contact, files: kept,
+      }, V.resolveSales(f.salesName, b));
+      b.stage = V.stageOf(b);
+      PM.upsert('bids', b);
+      U.closeModal();
+      U.toast(problems.length ? 'บันทึกแล้ว แต่ไฟล์บางไฟล์มีปัญหา' : 'บันทึกแล้ว');
+      if (problems.length) alert('ไฟล์ที่ไม่สำเร็จ:\n' + problems.join('\n'));
+      onSaved && onSaved(b);
+    }
   };
 
   /* Next project number: JB{yy}-PROJ-{running 4 digits}, e.g. JB26-PROJ-0001 (restarts each year) */
@@ -256,7 +271,7 @@
   V.salesTable = function (rows, selected) {
     if (!rows.length) return '<p class="empty">ยังไม่มีข้อมูล Sales — เพิ่มพนักงาน Discipline = Sales ที่ Resource Utilization แล้วเลือก Sales ในแต่ละ Bid</p>';
     rows = rows.slice().sort((a, b) => (b.bs.wonValue - a.bs.wonValue) || (b.pipelineValue - a.pipelineValue));
-    return `<table class="tbl"><thead><tr><th>Sales</th><th class="num">Inquiries</th><th class="num">ยื่นซอง</th><th class="num">Won / Lost</th><th class="num">Win rate</th>
+    return `<table class="tbl"><thead><tr><th>Sales</th><th class="num">Inquiries</th><th class="num">ยื่นใบเสนอราคา</th><th class="num">Won / Lost</th><th class="num">Win rate</th>
       <th class="num">Won value</th><th class="num">Pipeline (รอผล)</th><th>โครงการที่รับผิดชอบ</th><th class="num">มูลค่าโครงการ Active</th></tr></thead><tbody>
       ${rows.map((x) => `<tr class="click sales-row${selected != null && selected === x.id ? ' on' : ''}" data-sales="${esc(x.id || '-')}">
         <td><span class="title">${x.id ? esc(V.personName(x.id, x.fallbackName)) : '<span class="muted">ไม่ระบุ Sales</span>'}</span></td>

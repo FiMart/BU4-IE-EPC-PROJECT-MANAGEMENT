@@ -59,6 +59,25 @@
     return `<label${cls}><span>${U.esc(label)}</span>${input}${o.hint ? `<small>${U.esc(o.hint)}</small>` : ''}</label>`;
   };
 
+  /* A view's filter state that survives closing the site: the listed keys are saved in this browser
+     whenever they change and restored next time (ids that no longer exist are reset by the view). */
+  U.keep = function (name, obj, keys) {
+    const K = 'epc-pm-view-' + name;
+    try {
+      const saved = JSON.parse(localStorage.getItem(K) || 'null');
+      if (saved) keys.forEach((k) => { if (k in saved && (obj[k] == null || typeof saved[k] === typeof obj[k])) obj[k] = saved[k]; });
+    } catch (e) { /* ignore */ }
+    return new Proxy(obj, {
+      set(t, k, v) {
+        t[k] = v;
+        if (keys.includes(k)) {
+          try { const o = {}; keys.forEach((x) => (o[x] = t[x])); localStorage.setItem(K, JSON.stringify(o)); } catch (e) { /* ignore */ }
+        }
+        return true;
+      },
+    });
+  };
+
   U.formData = (form) => {
     const out = {};
     Array.from(form.elements).forEach((el) => {
@@ -70,6 +89,7 @@
 
   /* modal */
   U.modal = function ({ title, body, submitLabel = 'บันทึก', onSubmit, onDelete, wide }) {
+    const draft = readDraft(title); // a form of the same name left unsaved when the page was closed / discarded
     U.closeModal();
     const wrap = document.createElement('div');
     wrap.className = 'modal-backdrop';
@@ -84,6 +104,23 @@
       </footer></form>`;
     document.body.appendChild(wrap);
     const form = wrap.querySelector('form');
+    // typed into but not saved yet → the browser asks before the page is closed (see beforeunload below)
+    // phones / tablets don't ask before closing, so what was typed is also kept as a draft in this browser
+    let draftTimer = null;
+    const markDirty = () => { form.dataset.dirty = '1'; clearTimeout(draftTimer); draftTimer = setTimeout(() => writeDraft(form, title), 300); };
+    form.addEventListener('input', markDirty);
+    form.addEventListener('change', markDirty);
+    form.dataset.title = title;
+    if (draft) {
+      Object.keys(draft.values).forEach((n) => {
+        const el = form.elements[n];
+        if (!el || !el.tagName || el.disabled || el.type === 'file') return;
+        if (el.type === 'checkbox') el.checked = !!draft.values[n]; else el.value = draft.values[n];
+      });
+      form.dataset.dirty = '1';
+      writeDraft(form, title);
+      setTimeout(() => U.toast('กู้คืนข้อมูลที่กรอกค้างไว้แล้ว'), 250);
+    }
     wrap.addEventListener('mousedown', (e) => { if (e.target === wrap) U.closeModal(); });
     wrap.querySelectorAll('[data-close]').forEach((b) => b.addEventListener('click', U.closeModal));
     const del = wrap.querySelector('[data-delete]');
@@ -98,19 +135,53 @@
     return form;
   };
   U.closeModal = () => document.querySelectorAll('.modal-backdrop:not(.closing)').forEach((m) => {
+    clearDraft(); // saved, cancelled or deleted on purpose — no draft to bring back
     m.classList.add('closing'); // plays the exit animation, then removes
     setTimeout(() => m.remove(), 180);
   });
   document.addEventListener('keydown', (e) => { if (e.key === 'Escape') U.closeModal(); });
 
+  /* ---------- form drafts (one at a time, kept 3 days) ---------- */
+  const DRAFT_KEY = 'epc-pm-form-draft';
+  function writeDraft(form, title) {
+    if (!form.isConnected || !form.dataset.dirty) return;
+    const values = {};
+    Array.from(form.elements).forEach((el) => {
+      if (!el.name || el.disabled || el.type === 'file' || el.type === 'submit' || el.type === 'button') return;
+      values[el.name] = el.type === 'checkbox' ? el.checked : el.value;
+    });
+    try { localStorage.setItem(DRAFT_KEY, JSON.stringify({ title, at: Date.now(), values })); } catch (e) { /* ignore */ }
+  }
+  function readDraft(title) {
+    try {
+      const d = JSON.parse(localStorage.getItem(DRAFT_KEY) || 'null');
+      if (d && d.title === title && Date.now() - d.at < 3 * 864e5 && d.values) return d;
+    } catch (e) { /* ignore */ }
+    return null;
+  }
+  function clearDraft() { try { localStorage.removeItem(DRAFT_KEY); } catch (e) { /* ignore */ } }
+  U.pendingDraft = () => { try { const d = JSON.parse(localStorage.getItem(DRAFT_KEY) || 'null'); return d && Date.now() - d.at < 3 * 864e5 ? d : null; } catch (e) { return null; } };
+  // going to the background / closing: write the draft right away (debounce timers stop in the background)
+  const saveOpenDraft = () => {
+    const f = document.querySelector('.modal-backdrop:not(.closing) form[data-dirty]');
+    if (f) writeDraft(f, f.dataset.title);
+  };
+  document.addEventListener('visibilitychange', () => { if (document.hidden) saveOpenDraft(); });
+  window.addEventListener('pagehide', saveOpenDraft);
+  window.addEventListener('beforeunload', (e) => {
+    if (!document.querySelector('.modal-backdrop:not(.closing) form[data-dirty]')) return; // everything else is already saved
+    e.preventDefault();
+    e.returnValue = '';
+  });
+
   /* toast */
-  U.toast = function (msg) {
+  U.toast = function (msg, ms = 2200) {
     const t = document.createElement('div');
     t.className = 'toast';
     t.textContent = msg;
     document.body.appendChild(t);
-    setTimeout(() => t.classList.add('out'), 2200);
-    setTimeout(() => t.remove(), 2600);
+    setTimeout(() => t.classList.add('out'), ms);
+    setTimeout(() => t.remove(), ms + 400);
   };
 
   /* tooltip — any element with data-tip; charts may add data-cx for a crosshair */

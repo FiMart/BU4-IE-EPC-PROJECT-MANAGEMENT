@@ -8,7 +8,13 @@
   const C = (PM.cloud = { enabled: false, state: 'idle', blocking: false });
   const TABLE = 'app_records';
   const COLLS = ['bids', 'projects', 'ncrs', 'safety', 'resources', 'levels', 'timesheets', 'plans', 'pos', 'costs'];
-  const outdated = new Set(); // collections the cloud table doesn't accept yet (data.sql needs re-running)
+  // collections accepted by every version of data.sql
+  const LEGACY = ['bids', 'projects', 'ncrs', 'safety', 'resources', 'levels', 'timesheets'];
+  /* Collections the cloud table doesn't accept yet (older data.sql): their records are "parked" as
+     meta rows with id "@<collection>/<id>" so they are still saved in the cloud. Every session tries the
+     real collection again first; once data.sql has been re-run they move back automatically. */
+  const outdated = new Set();
+  const PARK = '@';
   const isCheckError = (e) => /app_records_collection_check|violates check constraint/i.test((e && e.message) || '');
   const BASE_KEY = 'epc-pm-sync-base-v1';
   const BACKUP_KEY = 'epc-pm-db-local-backup';
@@ -17,6 +23,10 @@
   let base = {}; // "collection|id" → hash of the version known to be in the cloud
   let ords = {}; // "collection|id" → list order
   let timer = null, retryTimer = null, lastPull = 0, ordSeq = 0;
+  /* false until this browser has loaded the cloud once (or has a sync base from an earlier visit):
+     nothing is pushed before that, so a browser that could not reach the cloud on its first visit
+     never uploads its demo data over the real data */
+  let synced = false;
   let queue = Promise.resolve();
 
   const client = () => PM.auth && PM.auth.client;
@@ -36,7 +46,11 @@
     const map = new Map();
     map.set(key('meta', 'main'), { collection: 'meta', id: 'main', data: db.meta || {} });
     COLLS.forEach((c) => (db[c] || []).forEach((r) => {
-      if (r && r.id != null) map.set(key(c, String(r.id)), { collection: c, id: String(r.id), data: r });
+      if (r == null || r.id == null) return;
+      const rec = outdated.has(c)
+        ? { collection: 'meta', id: PARK + c + '/' + r.id, data: r }
+        : { collection: c, id: String(r.id), data: r };
+      map.set(key(rec.collection, rec.id), rec);
     }));
     return Array.from(map.values());
   }
@@ -67,6 +81,7 @@
 
   /* ---------- network operations ---------- */
   async function push() {
+    if (!synced) return 0; // never upload before the cloud copy has been loaded once
     const { ups, dels } = diff();
     if (!ups.length && !dels.length) return 0;
     setState('saving');
@@ -77,9 +92,13 @@
       for (let i = 0; i < list.length; i += 500) {
         const chunk = list.slice(i, i + 500);
         const { error } = await client().from(TABLE).upsert(chunk.map((u) => u.row), { onConflict: 'collection,id' });
-        if (error && isCheckError(error)) { outdated.add(coll); break; } // other collections still sync
+        if (error && isCheckError(error) && coll !== 'meta' && !outdated.has(coll)) {
+          // table doesn't accept this collection yet → park its records under meta and start over
+          // (before any deletion, so the parked copies already in the cloud are kept)
+          outdated.add(coll);
+          return push();
+        }
         if (error) throw error;
-        outdated.delete(coll);
         chunk.forEach((u) => (base[u.k] = u.h));
         saveBase();
       }
@@ -117,8 +136,16 @@
     const db = PM.emptyDb();
     COLLS.forEach((c) => (db[c] = []));
     const nb = {}, no = {};
+    const real = new Set(rows.filter((r) => r.collection !== 'meta').map((r) => key(r.collection, r.id)));
     rows.forEach((r) => {
-      if (r.collection === 'meta') db.meta = r.data || {};
+      if (r.collection === 'meta' && String(r.id).startsWith(PARK)) {
+        // parked record of a collection the table did not accept (see records())
+        const s = String(r.id).slice(PARK.length), i = s.indexOf('/');
+        const c = s.slice(0, i), id = s.slice(i + 1);
+        if (!db[c]) return;
+        if (!real.has(key(c, id))) db[c].push(r.data); // the real row wins if both exist
+        // (not marked outdated here: the next push tries the real collection first and moves it back if accepted)
+      } else if (r.collection === 'meta') db.meta = r.data || {};
       else if (db[r.collection]) db[r.collection].push(r.data);
       else return;
       const k = key(r.collection, r.id);
@@ -127,6 +154,7 @@
     });
     const changed = Object.keys(nb).length !== Object.keys(base).length || Object.keys(nb).some((k) => nb[k] !== base[k]);
     base = nb; ords = no; saveBase();
+    synced = true;
     PM.db = db;
     PM.ensureShape(); // e.g. adds the Engineer / Technician / Other levels if the cloud data predates them
     PM.lockCompany();
@@ -143,12 +171,13 @@
     offline: ['warn', 'ยังส่งขึ้น Cloud ไม่ได้ — เก็บไว้ในเครื่องแล้ว จะลองใหม่อัตโนมัติ'],
     denied: ['warn', 'ไม่มีสิทธิ์บันทึกข้อมูลบน Cloud (บัญชียังไม่มี Role)'],
     forbidden: ['warn', 'Reset / Import บน Cloud ได้เฉพาะ Admin และ Project Manager'],
-    outdated: ['warn', 'ต้องอัปเดตฐานข้อมูล — รัน supabase/data.sql อีกครั้ง (ข้อมูลใหม่บางส่วนยังไม่ขึ้น Cloud)'],
+    outdated: ['ok', 'บันทึกบน Cloud แล้ว (โหมดสำรอง — แนะนำรัน supabase/data.sql อีกครั้ง)'],
+    waiting: ['warn', 'ยังเชื่อมต่อ Cloud ไม่ได้ — กำลังลองใหม่'],
     setup: ['warn', 'ยังไม่ได้ติดตั้ง Cloud (รัน supabase/data.sql) — ข้อมูลเก็บเฉพาะเครื่องนี้'],
     local: ['warn', 'ข้อมูลเก็บเฉพาะเครื่องนี้'],
   };
   function setState(s, detail) {
-    if (s === 'saved' && outdated.size) { s = 'outdated'; detail = 'Not accepted by the cloud table: ' + Array.from(outdated).join(', '); }
+    if (s === 'saved' && outdated.size) { s = 'outdated'; detail = 'Saved in backup mode (parked under meta) — the cloud table does not accept yet: ' + Array.from(outdated).join(', ') + '. Re-run supabase/data.sql.'; }
     C.state = s;
     C.detail = detail || '';
     if (s === 'saved') C.savedAt = new Date();
@@ -171,7 +200,7 @@
     if (isCheckError(e)) { setState('outdated', m); return; }
     if (/Only Admin/i.test(m)) { setState('forbidden', m); return; }
     if (/row-level security|permission denied/i.test(m)) { setState('denied', m); return; }
-    setState('offline', m);
+    setState(synced ? 'offline' : 'waiting', m);
     clearTimeout(retryTimer);
     retryTimer = setTimeout(() => C.sync(true), 15000);
   }
@@ -187,13 +216,14 @@
   C.flush = function () {
     clearTimeout(timer); timer = null;
     if (!C.enabled) return Promise.resolve();
-    return enqueue(() => push().then(() => setState('saved')).catch(fail));
+    return enqueue(() => push().then(() => setState(synced ? 'saved' : 'waiting')).catch(fail));
   };
 
   /* push local edits, then pull everything; re-render when data changed */
   C.sync = function (rerender) {
     if (!C.enabled) return Promise.resolve(false);
     clearTimeout(retryTimer);
+    if (!synced) return firstLoad(); // the first load failed earlier — load now instead of pushing
     return enqueue(async () => {
       try {
         await push();
@@ -206,6 +236,18 @@
       } catch (e) { fail(e); return false; }
     });
   };
+  /* true while the data on screen would only be this browser's demo copy (cloud not loaded yet) */
+  C.waiting = () => C.enabled && !synced;
+
+  async function firstLoad() {
+    try {
+      setState('loading');
+      const rows = await enqueue(() => pull());
+      if (rows.length) { backupLocal(); apply(rows); setState('saved'); } else await firstUpload();
+      if (PM.auth.user && PM.booted) { if (PM.applyAsOf) PM.applyAsOf(); PM.render(); }
+      return true;
+    } catch (e) { fail(e); return false; }
+  }
 
   /* Reset / Import — replace everything in the cloud in one transaction (Admin & PM only, checked by the DB) */
   C.replaceAll = function () {
@@ -214,9 +256,18 @@
     setState('saving');
     return enqueue(async () => {
       try {
-        const recs = records(PM.db).map((r, i) => ({ collection: r.collection, id: r.id, data: r.data, ord: i }));
-        const { error } = await client().rpc('app_replace_all', { payload: recs });
+        const send = async () => {
+          const list = records(PM.db).map((r, i) => ({ collection: r.collection, id: r.id, data: r.data, ord: i }));
+          return { list, error: (await client().rpc('app_replace_all', { payload: list })).error };
+        };
+        let { list: recs, error } = await send();
+        if (error && isCheckError(error)) {
+          // older table: park every collection it may not know yet, then try again
+          COLLS.filter((c) => !LEGACY.includes(c)).forEach((c) => outdated.add(c));
+          ({ list: recs, error } = await send());
+        }
         if (error) throw error;
+        synced = true;
         base = {}; ords = {};
         recs.forEach((r) => { const k = key(r.collection, r.id); base[k] = hash(JSON.stringify(r.data)); ords[k] = r.ord; });
         saveBase();
@@ -229,6 +280,7 @@
   C.start = async function () {
     if (!C.available()) { C.enabled = false; setState('local'); return false; }
     const hadBase = loadBase();
+    synced = hadBase;
     C.blocking = !hadBase;
     setState('loading');
     try {
@@ -257,6 +309,7 @@
     const db = PM.db;
     const n = (db.projects || []).length + (db.bids || []).length + (db.timesheets || []).length;
     base = {}; ords = {}; saveBase();
+    synced = true; // the cloud is known (empty) — from here on this browser's edits go up
     if (n && PM.can('data.import')) {
       const what = PM.freshSeed ? 'ข้อมูลตัวอย่าง (Demo)' : 'ข้อมูลที่อยู่ในเครื่องนี้';
       const ok = confirm(`ฐานข้อมูลบน Cloud ยังว่างอยู่\n\nอัปโหลด${what} ขึ้น Cloud เพื่อใช้งานร่วมกันหรือไม่?\n(${db.projects.length} โครงการ · ${db.bids.length} bids · ${db.timesheets.length} timesheet entries)\n\nOK = อัปโหลด   ·   Cancel = เริ่มจากข้อมูลว่าง`);
@@ -297,6 +350,11 @@
   document.addEventListener('visibilitychange', maybeRefresh);
   window.addEventListener('online', () => { if (C.enabled) C.sync(true); });
   document.addEventListener('click', (e) => { if (e.target.closest('[data-sync-retry]')) C.sync(true); });
-  // best-effort send on close — no "leave page?" prompt: unsent edits stay in this browser and go up next time
-  window.addEventListener('pagehide', () => { if (C.enabled && timer) C.flush(); });
+  // best-effort send on close — no "leave page?" prompt: unsent edits stay in this browser and go up next time.
+  // Phones & tablets rarely "close" a page: the browser is sent to the background and may be discarded
+  // there without warning (timers are paused too), so pending edits are sent the moment the page is hidden.
+  const flushNow = () => { if (C.enabled && timer) C.flush(); };
+  window.addEventListener('pagehide', flushNow);
+  document.addEventListener('visibilitychange', () => { if (document.hidden) flushNow(); });
+  document.addEventListener('freeze', flushNow);
 })();

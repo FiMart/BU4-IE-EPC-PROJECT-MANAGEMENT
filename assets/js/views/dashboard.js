@@ -38,7 +38,7 @@
           tip: `${s.label}: ${inStage.length} bids in stage now\nAvg time in stage (12m): ${U.days(sd.avg)}` };
       }).concat([{ n: '→', label: 'Award', th: 'ผลการประมูล 12 เดือน', big: `${bs.won} <small class="muted" style="font-size:12px">won / ${bs.won + bs.lost}</small>`, meta: `Win rate ${U.pct(bs.winRate)}`, href: '#/bidding' }]))}
       <div class="grid cols-6">
-        ${V.tile({ label: 'Inquiries', tag: 'Quantity', value: bs.total, sub: `ยื่นซองแล้ว ${bs.submitted} งาน` })}
+        ${V.tile({ label: 'Inquiries', tag: 'Quantity', value: bs.total, sub: `ยื่นใบเสนอราคาแล้ว ${bs.submitted} งาน` })}
         ${V.tile({ label: 'BOQ items estimated', tag: 'Quantity', value: U.num(PM.sum(bs.list.filter((b) => b.dates.estimate), (b) => b.boqItems)), sub: 'รายการที่ถอดปริมาณ' })}
         ${V.tile({ label: 'Avg cycle time', tag: 'Time', value: `${U.num(bs.avgCycle, 1)} <small>days</small>`, sub: 'Inquiry → Submit' })}
         ${V.tile({ label: 'On-time submission', tag: 'Time', value: U.pct(bs.onTimeRate), sub: U.badge(bs.onTimeRate >= 0.9 ? 'good' : bs.onTimeRate >= 0.75 ? 'warning' : 'critical', 'target 90%') })}

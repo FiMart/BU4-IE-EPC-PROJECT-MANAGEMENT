@@ -2,9 +2,32 @@
 (function () {
   const U = PM.ui, esc = U.esc;
   const DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
-  const state = { resourceId: null, week: null, rows: null, dirty: false };
+  const state = U.keep('timesheet', { resourceId: null, week: null, rows: null, dirty: false }, ['resourceId']);
 
   const keyOf = (r) => `${r.kind}|${r.refId}|${r.phase || ''}`;
+
+  /* Autosave: hours are written to the data (local + cloud) shortly after typing — no "save" needed.
+     Ids are fixed per person / day / work item, so re-saving updates the same records. */
+  let saveTimer = null;
+  function commit() {
+    clearTimeout(saveTimer); saveTimer = null;
+    if (!state.dirty || !state.rows) return;
+    const dates = DAYS.map((_, i) => PM.addDays(state.week, i));
+    const who = state.resourceId;
+    PM.db.timesheets = PM.db.timesheets.filter((t) => !(t.resourceId === who && t.date >= dates[0] && t.date <= dates[6]));
+    state.rows.forEach((r) => r.hours.forEach((h, i) => {
+      if (h > 0) PM.db.timesheets.push({ id: `ts-${who}-${dates[i]}-${r.kind}-${r.refId}-${r.phase || '-'}`, resourceId: who, date: dates[i], kind: r.kind, refId: r.refId, phase: r.phase, hours: h });
+    }));
+    PM.save();
+    state.dirty = false;
+    const s = document.getElementById('ts-summary');
+    if (s) s.textContent = s.textContent.replace('กำลังบันทึก…', 'บันทึกอัตโนมัติแล้ว');
+  }
+  const commitSoon = () => { clearTimeout(saveTimer); saveTimer = setTimeout(commit, 600); };
+  // leaving the page or closing the tab: write what was typed right away
+  window.addEventListener('hashchange', commit);
+  window.addEventListener('pagehide', commit);
+  document.addEventListener('visibilitychange', () => { if (document.hidden) commit(); });
 
   function loadRows() {
     const end = PM.addDays(state.week, 6);
@@ -81,13 +104,9 @@
     drawGrid(el, dates, res);
     drawTeam(el, dates);
 
-    const go = (week) => {
-      if (state.dirty && !confirm('ยังไม่ได้บันทึก — ต้องการออกจากสัปดาห์นี้หรือไม่?')) return;
-      state.week = week; state.rows = null; PM.views.timesheet(el);
-    };
+    const go = (week) => { commit(); state.week = week; state.rows = null; PM.views.timesheet(el); };
     el.querySelector('#ts-person').addEventListener('change', (e) => {
-      if (state.dirty && !confirm('ยังไม่ได้บันทึก — ต้องการเปลี่ยนคนหรือไม่?')) { e.target.value = state.resourceId; return; }
-      state.resourceId = e.target.value; state.rows = null; PM.views.timesheet(el);
+      commit(); state.resourceId = e.target.value; state.rows = null; PM.views.timesheet(el);
     });
     el.oninput = (e) => {
       const inp = e.target.closest('input[data-r]');
@@ -96,7 +115,9 @@
       state.rows[+inp.dataset.r].hours[+inp.dataset.d] = v;
       state.dirty = true;
       updateTotals(el, dates, res);
+      commitSoon();
     };
+    el.onchange = (e) => { if (e.target.closest('input[data-r]')) { commit(); updateTotals(el, dates, res); drawTeam(el, dates); } };
     el.onclick = (e) => {
       const a = e.target.closest('[data-action]');
       if (!a) return;
@@ -110,7 +131,7 @@
         if (state.rows.some((r) => keyOf(r) === keyOf(row))) { U.toast('มีแถวนี้อยู่แล้ว'); return; }
         state.rows.push(row); drawGrid(el, dates, res);
       }
-      if (act === 'remove') { state.rows.splice(+a.dataset.r, 1); state.dirty = true; drawGrid(el, dates, res); }
+      if (act === 'remove') { state.rows.splice(+a.dataset.r, 1); state.dirty = true; commit(); drawGrid(el, dates, res); drawTeam(el, dates); }
       if (act === 'from-plan') {
         let n = 0;
         (PM.db.plans || []).filter((p) => p.week === state.week && p.resourceId === state.resourceId).forEach((p) => {
@@ -133,13 +154,8 @@
         drawGrid(el, dates, res);
       }
       if (act === 'save') {
-        const end = dates[6];
-        PM.db.timesheets = PM.db.timesheets.filter((t) => !(t.resourceId === state.resourceId && t.date >= state.week && t.date <= end));
-        state.rows.forEach((r) => r.hours.forEach((h, i) => {
-          if (h > 0) PM.db.timesheets.push({ id: PM.uid('t'), resourceId: state.resourceId, date: dates[i], kind: r.kind, refId: r.refId, phase: r.phase, hours: h });
-        }));
-        PM.save();
-        state.dirty = false;
+        state.dirty = true; // write now even if autosave already did
+        commit();
         U.toast('บันทึก Timesheet แล้ว');
         loadRows();
         drawGrid(el, dates, res);
@@ -186,7 +202,7 @@
     });
     const g = el.querySelector('[data-grand]'); if (g) g.textContent = U.num(grand, 1);
     const cap = PM.cap(res) - leave;
-    el.querySelector('#ts-summary').textContent = `Total ${U.num(grand, 1)} h · Billable ${U.num(billable, 1)} h · Utilization ${U.pct(cap > 0 ? billable / cap : null)}${state.dirty ? ' · ยังไม่ได้บันทึก' : ''}`;
+    el.querySelector('#ts-summary').textContent = `Total ${U.num(grand, 1)} h · Billable ${U.num(billable, 1)} h · Utilization ${U.pct(cap > 0 ? billable / cap : null)} · ${state.dirty ? 'กำลังบันทึก…' : 'บันทึกอัตโนมัติแล้ว'}`;
   }
 
   function drawTeam(el, dates) {
@@ -205,7 +221,7 @@
       }).join('')}</tbody></table>`;
     box.querySelectorAll('[data-person]').forEach((a) => a.addEventListener('click', (e) => {
       e.preventDefault();
-      if (state.dirty && !confirm('ยังไม่ได้บันทึก — ต้องการเปลี่ยนคนหรือไม่?')) return;
+      commit();
       state.resourceId = a.dataset.person; state.rows = null; PM.views.timesheet(el); window.scrollTo(0, 0);
     }));
   }

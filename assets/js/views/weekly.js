@@ -1,7 +1,8 @@
 /* weekly.js — Weekly Plan: plan tasks for the week, track status, PPC (Percent Plan Complete), team loading */
 (function () {
   const U = PM.ui, V = PM.common, esc = U.esc;
-  const state = { week: null, project: '', person: '', mode: 'calendar', group: 'day' };
+  // the week always opens on the current one; filters and view are remembered
+  const state = U.keep('weekly', { week: null, project: '', person: '', mode: 'calendar', group: 'day' }, ['project', 'person', 'mode', 'group']);
   const PPC_TARGET = 0.8;
   const statusInfo = (k) => PM.PLAN_STATUS.find((s) => s.key === k) || PM.PLAN_STATUS[0];
   const dayName = (d) => PM.parse(d).toLocaleDateString('en-GB', { weekday: 'short' });
@@ -42,6 +43,8 @@
   PM.views.weekly = function (el) {
     const db = PM.db, T = PM.today();
     if (!state.week) state.week = PM.monday(T);
+    if (state.project && !state.project.startsWith('__') && !PM.find('projects', state.project)) state.project = '';
+    if (state.person && !PM.find('resources', state.person)) state.person = '';
     const week = state.week, end = PM.addDays(week, 6);
     const canEdit = PM.can('plan.edit'), canStatus = PM.can('plan.status');
 

@@ -12,7 +12,7 @@
     { key: 'inquiry', label: 'Inquiry', th: 'รับเรื่อง / สอบถาม' },
     { key: 'estimate', label: 'Estimate', th: 'ถอดแบบ / ประมาณราคา' },
     { key: 'proposal', label: 'Proposal', th: 'จัดทำข้อเสนอ' },
-    { key: 'submit', label: 'Submit', th: 'ยื่นซอง / รอผล' },
+    { key: 'submit', label: 'Submit', th: 'ยื่นใบเสนอราคา / รอผล' },
   ];
   PM.BID_RESULTS = { pending: 'Pending', won: 'Won', lost: 'Lost', nobid: 'No-bid' };
   PM.SECTORS = ['Industrial', 'Energy', 'Oil & Gas', 'Infrastructure', 'Building'];
@@ -153,7 +153,14 @@
   };
   /* Local cache only (used when data arrives from the cloud) */
   PM.saveLocal = function () {
-    try { localStorage.setItem(STORAGE_KEY, JSON.stringify(PM.db)); } catch (e) { console.warn('Save failed', e); }
+    const json = JSON.stringify(PM.db);
+    try { localStorage.setItem(STORAGE_KEY, json); return; } catch (e) { console.warn('Save failed', e); }
+    // browser storage full: drop the one-time pre-cloud backup copy and try again
+    try { localStorage.removeItem('epc-pm-db-local-backup'); localStorage.setItem(STORAGE_KEY, json); return; } catch (e) { /* still full */ }
+    if (!PM.warnedStorage && PM.ui && PM.ui.toast) {
+      PM.warnedStorage = true;
+      PM.ui.toast(PM.cloud && PM.cloud.enabled ? 'พื้นที่เก็บข้อมูลของเบราว์เซอร์เต็ม — ข้อมูลยังบันทึกบน Cloud ตามปกติ' : 'พื้นที่เก็บข้อมูลของเบราว์เซอร์เต็ม — บันทึกไม่ได้ กรุณา Export ข้อมูลเก็บไว้');
+    }
   };
   /* Every edit: write the local cache, then sync the change to Supabase (see cloud.js) */
   PM.save = function () {

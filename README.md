@@ -54,7 +54,10 @@ Web app สำหรับบริหารโครงการแบบ EPC (
 ติดตั้งครั้งเดียว: เปิด **Supabase Dashboard → SQL Editor → New query** วางเนื้อหาไฟล์ [`supabase/roles.sql`](supabase/roles.sql) แล้วกด **Run** (รันซ้ำได้)
 
 - ผู้ใช้คนแรกของระบบ (สมัครก่อนสุด) จะเป็น **Admin** อัตโนมัติ — คนที่สมัครหลังจากนั้นได้ **Technician**
-- **เฉพาะ Admin** เปลี่ยน Role ได้ที่ Settings → จัดการ Role ผู้ใช้ (บังคับด้วย Row Level Security ในฐานข้อมูล ผู้ใช้แก้ Role ตัวเองไม่ได้)
+- **Admin และ Project Manager** เปลี่ยน Role ได้ที่ Settings → จัดการ Role ผู้ใช้ (บังคับด้วย Row Level Security ในฐานข้อมูล)
+  - Admin: ตั้งได้ทุก Role ให้ทุกคน
+  - Project Manager: ตั้ง Project Manager / Engineer / Technician ให้คนอื่นได้ — ตั้งเป็น Admin, เปลี่ยน Role ของ Admin หรือของตัวเองไม่ได้
+  - อัปเดตจากเวอร์ชันก่อน v1.16: รัน `roles.sql` อีกครั้ง 1 ครั้ง
 - ลด Role ของ Admin คนสุดท้ายไม่ได้ (กันระบบไม่มี Admin)
 
 | สิทธิ์ | Admin | Project Manager | Engineer | Technician |
@@ -67,19 +70,24 @@ Web app สำหรับบริหารโครงการแบบ EPC (
 | อัปเดตสถานะงานใน Weekly Plan | ✓ | ✓ | ✓ | ✓ |
 | สร้าง / แก้ไข PO และแนบไฟล์ (ทุกคนดู / ดาวน์โหลดได้) | ✓ | ✓ | ✓ | – |
 | บันทึก / แก้ไขค่าใช้จ่ายโครงการ (ทุกคนดูได้) | ✓ | ✓ | – | – |
-| กำหนด Role ให้ผู้ใช้ | ✓ | – | – | – |
+| กำหนด Role ให้ผู้ใช้ | ✓ | ✓ (ยกเว้น Admin / ตัวเอง) | – | – |
 
 ปรับตารางสิทธิ์ได้ที่ `PM.PERMISSIONS` ใน `assets/js/roles.js`
 
 ## บันทึกข้อมูลบน Cloud
 
 ติดตั้งครั้งเดียว (หลังรัน `roles.sql`): วางเนื้อหาไฟล์ [`supabase/data.sql`](supabase/data.sql) ใน **SQL Editor** แล้วกด **Run**
-(ถ้าเคยรัน `data.sql` มาก่อน ให้รันไฟล์นี้ **อีกครั้ง** ทุกครั้งที่มีฟีเจอร์ใหม่ เช่น Weekly Plan, Purchase Orders, รายการค่าใช้จ่าย (v1.13) — ข้อมูลเดิมไม่หาย)
+(ถ้าเคยรัน `data.sql` เวอร์ชันก่อน v1.15 ให้รัน **อีกครั้ง 1 ครั้ง** — ข้อมูลเดิมไม่หาย · ตั้งแต่ v1.15 ตารางรับข้อมูลชนิดใหม่ได้เอง ไม่ต้องรันซ้ำเมื่อมีฟีเจอร์ใหม่
+ระหว่างที่ยังไม่ได้รัน ข้อมูลชนิดที่ตารางยังไม่รู้จัก (เช่น รายการค่าใช้จ่าย) จะถูกเก็บบน Cloud แบบสำรองไว้ก่อน — มุมขวาบนแสดง "โหมดสำรอง" และย้ายเข้าที่เองหลังรัน SQL)
 ไฟล์นี้สร้างที่เก็บไฟล์ PO (Storage bucket `po-files` แบบ private) ด้วย — ดูไฟล์ได้เฉพาะผู้ใช้ที่ login และมี Role
 
 - ทุกการแก้ไขถูกส่งขึ้น Supabase อัตโนมัติภายใน ~1 วินาที — ดูสถานะได้ที่มุมขวาบน (● บันทึกบน Cloud แล้ว)
 - เปิดเว็บใหม่: โหลดข้อมูลล่าสุดจาก Cloud เสมอ · กลับมาที่แท็บหลังจากไปทำอย่างอื่น ระบบดึงข้อมูลที่เพื่อนร่วมทีมแก้ไขให้อัตโนมัติ
 - เน็ตหลุด: ข้อมูลยังเก็บในเครื่อง และส่งขึ้น Cloud ให้เองเมื่อกลับมาออนไลน์ (หรือเปิดเว็บครั้งถัดไป)
+- Mobile / Tablet: ดึงหน้าลงที่ด้านบนสุดแล้วปล่อย เพื่ออัปเดตข้อมูลล่าสุดจาก Cloud
+- เปิดเว็บในเบราว์เซอร์ใหม่แล้วโหลดจาก Cloud ไม่ได้: หน้าเว็บรอและลองใหม่อัตโนมัติ (ไม่แสดงข้อมูลตัวอย่างแทน และไม่ส่งอะไรขึ้น Cloud จนกว่าจะโหลดสำเร็จ)
+- Timesheet บันทึกอัตโนมัติขณะพิมพ์ · ปิดเว็บขณะฟอร์มยังไม่กดบันทึก เบราว์เซอร์จะถามก่อน
+- จำหน้าที่เปิดล่าสุดและตัวกรองของแต่ละหน้า (Bidding, Projects, PO, Weekly Plan, Resource, Timesheet) ไว้ในเบราว์เซอร์ — เปิดเว็บใหม่กลับมาที่เดิม
 - ครั้งแรกที่ Cloud ยังว่าง: Admin / Project Manager จะถูกถามว่าจะอัปโหลดข้อมูลในเครื่องขึ้นไปหรือเริ่มจากข้อมูลว่าง
 - Reset / Import บน Cloud ทำได้เฉพาะ Admin และ Project Manager (ตรวจสอบในฐานข้อมูลด้วย)
 - ข้อมูลเก็บในตาราง `public.app_records` — 1 แถวต่อ 1 รายการ (bid, project, NCR, timesheet …) พร้อมเวลาและผู้แก้ไขล่าสุด
@@ -91,7 +99,7 @@ Web app สำหรับบริหารโครงการแบบ EPC (
 | เมนู | เนื้อหา | KPI |
 | --- | --- | --- |
 | **Dashboard** | สรุป 3 ส่วน: Bidding · Execution · Resource | ทั้งหมดในหน้าเดียว |
-| **Bidding** (Before Award) | Board / Table: Inquiry → Estimate → Proposal → Submit → Won/Lost, สร้าง Project จาก bid ที่ชนะได้ทันที · แต่ละ bid มี **Sales ผู้หาลูกค้า** (พิมพ์ชื่อเองหรือเลือกจากรายชื่อ — ถ้าชื่อตรงกับพนักงาน/บัญชีผู้ใช้จะผูกกับคนนั้น ถ้าไม่ตรงจะเก็บเป็นชื่อที่พิมพ์), ที่มาของงาน (Lead source), ผู้ติดต่อฝั่งลูกค้า · กรองตาม Sales | **Quantity**: จำนวน inquiry, proposal, BOQ items · **Time**: วันเฉลี่ยในแต่ละ stage, cycle time, on-time submission · Win rate · **ผลงาน Sales** (inquiry, win rate, won value, pipeline, โครงการที่รับผิดชอบ) |
+| **Bidding** (Before Award) | Board / Table: Inquiry → Estimate → Proposal → Submit → Won/Lost, สร้าง Project จาก bid ที่ชนะได้ทันที · แต่ละ bid มี **Sales ผู้หาลูกค้า** (พิมพ์ชื่อเองหรือเลือกจากรายชื่อ — ถ้าชื่อตรงกับพนักงาน/บัญชีผู้ใช้จะผูกกับคนนั้น ถ้าไม่ตรงจะเก็บเป็นชื่อที่พิมพ์), ที่มาของงาน (Lead source), ผู้ติดต่อฝั่งลูกค้า, **ไฟล์แนบ** (ใบเสนอราคาที่ส่งให้ลูกค้า / เอกสาร Inquiry — กด 📎 บนการ์ดเพื่อเปิดดู) · กรองตาม Sales | **Quantity**: จำนวน inquiry, proposal, BOQ items · **Time**: วันเฉลี่ยในแต่ละ stage, cycle time, on-time submission · Win rate · **ผลงาน Sales** (inquiry, win rate, won value, pipeline, โครงการที่รับผิดชอบ) |
 | **Projects (EPC)** | ทุกโครงการพร้อม phase ปัจจุบัน, progress plan vs actual, SPI/CPI, PM / Sales ผู้รับผิดชอบ (กรองตาม Sales ได้) | Portfolio health |
 | **Project detail** | EPC phases (update progress / quantity / plan cost), S-Curve, **ค่าใช้จ่าย** (บันทึกทีละรายการ: วันที่ · รายการ · จำนวนเงิน · phase · หมวด · ผู้ขาย · เลขที่เอกสาร · อ้างอิง PO, Export CSV, กราฟต้นทุนสะสม PV / EV / AC), NCR log, Safety รายเดือน, ชั่วโมงทีมงาน | **Quantity** · **Time** (SPI) · **Cost** (CPI, EAC — Actual cost = ผลรวมรายการค่าใช้จ่าย) · **Quality** (NCR) · **Safety** (LTIFR, TRIR) |
 | **Purchase Orders** | PO ของทุกโครงการ (หน้า Purchase Orders + แท็บ PO ในแต่ละโครงการ): ผู้ขาย · รายการ · มูลค่า · วันที่ PO · กำหนดส่ง · สถานะ · จ่ายแล้ว · **ไฟล์แนบ** (PDF/รูป/Excel/Word ≤ 20 MB, เก็บใน Supabase Storage) | มูลค่า PO (Committed) เทียบ Plan cost · เลยกำหนดส่ง · ส่งภายใน 14 วัน · % จ่ายแล้ว — สรุปบน Dashboard |
@@ -128,6 +136,7 @@ assets/js/motion.js          page entrance + ตัวเลข KPI นับข
 assets/js/data.js            ข้อมูล, demo seed, สูตร KPI
 assets/js/ui.js              format, badge, modal, tooltip
 assets/js/charts.js          กราฟ SVG (ไม่ใช้ library ภายนอก)
+assets/js/pull.js            ดึงลงเพื่อรีเฟรช (mobile / tablet) — โหลดข้อมูลล่าสุดจาก Cloud โดยไม่ reload หน้า
 assets/js/app.js             router
 assets/js/version.js         เวอร์ชัน + ประวัติการแก้ไข (หน้า About)
 assets/js/config.js          Supabase URL + anon key (ต้องกรอก)

@@ -1,7 +1,7 @@
 /* resources.js — Resource Utilization: by level, by person, weekly loading heatmap */
 (function () {
   const U = PM.ui, V = PM.common, esc = U.esc;
-  const state = { period: '4w' };
+  const state = U.keep('resources', { period: '4w' }, ['period']);
   const PERIODS = [
     { key: '4w', label: '4 สัปดาห์' },
     { key: 'month', label: 'เดือนนี้' },

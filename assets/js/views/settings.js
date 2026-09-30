@@ -15,7 +15,7 @@
     const canRoles = PM.can('roles.manage');
 
     el.innerHTML = `
-      ${user ? `<div class="card"><div class="card-h"><h2>บัญชีผู้ใช้</h2><span class="spacer"></span>${roleBadge(A.role)}<p>เชื่อมต่อกับ Supabase Auth · Role กำหนดโดย Admin เท่านั้น</p></div>
+      ${user ? `<div class="card"><div class="card-h"><h2>บัญชีผู้ใช้</h2><span class="spacer"></span>${roleBadge(A.role)}<p>เชื่อมต่อกับ Supabase Auth · Role กำหนดโดย Admin หรือ Project Manager</p></div>
         ${A.roleError ? `<div class="card-b" style="padding-bottom:0"><div class="auth-msg error">${esc(A.roleError)}</div></div>` : ''}
         <div class="card-b grid cols-3">
           <div class="auth-form" style="margin:0">
@@ -39,8 +39,8 @@
         </div></div>` : ''}
 
       ${canRoles ? `<div class="card">
-        <div class="card-h"><h2>จัดการ Role ผู้ใช้</h2><span class="chip">Admin only</span><span class="spacer"></span><button class="btn sm" data-action="reload-users">รีเฟรช</button>
-          <p>ผู้สมัครใหม่จะได้ Role เป็น Technician อัตโนมัติ — Admin เปลี่ยน Role ได้จากตารางนี้ (บันทึกทันที)</p></div>
+        <div class="card-h"><h2>จัดการ Role ผู้ใช้</h2><span class="chip">Admin · Project Manager</span><span class="spacer"></span><button class="btn sm" data-action="reload-users">รีเฟรช</button>
+          <p>ผู้สมัครใหม่จะได้ Role เป็น Technician อัตโนมัติ — เปลี่ยน Role ได้จากตารางนี้ (บันทึกทันที)${A.role === 'project_manager' ? ' · Project Manager ตั้ง Role เป็น Project Manager / Engineer / Technician ให้คนอื่นได้ แต่เปลี่ยน Admin, ตั้งเป็น Admin หรือเปลี่ยน Role ของตัวเองไม่ได้' : ''}</p></div>
         <div class="card-b flush table-wrap" id="user-roles"><p class="empty">กำลังโหลดรายชื่อผู้ใช้…</p></div>
       </div>` : ''}
 
@@ -223,16 +223,32 @@
           <td><span class="title">${esc(u.full_name || '–')}</span>${u.id === me ? '<small>(คุณ)</small>' : ''}</td>
           <td>${esc(u.email || '')}</td>
           <td>${u.created_at ? U.date(u.created_at.slice(0, 10)) : '–'}</td>
-          <td><select data-role-for="${esc(u.id)}" data-prev="${esc(u.role)}" data-self="${u.id === me ? 1 : ''}" aria-label="Role ของ ${esc(u.email || '')}">
-            ${U.options(PM.ROLES.map((r) => ({ value: r.key, label: `${r.label} · ${r.th}` })), u.role)}</select></td></tr>`).join('')}
+          <td>${roleCell(u, me)}</td></tr>`).join('')}
         </tbody></table>` : '<p class="empty">ยังไม่มีผู้ใช้</p>';
     } catch (err) {
       box.innerHTML = `<div class="card-b"><div class="auth-msg error">${esc(err.message)}</div></div>`;
     }
   }
 
+  /* dropdown with the roles this user may give; read-only badge when they may not change it */
+  function roleCell(u, me) {
+    const allowed = PM.assignableRoles(u);
+    if (!allowed.length) {
+      const why = u.id === me ? 'เปลี่ยน Role ของตัวเองไม่ได้' : u.role === 'admin' ? 'เปลี่ยนได้เฉพาะ Admin' : '';
+      return `${roleBadge(u.role)}${why ? `<small>${LOCK}${esc(why)}</small>` : ''}`;
+    }
+    return `<select data-role-for="${esc(u.id)}" data-prev="${esc(u.role)}" data-self="${u.id === me ? 1 : ''}" aria-label="Role ของ ${esc(u.email || '')}">
+      ${U.options(PM.ROLES.filter((r) => allowed.includes(r.key) || r.key === u.role).map((r) => ({ value: r.key, label: `${r.label} · ${r.th}` })), u.role)}</select>`;
+  }
+
   async function changeRole(el, sel) {
     const role = sel.value, prev = sel.dataset.prev, self = !!sel.dataset.self;
+    // same rules as the database: a Project Manager can't touch the Admin role (checked again by roles.sql)
+    if (!PM.assignableRoles({ id: sel.dataset.roleFor, role: prev }).includes(role)) {
+      sel.value = prev;
+      alert('เฉพาะ Admin เท่านั้นที่เปลี่ยน Role ของ Admin หรือตั้งใครเป็น Admin ได้');
+      return;
+    }
     if (self && prev === 'admin' && role !== 'admin' && !confirm('คุณกำลังลด Role ของตัวเองจาก Admin — จะไม่สามารถจัดการ Role ได้อีก ดำเนินการต่อ?')) {
       sel.value = prev; return;
     }

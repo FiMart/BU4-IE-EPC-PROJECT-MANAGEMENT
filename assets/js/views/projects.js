@@ -1,7 +1,7 @@
 /* projects.js — Execution portfolio: Engineering → Procurement → Construction → Closing */
 (function () {
   const U = PM.ui, V = PM.common, esc = U.esc;
-  const state = { status: 'active', phase: '', sales: '' }; // sales: '' = everyone, '-' = no salesperson
+  const state = U.keep('projects', { status: 'active', phase: '', sales: '' }, ['status', 'phase', 'sales']); // sales: '' = everyone, '-' = no salesperson
 
   PM.views.projects = function (el) {
     const db = PM.db;

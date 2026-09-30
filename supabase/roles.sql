@@ -6,7 +6,10 @@
 -- Roles: admin · project_manager · engineer · technician
 --  - Every new sign-up gets 'technician' (least privilege).
 --  - The FIRST user in the project becomes 'admin' automatically.
---  - Only admins can read the user list and change roles (enforced by RLS).
+--  - Admins and Project Managers can read the user list and change roles (enforced by RLS):
+--      Admin           → any role, for anyone
+--      Project Manager → Project Manager / Engineer / Technician for OTHER users who are not Admin
+--                        (cannot grant Admin, cannot change an Admin, cannot change their own role)
 --  - The last remaining admin cannot be demoted (prevents lock-out).
 -- =====================================================================
 
@@ -32,13 +35,26 @@ returns boolean language sql stable security definer set search_path = public as
   select exists (select 1 from public.profiles where id = auth.uid() and role = 'admin');
 $$;
 
+-- helper: is the current user a Project Manager?
+create or replace function public.is_project_manager()
+returns boolean language sql stable security definer set search_path = public as $$
+  select exists (select 1 from public.profiles where id = auth.uid() and role = 'project_manager');
+$$;
+
 -- 4) row level security
 drop policy if exists "profiles: read own"        on public.profiles;
 drop policy if exists "profiles: admin read all"  on public.profiles;
+drop policy if exists "profiles: pm read all"     on public.profiles;
 drop policy if exists "profiles: admin set role"  on public.profiles;
+drop policy if exists "profiles: pm set role"     on public.profiles;
 create policy "profiles: read own"       on public.profiles for select to authenticated using (id = auth.uid());
 create policy "profiles: admin read all" on public.profiles for select to authenticated using (public.is_admin());
+create policy "profiles: pm read all"    on public.profiles for select to authenticated using (public.is_project_manager());
 create policy "profiles: admin set role" on public.profiles for update to authenticated using (public.is_admin()) with check (public.is_admin());
+-- Project Manager: only other people who are not Admin (USING = the row before), and never to Admin (WITH CHECK = the row after)
+create policy "profiles: pm set role" on public.profiles for update to authenticated
+  using (public.is_project_manager() and id <> auth.uid() and role <> 'admin')
+  with check (public.is_project_manager() and id <> auth.uid() and role <> 'admin');
 -- no insert / delete policies: rows are created by the trigger below and removed with the auth user
 
 -- column-level privileges: clients may read, and (admins only, via RLS) update the role column only
@@ -60,6 +76,23 @@ end $$;
 drop trigger if exists profiles_protect_last_admin on public.profiles;
 create trigger profiles_protect_last_admin before update on public.profiles
   for each row execute function public.protect_last_admin();
+
+-- 5b) second guard (independent of the RLS policies): only an Admin may change an Admin's role
+--     or make someone Admin — a Project Manager can never touch the Admin role.
+--     (auth.uid() is null in the SQL Editor, so the manual option at the end of this file still works)
+create or replace function public.protect_admin_role()
+returns trigger language plpgsql security definer set search_path = public as $$
+begin
+  if old.role is distinct from new.role
+     and (old.role = 'admin' or new.role = 'admin')
+     and auth.uid() is not null and not public.is_admin() then
+    raise exception 'Only an Admin can change the Admin role';
+  end if;
+  return new;
+end $$;
+drop trigger if exists profiles_protect_admin_role on public.profiles;
+create trigger profiles_protect_admin_role before update on public.profiles
+  for each row execute function public.protect_admin_role();
 
 -- 6) create a profile for every new auth user (first user ever → admin)
 create or replace function public.handle_new_user()

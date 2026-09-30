@@ -205,6 +205,27 @@ select:focus, input:focus, textarea:focus { outline: none; border-color: var(--a
   .tabs a.active::after { transform-origin: center; animation: growX .28s var(--ease-out) both; }
 }
 
+/* pull to refresh (pull.js) — a round indicator slides down from the top, the arrow turns as you pull */
+html.ptr-on, html.ptr-on body { overscroll-behavior-y: contain; }
+.ptr {
+  position: fixed; left: 50%; top: calc(env(safe-area-inset-top) + 8px); z-index: 45; pointer-events: none;
+  display: flex; flex-direction: column; align-items: center; gap: 6px;
+  transform: translate(-50%, -76px); opacity: 0; transition: transform .28s var(--ease-out), opacity .2s;
+}
+.ptr.pulling, .ptr.refreshing { opacity: 1; }
+.ptr.pulling { transition: none; }
+.ptr-ball {
+  width: 42px; height: 42px; border-radius: 50%; display: grid; place-items: center;
+  background: var(--surface); color: var(--accent); border: 1px solid var(--border);
+  box-shadow: 0 6px 18px rgba(12, 40, 84, .18); transition: transform .15s; /* colour snaps: "ready" is felt at once */
+}
+.ptr-ball svg { width: 20px; height: 20px; stroke: currentColor; fill: none; stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round; transform: rotate(calc(var(--p, 0) * 180deg)); }
+.ptr.ready .ptr-ball { background: var(--accent); color: #fff; transform: scale(1.08); }
+.ptr.ready .ptr-ball svg { stroke: #fff; }
+.ptr.refreshing .ptr-ball svg { display: none; }
+.ptr.refreshing .ptr-ball::after { content: ''; width: 18px; height: 18px; border-radius: 50%; border: 2.5px solid var(--accent-soft); border-top-color: var(--accent); animation: spin .8s linear infinite; }
+.ptr-text { font-size: 12px; font-weight: 600; color: var(--ink-2); background: var(--surface); border: 1px solid var(--border); border-radius: 999px; padding: 2px 10px; box-shadow: 0 2px 8px rgba(12, 40, 84, .10); white-space: nowrap; }
+
 /* touch feedback */
 @media (hover: none) {
   .tile, .kcard, .flow-step, .phase-card, .cal-card, .tbl tr.click, .btn, .seg button, .nav a { -webkit-tap-highlight-color: transparent; }

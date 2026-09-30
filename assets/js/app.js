@@ -27,6 +27,12 @@
     });
     el.onclick = null; el.onchange = null; el.oninput = null; el.onkeydown = null;
     el.ondragstart = el.ondragend = el.ondragover = el.ondragleave = el.ondrop = null;
+    try { localStorage.setItem(LAST_ROUTE, hash); } catch (e) { /* ignore */ }
+    if (PM.cloud.waiting()) { // never show (or let anyone edit) the local demo copy instead of the real data
+      lastAnimated = null;
+      el.innerHTML = `<div class="cloud-wait"><span class="spinner" aria-hidden="true"></span><div>ยังโหลดข้อมูลจาก Cloud ไม่ได้ — กำลังลองใหม่อัตโนมัติ<br><button type="button" class="btn sm" data-sync-retry style="margin-top:10px">ลองใหม่ตอนนี้</button></div></div>`;
+      return;
+    }
     PM.views[route[1]](el, match.slice(1));
     if (hash !== lastAnimated) { // animate on navigation only, not on resize / data refresh
       lastAnimated = hash;
@@ -38,6 +44,15 @@
   }
   let lastAnimated = null;
   PM.render = render;
+
+  /* reopening the site (no page in the address) goes back to the page that was open last time */
+  const LAST_ROUTE = 'epc-pm-last-route';
+  if (!location.hash || location.hash === '#' || location.hash === '#/') {
+    try {
+      const last = localStorage.getItem(LAST_ROUTE);
+      if (last && routes.some((r) => r[0].test(last))) history.replaceState(null, '', last);
+    } catch (e) { /* ignore */ }
+  }
 
   function applyAsOf() {
     document.getElementById('asof').textContent = 'Status date: ' + PM.ui.date(PM.today());
@@ -146,6 +161,10 @@
     const waitCloud = PM.cloud.available() && !PM.cloud.hasBase();
     if (waitCloud) document.getElementById('view').innerHTML = '<div class="cloud-wait"><span class="spinner" aria-hidden="true"></span>กำลังโหลดข้อมูลจาก Cloud…</div>';
     else render();
+    // ask the browser not to evict this site's saved data when the phone / tablet runs low on space
+    try { if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(() => {}); } catch (e) { /* ignore */ }
+    const draft = PM.ui.pendingDraft();
+    if (draft) setTimeout(() => PM.ui.toast(`มีฟอร์ม "${draft.title}" ที่ยังไม่ได้บันทึก — เปิดฟอร์มเดิมอีกครั้งเพื่อกรอกต่อ`, 6000), 600);
     const changed = await PM.cloud.start();
     if (!PM.auth.user) return;
     if (waitCloud || changed) {

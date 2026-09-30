@@ -33,7 +33,7 @@
           <dt>Client</dt><dd>${esc(p.client)}</dd>
           <dt>Project Manager</dt><dd>${esc(V.pmName(p))}</dd>
           <dt>Contract value</dt><dd>${U.money(p.contractValue)}</dd>
-          <dt>From bid</dt><dd>${bid ? esc(bid.code) : '–'}</dd>
+          <dt>From bid</dt><dd>${bid ? `${esc(bid.code)} ${PM.poFiles.clip(bid.files, `data-action="bid-files" data-id="${esc(bid.id)}"`)}` : '–'}</dd>
           <dt>Start</dt><dd>${U.date(p.startDate)}</dd>
           <dt>Finish</dt><dd>${U.date(p.endDate)}</dd>
           <dt>Time elapsed</dt><dd>${U.pct(Math.max(0, Math.min(1, PM.diffDays(p.startDate, PM.today()) / (PM.diffDays(p.startDate, p.endDate) || 1))))}</dd>
@@ -54,6 +54,7 @@
       if (!a) return;
       const act = a.dataset.action, id = a.dataset.id;
       if (act === 'edit-project') V.projectForm(p, null, rerender);
+      if (act === 'bid-files') { const b = PM.find('bids', id); if (b) PM.poFiles.showList(`ไฟล์แนบของ ${b.code} (ใบเสนอราคา / Inquiry)`, b.files); }
       if (act === 'edit-costs') costForm(p, rerender);
       if (act === 'new-cost') PM.costEntryForm(p, null, rerender);
       if (act === 'edit-phase') phaseForm(p, id, rerender);

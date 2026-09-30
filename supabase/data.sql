@@ -25,10 +25,12 @@ create table if not exists public.app_records (
   updated_by uuid references auth.users (id) on delete set null,
   primary key (collection, id)
 );
--- allowed collections (re-running this file updates the list, e.g. 'plans' for Weekly Plan, 'costs' for the expense ledger)
+-- collection names: any short lowercase name, so new kinds of data added in later versions of the app
+-- are accepted without re-running this file (older versions of this file listed the names one by one;
+-- the app parks records the table doesn't accept yet under 'meta' until this file is re-run)
 alter table public.app_records drop constraint if exists app_records_collection_check;
 alter table public.app_records add constraint app_records_collection_check
-  check (collection in ('meta','bids','projects','ncrs','safety','resources','levels','timesheets','plans','pos','costs'));
+  check (collection ~ '^[a-z][a-z0-9_]{0,39}$');
 
 create index if not exists app_records_collection_ord_idx on public.app_records (collection, ord);
 alter table public.app_records enable row level security;
@@ -107,7 +109,8 @@ grant execute on function public.app_replace_all(jsonb) to authenticated;
 
 -- =====================================================================
 -- PO file attachments — Supabase Storage (private bucket "po-files")
--- Files live at: <projectId>/<poId>/<timestamp>-<file name>
+-- Files live at: <projectId>/<poId>/<timestamp>-<file name>   (PO attachments)
+--            and bids/<bidId>/<timestamp>-<file name>        (inquiry / quotation attachments)
 --  - any signed-in user with a role can view / download and upload
 --  - delete: the person who uploaded the file, or Admin / Project Manager
 -- =====================================================================

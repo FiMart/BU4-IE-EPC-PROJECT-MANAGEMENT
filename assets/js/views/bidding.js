@@ -1,7 +1,7 @@
 /* bidding.js — Before Award: Inquiry → Estimate → Proposal → Submit */
 (function () {
   const U = PM.ui, V = PM.common, esc = U.esc;
-  const state = { period: '12m', mode: 'kanban', q: '', sales: '' }; // sales: '' = everyone, '-' = no salesperson
+  const state = U.keep('bidding', { period: '12m', mode: 'kanban', q: '', sales: '' }, ['period', 'mode', 'sales']); // sales: '' = everyone, '-' = no salesperson
 
   PM.views.bidding = function (el) {
     const db = PM.db, T = PM.today();
@@ -107,6 +107,11 @@
       if (act) {
         const b = act.dataset.id && PM.find('bids', act.dataset.id);
         const a = act.dataset.action;
+        if (a === 'bid-files' && b) { // 📎 on a card / row: open the attachments list (one file → open it directly)
+          if ((b.files || []).length === 1) PM.poFiles.open(b.files[0].path);
+          else PM.poFiles.showList(`ไฟล์แนบ — ${b.code}`, b.files);
+          return;
+        }
         if (a === 'new') V.bidForm(null, rerender);
         if (a === 'next' && b) {
           const i = PM.BID_STAGES.findIndex((s) => s.key === b.stage);
@@ -151,10 +156,10 @@
     const age = PM.diffDays(b.dates[b.stage], PM.today());
     const flash = state.flash === b.id ? ' flash' : '';
     return `<div class="kcard${flash}" style="--k:${k}" data-bid="${b.id}">
-      <div class="code">${esc(b.code)} · ${esc(b.sector)} · ${esc(b.scope)}</div>
+      <div class="code">${esc(b.code)} · ${esc(b.sector)}</div>
       <div class="name">${esc(b.name)}</div>
       <div class="client">${esc(b.client)}</div>
-      <div class="foot"><span class="v">${U.money(b.value)}</span>${V.dueBadge(b)}</div>
+      <div class="foot"><span class="v">${U.money(b.value)}</span>${PM.poFiles.clip(b.files, `data-action="bid-files" data-id="${esc(b.id)}"`)}${V.dueBadge(b)}</div>
       <div class="foot muted">Sales ${esc(V.salesName(b))} · Est. ${esc(U.resourceName(b.estimator))}${hoursBy[b.id] ? ` · ${U.num(hoursBy[b.id])} h` : ''}${b.result === 'pending' ? ` · ${age}d in stage` : ''}</div>
       ${actions ? `<div class="actions">${actions}</div>` : ''}
     </div>`;
@@ -165,7 +170,7 @@
     list = list.slice().sort((a, b) => (a.dates.inquiry < b.dates.inquiry ? 1 : -1));
     return `<div class="table-wrap"><table class="tbl"><thead><tr>
       <th>Bid</th><th>Client</th><th>Sales</th><th>Sector</th><th class="num">Value</th><th class="num">BOQ items</th>
-      <th>Inquiry</th><th>Submitted</th><th>Due</th><th class="num">Cycle (d)</th><th class="num">Hours</th><th>Status</th><th>Timing</th></tr></thead><tbody>
+      <th>Inquiry</th><th>Submitted</th><th>Due</th><th class="num">Cycle (d)</th><th class="num">Hours</th><th>Status</th><th>Timing</th><th class="num">ไฟล์</th></tr></thead><tbody>
       ${list.map((b) => `<tr class="click" data-bid="${b.id}">
         <td><span class="title">${esc(b.code)}</span><small>${esc(b.name)}</small></td>
         <td>${esc(b.client)}${b.contact ? `<small>${esc(b.contact)}</small>` : ''}</td><td>${esc(V.salesName(b))}${b.leadSource ? `<small>${esc(b.leadSource)}</small>` : ''}</td><td>${esc(b.sector)}</td>
@@ -173,7 +178,8 @@
         <td>${U.date(b.dates.inquiry)}</td><td>${U.date(b.dates.submit)}</td><td>${U.date(b.dueDate)}</td>
         <td class="num">${b.dates.submit ? PM.diffDays(b.dates.inquiry, b.dates.submit) : '–'}</td>
         <td class="num">${U.num(hoursBy[b.id] || 0)}</td>
-        <td>${V.resultBadge(b)}</td><td>${V.dueBadge(b)}</td></tr>`).join('')}
+        <td>${V.resultBadge(b)}</td><td>${V.dueBadge(b)}</td>
+        <td class="num">${PM.poFiles.clip(b.files, `data-action="bid-files" data-id="${esc(b.id)}"`) || '–'}</td></tr>`).join('')}
       </tbody></table></div>`;
   }
 })();

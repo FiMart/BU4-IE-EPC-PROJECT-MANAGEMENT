@@ -18,7 +18,16 @@
     'plan.status': { label: 'อัปเดตสถานะงานใน Weekly Plan', roles: ['admin', 'project_manager', 'engineer', 'technician'] },
     'po.edit': { label: 'สร้าง / แก้ไข PO และแนบไฟล์', roles: ['admin', 'project_manager', 'engineer'] },
     'cost.edit': { label: 'บันทึก / แก้ไขค่าใช้จ่ายโครงการ (Actual cost)', roles: ['admin', 'project_manager'] },
-    'roles.manage': { label: 'กำหนด Role ให้ผู้ใช้', roles: ['admin'] },
+    'roles.manage': { label: 'กำหนด Role ให้ผู้ใช้ (Project Manager: ยกเว้น Admin และ Role ของตัวเอง)', roles: ['admin', 'project_manager'] },
+  };
+
+  /* Which roles the current user may give to `target` ({ id, role }) — same rules as supabase/roles.sql:
+     Admin → any role for anyone · Project Manager → PM / Engineer / Technician for others who are not Admin */
+  PM.assignableRoles = function (target) {
+    const me = PM.auth && PM.auth.role, myId = PM.auth && PM.auth.user && PM.auth.user.id;
+    if (me === 'admin') return PM.ROLES.map((r) => r.key);
+    if (me === 'project_manager' && target && target.id !== myId && target.role !== 'admin') return PM.ROLES.map((r) => r.key).filter((k) => k !== 'admin');
+    return [];
   };
 
   PM.roleInfo = (key) => PM.ROLES.find((r) => r.key === key) || null;
@@ -75,8 +84,16 @@
 
   R.set = async function (userId, role) {
     const { data, error } = await PM.auth.client.from('profiles').update({ role }).eq('id', userId).select('id, role');
-    if (error) throw new Error(/last admin/i.test(error.message) ? 'ต้องมี Admin อย่างน้อย 1 คน — ไม่สามารถลด Role ของ Admin คนสุดท้ายได้' : setupError(error));
-    if (!data || !data.length) throw new Error('ไม่มีสิทธิ์เปลี่ยน Role (เฉพาะ Admin เท่านั้น)');
+    if (error) {
+      if (/last admin/i.test(error.message)) throw new Error('ต้องมี Admin อย่างน้อย 1 คน — ไม่สามารถลด Role ของ Admin คนสุดท้ายได้');
+      if (/admin role/i.test(error.message)) throw new Error('เฉพาะ Admin เท่านั้นที่เปลี่ยน Role ของ Admin หรือตั้งใครเป็น Admin ได้');
+      throw new Error(setupError(error));
+    }
+    if (!data || !data.length) {
+      throw new Error(PM.auth.role === 'project_manager'
+        ? 'ไม่มีสิทธิ์เปลี่ยน Role นี้ — Project Manager เปลี่ยน Role ของ Admin, ของตัวเอง หรือตั้งเป็น Admin ไม่ได้ (ถ้าเพิ่งอัปเดตเว็บ ให้ Admin รัน supabase/roles.sql อีกครั้ง)'
+        : 'ไม่มีสิทธิ์เปลี่ยน Role (เฉพาะ Admin และ Project Manager)');
+    }
     return data[0];
   };
 

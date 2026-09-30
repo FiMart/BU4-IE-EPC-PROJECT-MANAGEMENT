@@ -17,9 +17,10 @@
     if (/size|too large|exceed/i.test(m)) return `ไฟล์ใหญ่เกิน ${MAX_MB} MB`;
     return m;
   };
-  F.upload = async function (po, file) {
+  /* prefix = folder inside the bucket, e.g. "<projectId>/<poId>" or "bids/<bidId>" */
+  F.upload = async function (prefix, file) {
     const safe = file.name.replace(/[^A-Za-z0-9._-]+/g, '_').slice(-80) || 'file';
-    const path = `${po.projectId}/${po.id}/${Date.now()}-${safe}`;
+    const path = `${prefix}/${Date.now()}-${safe}`;
     const { error } = await storage().upload(path, file, { contentType: file.type || undefined, upsert: false });
     if (error) throw new Error(storageError(error));
     const u = PM.auth.user;
@@ -43,6 +44,77 @@
   };
   const fileSize = (b) => (b >= 1048576 ? (b / 1048576).toFixed(1) + ' MB' : Math.max(1, Math.round(b / 1024)) + ' KB');
   const fileIcon = (name) => { const x = (name.split('.').pop() || '').toLowerCase(); return { pdf: 'PDF', xlsx: 'XLS', xls: 'XLS', csv: 'CSV', docx: 'DOC', doc: 'DOC', zip: 'ZIP' }[x] || 'IMG'; };
+
+  /* ---------- attachment box (PO form, bid / inquiry form) ----------
+     F.boxHtml() goes into the form body; F.box() wires it up. Files picked are uploaded when the
+     form is saved (commit), files removed are deleted from Storage then. */
+  F.boxHtml = (canEdit, title, hint) => `
+    <div class="full po-files" data-files>
+      <div class="po-files-h"><b>${esc(title || 'ไฟล์แนบ')}</b><small class="muted">${esc(hint ? hint + ' · ' : '')}PDF, รูปภาพ, Excel, Word, CSV, ZIP · ไม่เกิน ${MAX_MB} MB ต่อไฟล์</small></div>
+      <ul class="po-file-list" id="po-file-list"></ul>
+      ${canEdit ? (F.available()
+        ? `<label class="btn sm po-attach"><input type="file" id="po-file-input" multiple accept="${ACCEPT}" hidden>📎 แนบไฟล์</label>`
+        : '<p class="perm-note">แนบไฟล์ได้เมื่อเชื่อมต่อ Cloud (Supabase)</p>') : ''}
+    </div>`;
+  F.box = function (form, files, canEdit) {
+    const keep = (files || []).slice(); // files that stay
+    const removed = [];                 // files marked for deletion
+    const pending = [];                 // new File objects to upload on save
+    const root = form.querySelector('[data-files]');
+    const listEl = root.querySelector('.po-file-list');
+    const draw = () => {
+      listEl.innerHTML = keep.map((f, i) => `<li>
+          <span class="fi">${fileIcon(f.name)}</span>
+          <button type="button" class="link-btn" data-open="${i}" title="เปิด / ดาวน์โหลด">${esc(f.name)}</button>
+          <small class="muted">${fileSize(f.size || 0)}${f.uploadedByName ? ' · ' + esc(f.uploadedByName) : ''}${f.uploadedAt ? ' · ' + U.date(f.uploadedAt.slice(0, 10)) : ''}</small>
+          ${canEdit ? `<button type="button" class="icon-btn" data-drop="${i}" aria-label="ลบไฟล์">✕</button>` : ''}</li>`).join('') +
+        pending.map((f, i) => `<li class="pending">
+          <span class="fi">${fileIcon(f.name)}</span><span>${esc(f.name)}</span>
+          <small class="muted">${fileSize(f.size)} · รออัปโหลดเมื่อกดบันทึก</small>
+          <button type="button" class="icon-btn" data-unqueue="${i}" aria-label="เอาออก">✕</button></li>`).join('') ||
+        '<li class="muted empty-files">ยังไม่มีไฟล์แนบ</li>';
+    };
+    draw();
+    listEl.addEventListener('click', (e) => {
+      const o = e.target.closest('[data-open]'), d = e.target.closest('[data-drop]'), q = e.target.closest('[data-unqueue]');
+      if (o) F.open(keep[+o.dataset.open].path);
+      if (d && confirm('ลบไฟล์นี้? (ลบจริงเมื่อกดบันทึก)')) { removed.push(keep.splice(+d.dataset.drop, 1)[0]); draw(); }
+      if (q) { pending.splice(+q.dataset.unqueue, 1); draw(); }
+    });
+    const input = root.querySelector('input[type=file]');
+    if (input) input.addEventListener('change', () => {
+      Array.from(input.files).forEach((f) => {
+        if (f.size > MAX_MB * 1048576) { alert(`${f.name} ใหญ่เกิน ${MAX_MB} MB`); return; }
+        pending.push(f);
+      });
+      input.value = '';
+      draw();
+    });
+    return {
+      /* upload new files into `prefix`, delete removed ones → { files, problems } */
+      async commit(prefix, btn) {
+        const problems = [];
+        for (const file of pending.splice(0)) {
+          try { if (btn) btn.textContent = `กำลังอัปโหลด ${file.name}…`; keep.push(await F.upload(prefix, file)); }
+          catch (err) { problems.push(`${file.name}: ${err.message}`); }
+        }
+        const gone = removed.splice(0);
+        try { await F.remove(gone.map((r) => r.path)); } catch (err) { problems.push('ลบไฟล์: ' + err.message); keep.push(...gone); }
+        return { files: keep.slice(), problems };
+      },
+    };
+  };
+  /* read-only list of attachments (e.g. the 📎 on a bid card) */
+  F.showList = function (title, files) {
+    U.modal({
+      title,
+      body: `<ul class="po-file-list full">${(files || []).map((f, i) => `<li><span class="fi">${fileIcon(f.name)}</span>
+        <button type="button" class="link-btn" data-open="${i}" title="เปิด / ดาวน์โหลด">${esc(f.name)}</button>
+        <small class="muted">${fileSize(f.size || 0)}${f.uploadedByName ? ' · ' + esc(f.uploadedByName) : ''}${f.uploadedAt ? ' · ' + U.date(f.uploadedAt.slice(0, 10)) : ''}</small></li>`).join('') || '<li class="muted empty-files">ยังไม่มีไฟล์แนบ</li>'}</ul>`,
+    }).addEventListener('click', (e) => { const o = e.target.closest('[data-open]'); if (o) F.open(files[+o.dataset.open].path); });
+  };
+  F.clip = (files, attrs) => ((files || []).length
+    ? `<button type="button" class="po-clip link-btn" ${attrs || ''} title="${esc(files.map((f) => f.name).join('\n'))}">📎 ${files.length}</button>` : '');
 
   /* ---------- helpers ---------- */
   const projLabel = (id) => { const p = PM.find('projects', id); return p ? p.code : '–'; };
@@ -135,11 +207,6 @@
       id: PM.uid('PO'), projectId: pid, poNo: PM.nextPoNo(pid), supplier: '', description: '', category: 'Material', phase: 'procurement',
       amount: 0, poDate: T, deliveryDue: PM.addDays(T, 30), deliveredDate: '', status: 'issued', paidAmount: 0, note: '', files: [],
     };
-    const keep = (x.files || []).slice(); // files that stay
-    const removed = [];                   // files marked for deletion
-    let pending = [];                     // new File objects to upload on save
-    const canFiles = F.available();
-
     const form = U.modal({
       title: isNew ? 'New PO' : `${x.poNo} · ${x.supplier}`, wide: true, submitLabel: canEdit ? 'บันทึก PO' : undefined,
       onSubmit: canEdit ? () => false : null, // saving is async (uploads) — handled below
@@ -160,44 +227,9 @@
         ${U.field('สถานะ', 'status', x.status, { options: PM.PO_STATUS.map((s) => ({ value: s.key, label: `${s.th} (${s.label})` })) })}
         ${U.field('วันที่ส่งของครบ', 'deliveredDate', x.deliveredDate, { type: 'date' })}
         ${U.field('หมายเหตุ', 'note', x.note, { type: 'textarea', full: true, rows: 2 })}
-        <div class="full po-files">
-          <div class="po-files-h"><b>ไฟล์แนบ</b><small class="muted">PDF, รูปภาพ, Excel, Word, CSV, ZIP · ไม่เกิน ${MAX_MB} MB ต่อไฟล์</small></div>
-          <ul class="po-file-list" id="po-file-list"></ul>
-          ${canEdit ? (canFiles
-            ? `<label class="btn sm po-attach"><input type="file" id="po-file-input" multiple accept="${ACCEPT}" hidden>📎 แนบไฟล์</label>`
-            : '<p class="perm-note">แนบไฟล์ได้เมื่อเชื่อมต่อ Cloud (Supabase)</p>') : ''}
-        </div>`,
+        ${F.boxHtml(canEdit, 'ไฟล์แนบ')}`,
     });
-
-    const listEl = form.querySelector('#po-file-list');
-    const drawFiles = () => {
-      listEl.innerHTML = keep.map((f, i) => `<li>
-          <span class="fi">${fileIcon(f.name)}</span>
-          <button type="button" class="link-btn" data-open="${i}" title="เปิด / ดาวน์โหลด">${esc(f.name)}</button>
-          <small class="muted">${fileSize(f.size || 0)}${f.uploadedByName ? ' · ' + esc(f.uploadedByName) : ''}${f.uploadedAt ? ' · ' + U.date(f.uploadedAt.slice(0, 10)) : ''}</small>
-          ${canEdit ? `<button type="button" class="icon-btn" data-drop="${i}" aria-label="ลบไฟล์">✕</button>` : ''}</li>`).join('') +
-        pending.map((f, i) => `<li class="pending">
-          <span class="fi">${fileIcon(f.name)}</span><span>${esc(f.name)}</span>
-          <small class="muted">${fileSize(f.size)} · รออัปโหลดเมื่อกดบันทึก</small>
-          <button type="button" class="icon-btn" data-unqueue="${i}" aria-label="เอาออก">✕</button></li>`).join('') ||
-        '<li class="muted empty-files">ยังไม่มีไฟล์แนบ</li>';
-    };
-    drawFiles();
-    listEl.addEventListener('click', (e) => {
-      const o = e.target.closest('[data-open]'), d = e.target.closest('[data-drop]'), q = e.target.closest('[data-unqueue]');
-      if (o) F.open(keep[+o.dataset.open].path);
-      if (d && confirm('ลบไฟล์นี้ออกจาก PO? (ลบจริงเมื่อกดบันทึก)')) { removed.push(keep.splice(+d.dataset.drop, 1)[0]); drawFiles(); }
-      if (q) { pending.splice(+q.dataset.unqueue, 1); drawFiles(); }
-    });
-    const input = form.querySelector('#po-file-input');
-    if (input) input.addEventListener('change', () => {
-      Array.from(input.files).forEach((f) => {
-        if (f.size > MAX_MB * 1048576) { alert(`${f.name} ใหญ่เกิน ${MAX_MB} MB`); return; }
-        pending.push(f);
-      });
-      input.value = '';
-      drawFiles();
-    });
+    const files = F.box(form, x.files, canEdit);
 
     if (!canEdit) { // view only — files can still be opened
       form.querySelectorAll('input, select, textarea').forEach((i) => { i.disabled = true; });
@@ -220,13 +252,8 @@
       if (f.projectId) x.projectId = f.projectId;
       if ((x.status === 'delivered' || x.status === 'closed') && !x.deliveredDate) x.deliveredDate = T;
       if (isNew) { const u = PM.auth.user; x.createdBy = u ? u.id : ''; x.createdByName = u ? PM.auth.displayName(u) : ''; }
-      const problems = [];
-      for (const file of pending) {
-        try { btn.textContent = `กำลังอัปโหลด ${file.name}…`; keep.push(await F.upload(x, file)); }
-        catch (err) { problems.push(`${file.name}: ${err.message}`); }
-      }
-      try { await F.remove(removed.map((r) => r.path)); } catch (err) { problems.push('ลบไฟล์: ' + err.message); keep.push(...removed); }
-      x.files = keep;
+      const { files: kept, problems } = await files.commit(`${x.projectId}/${x.id}`, btn);
+      x.files = kept;
       PM.upsert('pos', x);
       U.closeModal();
       U.toast(problems.length ? 'บันทึก PO แล้ว แต่ไฟล์บางไฟล์มีปัญหา' : 'บันทึก PO แล้ว');
@@ -236,13 +263,14 @@
   };
 
   /* ---------- Purchase Orders page ---------- */
-  const state = { project: '', status: 'open', q: '' };
+  const state = U.keep('pos', { project: '', status: 'open', q: '' }, ['project', 'status']);
   const FILTERS = [
     { key: 'open', label: 'ยังไม่ส่งครบ' }, { key: 'late', label: 'เลยกำหนด' }, { key: 'done', label: 'ส่งครบ / ปิด' }, { key: 'all', label: 'ทั้งหมด' },
   ];
   PM.views.pos = function (el) {
     const db = PM.db, T = PM.today();
     const canEdit = PM.can('po.edit');
+    if (state.project && !PM.find('projects', state.project)) state.project = '';
     const q = state.q.toLowerCase();
     const inProject = db.pos.filter((po) => !state.project || po.projectId === state.project);
     const list = inProject.filter((po) => {
