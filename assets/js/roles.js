@@ -19,6 +19,7 @@
     'po.edit': { label: 'สร้าง / แก้ไข PO และแนบไฟล์', roles: ['admin', 'project_manager', 'engineer'] },
     'cost.edit': { label: 'บันทึก / แก้ไขค่าใช้จ่ายโครงการ (Actual cost)', roles: ['admin', 'project_manager'] },
     'roles.manage': { label: 'กำหนด Role ให้ผู้ใช้ (Project Manager: ยกเว้น Admin และ Role ของตัวเอง)', roles: ['admin', 'project_manager'] },
+    'users.delete': { label: 'ลบบัญชีผู้ใช้', roles: ['admin'] },
   };
 
   /* Which roles the current user may give to `target` ({ id, role }) — same rules as supabase/roles.sql:
@@ -95,6 +96,20 @@
         : 'ไม่มีสิทธิ์เปลี่ยน Role (เฉพาะ Admin และ Project Manager)');
     }
     return data[0];
+  };
+
+  /* delete a user account — Admin only (checked again by admin_delete_user() in roles.sql) */
+  R.remove = async function (userId) {
+    if (!PM.can('users.delete')) throw new Error('เฉพาะ Admin เท่านั้นที่ลบบัญชีผู้ใช้ได้');
+    if (PM.auth.user && userId === PM.auth.user.id) throw new Error('ลบบัญชีของตัวเองไม่ได้');
+    const { error } = await PM.auth.client.rpc('admin_delete_user', { target: userId });
+    if (!error) return;
+    const m = error.message || '';
+    if (/Only Admin/i.test(m)) throw new Error('เฉพาะ Admin เท่านั้นที่ลบบัญชีผู้ใช้ได้');
+    if (/own account/i.test(m)) throw new Error('ลบบัญชีของตัวเองไม่ได้');
+    if (/not found/i.test(m) && /user/i.test(m) && !/function/i.test(m)) throw new Error('ไม่พบบัญชีนี้ (อาจถูกลบไปแล้ว)');
+    if (/admin_delete_user|could not find the function|schema cache/i.test(m)) throw new Error('ยังไม่ได้ติดตั้งฟังก์ชันลบผู้ใช้ — ให้ Admin รัน supabase/roles.sql อีกครั้ง');
+    throw new Error(m);
   };
 
   function setupError(error) {

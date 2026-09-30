@@ -11,6 +11,7 @@
 --      Project Manager → Project Manager / Engineer / Technician for OTHER users who are not Admin
 --                        (cannot grant Admin, cannot change an Admin, cannot change their own role)
 --  - The last remaining admin cannot be demoted (prevents lock-out).
+--  - Only Admins can delete user accounts (admin_delete_user, section 10) — not their own.
 -- =====================================================================
 
 -- 1) role type
@@ -149,6 +150,32 @@ language sql stable security definer set search_path = public as $$
 $$;
 revoke all on function public.list_team() from public, anon;
 grant execute on function public.list_team() to authenticated;
+
+-- 10) delete a user account — ADMIN ONLY (Settings → จัดการ Role ผู้ใช้ → ลบ)
+--     Removes the Supabase Auth user (their profile row goes with it). An Admin can't delete
+--     their own account (prevents lock-out). Project data they saved stays; the "who changed it"
+--     columns just become empty. Project Managers and everyone else get an error.
+create or replace function public.admin_delete_user(target uuid)
+returns void language plpgsql security definer set search_path = public as $$
+begin
+  if not public.is_admin() then
+    raise exception 'Only Admin can delete users';
+  end if;
+  if target = auth.uid() then
+    raise exception 'Admin cannot delete their own account';
+  end if;
+  if not exists (select 1 from auth.users where id = target) then
+    raise exception 'User not found';
+  end if;
+  -- files they uploaded stay; older Storage versions link objects to the user, so unlink first
+  begin
+    update storage.objects set owner = null where owner = target;
+  exception when others then null;
+  end;
+  delete from auth.users where id = target;
+end $$;
+revoke all on function public.admin_delete_user(uuid) from public, anon;
+grant execute on function public.admin_delete_user(uuid) to authenticated;
 
 -- Manual option — make a specific person admin:
 -- update public.profiles set role = 'admin' where email = 'someone@example.com';

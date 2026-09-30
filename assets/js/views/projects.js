@@ -1,27 +1,51 @@
 /* projects.js — Execution portfolio: Engineering → Procurement → Construction → Closing */
 (function () {
   const U = PM.ui, V = PM.common, esc = U.esc;
-  const state = U.keep('projects', { status: 'active', phase: '', sales: '' }, ['status', 'phase', 'sales']); // sales: '' = everyone, '-' = no salesperson
+  // sales / pm: '' = everyone, '-' = not set · health: good | warning | critical | onhold · q = search (not remembered)
+  const state = U.keep('projects', { status: 'active', phase: '', sales: '', pm: '', health: '', q: '' }, ['status', 'phase', 'sales', 'pm', 'health']);
+
+  /* the same health the table shows: closed / on hold, else the worse of SPI and CPI */
+  const healthOf = (r) => (r.p.status === 'closed' ? 'closed' : r.p.status === 'onhold' ? 'onhold' : U.worst(U.health(r.m.spi), U.health(r.m.cpi)));
+  const HEALTH = [{ value: 'good', label: 'On track' }, { value: 'warning', label: 'At risk' }, { value: 'critical', label: 'Off track' }, { value: 'onhold', label: 'On hold' }];
 
   PM.views.projects = function (el) {
     const db = PM.db;
     const all = db.projects.map((p) => ({ p, m: PM.projectMetrics(p) }));
-    const salesIds = [];
     const keyOf = (p) => PM.salesKey(p) || '-';
-    db.projects.forEach((p) => { const k = keyOf(p); if (!salesIds.includes(k)) salesIds.push(k); });
+    const pmOf = (p) => V.pmResourceId(p.pm) || '-';
+    const distinct = (fn) => { const out = []; db.projects.forEach((p) => { const k = fn(p); if (!out.includes(k)) out.push(k); }); return out; };
+    const salesIds = distinct(keyOf), pmIds = distinct(pmOf);
     if (state.sales && !salesIds.includes(state.sales)) state.sales = '';
+    if (state.pm && !pmIds.includes(state.pm)) state.pm = '';
+
+    // search: project no., name, client, PM, Sales, bid no.
+    const q = state.q.trim().toLowerCase();
+    const text = (p) => { const b = p.bidId && PM.find('bids', p.bidId); return [p.code, p.name, p.client, V.pmName(p), V.salesName(p), b && b.code].join(' ').toLowerCase(); };
     const byStatus = all.filter((r) => state.status === 'all' || (state.status === 'active' ? r.p.status !== 'closed' : r.p.status === 'closed'));
-    const rows = byStatus.filter((r) => (!state.phase || (r.m.current && r.m.current.key === state.phase)) && (!state.sales || keyOf(r.p) === state.sales));
+    const rows = byStatus.filter((r) => (!state.phase || (r.m.current && r.m.current.key === state.phase))
+      && (!state.sales || keyOf(r.p) === state.sales)
+      && (!state.pm || pmOf(r.p) === state.pm)
+      && (!state.health || healthOf(r) === state.health)
+      && (!q || q.split(/\s+/).every((w) => text(r.p).includes(w))));
+    const filtered = !!(state.phase || state.sales || state.pm || state.health || q);
     const activeRows = all.filter((r) => r.p.status !== 'closed');
     const salesLabel = (k) => (k === '-' ? 'ไม่ระบุ Sales' : 'Sales: ' + V.salesName(db.projects.find((p) => keyOf(p) === k)));
+    const pmLabel = (k) => (k === '-' ? 'ไม่ระบุ PM' : 'PM: ' + V.pmName(db.projects.find((p) => pmOf(p) === k)));
+    const opt = (v, label, cur) => `<option value="${esc(v)}"${cur === v ? ' selected' : ''}>${esc(label)}</option>`;
 
     el.innerHTML = `
       <div class="row">
         ${V.seg('status', [{ key: 'active', label: 'Active' }, { key: 'closed', label: 'Closed' }, { key: 'all', label: 'All' }], state.status)}
-        ${salesIds.length > 1 || state.sales ? `<select id="prj-sales" aria-label="Sales" style="width:auto"><option value="">Sales: ทุกคน</option>${salesIds.map((k) => `<option value="${esc(k)}"${state.sales === k ? ' selected' : ''}>${esc(salesLabel(k))}</option>`).join('')}</select>` : ''}
-        ${state.phase ? `<button class="btn sm" data-action="clear-phase">Phase: ${esc(U.phaseLabel(state.phase))} ✕</button>` : ''}
+        <input type="search" id="prj-q" placeholder="ค้นหา Project No. / ชื่อโครงการ / ลูกค้า / PM / Sales…" value="${esc(state.q)}" aria-label="ค้นหาโครงการ" style="width:300px">
         <span class="spacer"></span>
         <button class="btn primary fab" data-action="new" aria-label="New project"><span class="fab-i">+</span><span class="fab-t">New project</span></button>
+      </div>
+      <div class="row filter-row">
+        <select id="prj-phase" aria-label="Phase" style="width:auto">${opt('', 'Phase: ทั้งหมด', state.phase)}${PM.PHASES.map((ph) => opt(ph.key, 'Phase: ' + ph.label, state.phase)).join('')}</select>
+        <select id="prj-health" aria-label="สถานะโครงการ" style="width:auto">${opt('', 'สถานะ: ทั้งหมด', state.health)}${HEALTH.map((h) => opt(h.value, 'สถานะ: ' + h.label, state.health)).join('')}</select>
+        <select id="prj-pm" aria-label="Project Manager" style="width:auto">${opt('', 'PM: ทุกคน', state.pm)}${pmIds.map((k) => opt(k, pmLabel(k), state.pm)).join('')}</select>
+        <select id="prj-sales" aria-label="Sales" style="width:auto">${opt('', 'Sales: ทุกคน', state.sales)}${salesIds.map((k) => opt(k, salesLabel(k), state.sales)).join('')}</select>
+        ${filtered ? '<button class="btn sm" data-action="clear-filters">ล้างตัวกรอง ✕</button>' : ''}
       </div>
       ${V.flow(PM.PHASES.map((ph) => {
         const inPh = activeRows.filter((r) => r.m.current && r.m.current.key === ph.key);
@@ -31,8 +55,8 @@
           tip: `${ph.label}\nProjects currently in this phase: ${inPh.length}\nClick to filter` };
       }))}
       <div class="card">
-        <div class="card-h"><h2>Projects</h2><p>คลิกเพื่อดูรายละเอียด KPI · Quantity · Time · Cost · Quality · Safety</p></div>
-        <div class="card-b flush table-wrap">${table(rows)}</div>
+        <div class="card-h"><h2>Projects</h2><span class="chip" id="prj-count">${filtered ? `พบ ${rows.length} จาก ${byStatus.length} โครงการ` : `${rows.length} โครงการ`}</span><p>คลิกเพื่อดูรายละเอียด KPI · Quantity · Time · Cost · Quality · Safety</p></div>
+        <div class="card-b flush table-wrap">${table(rows, filtered)}</div>
       </div>
       <div class="grid cols-2">
         <div class="card"><div class="card-h"><h2>SPI by project</h2><p>Time — ≥ 0.95 On track · 0.90–0.95 At risk · &lt; 0.90 Off track</p></div><div class="card-b"><div class="chart" id="c-spi"></div></div></div>
@@ -50,8 +74,14 @@
     PM.charts.hbars(document.getElementById('c-cpi'), bar('cpi', 'CPI'));
 
     const rerender = () => PM.views.projects(el);
-    const ss = el.querySelector('#prj-sales');
-    if (ss) ss.onchange = () => { state.sales = ss.value; rerender(); };
+    [['#prj-sales', 'sales'], ['#prj-pm', 'pm'], ['#prj-phase', 'phase'], ['#prj-health', 'health']].forEach(([sel, k]) => {
+      el.querySelector(sel).onchange = (e) => { state[k] = e.target.value; rerender(); };
+    });
+    el.querySelector('#prj-q').addEventListener('input', (e) => {
+      state.q = e.target.value;
+      clearTimeout(state.t);
+      state.t = setTimeout(() => { rerender(); const i = el.querySelector('#prj-q'); i.focus(); i.setSelectionRange(i.value.length, i.value.length); }, 250);
+    });
     el.onclick = (e) => {
       const seg = e.target.closest('[data-seg]');
       if (seg) { state[seg.dataset.seg] = seg.dataset.val; rerender(); return; }
@@ -59,7 +89,7 @@
       if (a) {
         const act = a.dataset.action;
         if (act === 'new') V.projectForm(null, null, (p) => (location.hash = '#/projects/' + p.id));
-        if (act === 'clear-phase') { state.phase = ''; rerender(); }
+        if (act === 'clear-filters') { Object.assign(state, { phase: '', sales: '', pm: '', health: '', q: '' }); rerender(); }
         if (act.startsWith('phase:')) { const k = act.slice(6); state.phase = state.phase === k ? '' : k; rerender(); }
         return;
       }
@@ -68,8 +98,10 @@
     };
   };
 
-  function table(rows) {
-    if (!rows.length) return '<p class="empty">ไม่มีโครงการในมุมมองนี้</p>';
+  function table(rows, filtered) {
+    if (!rows.length) return filtered
+      ? '<p class="empty">ไม่พบโครงการที่ตรงกับคำค้นหา / ตัวกรอง — <button type="button" class="link-btn" data-action="clear-filters">ล้างตัวกรอง</button></p>'
+      : '<p class="empty">ไม่มีโครงการในมุมมองนี้</p>';
     return `<table class="tbl"><thead><tr>
       <th>Project</th><th>Client / PM / Sales</th><th class="num">Contract</th><th class="num">Plan / Actual cost</th><th>Phase</th><th style="min-width:170px">Progress (actual vs plan)</th>
       <th class="num">SPI</th><th class="num">CPI</th><th class="num">NCR open</th><th class="num">LTIFR</th><th>Finish</th><th>Health</th></tr></thead><tbody>

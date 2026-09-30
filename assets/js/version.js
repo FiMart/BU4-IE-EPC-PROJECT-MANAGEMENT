@@ -2,9 +2,25 @@
    When the website changes: bump PM.VERSION and add a new entry at the TOP of PM.CHANGELOG.
    type: 'feature' (ฟีเจอร์ใหม่) · 'improve' (ปรับปรุง) · 'fix' (แก้ไข) */
 (function () {
-  PM.VERSION = '1.17.1';
+  PM.VERSION = '1.19.0';
 
   PM.CHANGELOG = [
+    {
+      version: '1.19.0', date: '2026-09-30', type: 'feature', title: 'ค้นหาและกรองโครงการ',
+      items: [
+        'หน้า Projects: ช่องค้นหา — Project No., ชื่อโครงการ, ลูกค้า, ชื่อ PM, ชื่อ Sales, เลขที่ Bid (พิมพ์หลายคำได้)',
+        'ตัวกรอง Phase · สถานะ (On track / At risk / Off track / On hold) · Project Manager · Sales — ใช้ร่วมกับ Active / Closed / All ได้',
+        'แสดงจำนวนที่พบ (เช่น "พบ 2 จาก 5 โครงการ") และปุ่ม "ล้างตัวกรอง" · ระบบจำตัวกรองไว้เมื่อเปิดหน้าใหม่ (ยกเว้นคำค้นหา)',
+      ],
+    },
+    {
+      version: '1.18.0', date: '2026-09-30', type: 'feature', title: 'Admin ลบบัญชีผู้ใช้ได้',
+      items: [
+        'Settings → จัดการ Role ผู้ใช้: ปุ่ม "ลบผู้ใช้" แสดงเฉพาะ Admin — ลบบัญชีของตัวเองไม่ได้ และถามยืนยันก่อนลบ',
+        'Project Manager, Engineer, Technician ลบผู้ใช้ไม่ได้ — ฐานข้อมูลตรวจซ้ำ (ฟังก์ชัน admin_delete_user ใน supabase/roles.sql — ต้องรันไฟล์นี้อีกครั้ง)',
+        'ข้อมูลโครงการ / Timesheet / งาน / ไฟล์ที่ผู้ใช้นั้นเคยบันทึกไว้ยังอยู่ครบหลังลบบัญชี',
+      ],
+    },
     {
       version: '1.17.1', date: '2026-09-30', type: 'fix', title: 'Project Manager แก้ไข Role Admin ไม่ได้ (ป้องกัน 3 ชั้น)',
       items: [

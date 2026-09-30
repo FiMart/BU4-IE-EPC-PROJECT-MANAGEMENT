@@ -40,7 +40,7 @@
 
       ${canRoles ? `<div class="card">
         <div class="card-h"><h2>จัดการ Role ผู้ใช้</h2><span class="chip">Admin · Project Manager</span><span class="spacer"></span><button class="btn sm" data-action="reload-users">รีเฟรช</button>
-          <p>ผู้สมัครใหม่จะได้ Role เป็น Technician อัตโนมัติ — เปลี่ยน Role ได้จากตารางนี้ (บันทึกทันที)${A.role === 'project_manager' ? ' · Project Manager ตั้ง Role เป็น Project Manager / Engineer / Technician ให้คนอื่นได้ แต่เปลี่ยน Admin, ตั้งเป็น Admin หรือเปลี่ยน Role ของตัวเองไม่ได้' : ''}</p></div>
+          <p>ผู้สมัครใหม่จะได้ Role เป็น Technician อัตโนมัติ — เปลี่ยน Role ได้จากตารางนี้ (บันทึกทันที)${A.role === 'project_manager' ? ' · Project Manager ตั้ง Role เป็น Project Manager / Engineer / Technician ให้คนอื่นได้ แต่เปลี่ยน Admin, ตั้งเป็น Admin หรือเปลี่ยน Role ของตัวเองไม่ได้' : ''}${PM.can('users.delete') ? ' · ลบบัญชีผู้ใช้ได้เฉพาะ Admin' : ''}</p></div>
         <div class="card-b flush table-wrap" id="user-roles"><p class="empty">กำลังโหลดรายชื่อผู้ใช้…</p></div>
       </div>` : ''}
 
@@ -162,6 +162,7 @@
       const act = a.dataset.action;
       if (act === 'logout') A.signOut();
       if (act === 'reload-users') loadUsers(el);
+      if (act === 'delete-user') deleteUser(el, a);
       if (act === 'sync-now') {
         a.disabled = true;
         PM.cloud.sync(false).then(() => { U.toast(PM.cloud.state === 'saved' ? 'ซิงค์กับ Cloud แล้ว' : 'ซิงค์ไม่สำเร็จ'); PM.applyAsOf(); PM.render(); });
@@ -218,15 +219,34 @@
       const users = await PM.roles.list();
       if (!el.contains(box)) return;
       const me = PM.auth.user && PM.auth.user.id;
-      box.innerHTML = users.length ? `<table class="tbl"><thead><tr><th>ผู้ใช้</th><th>อีเมล</th><th>สมัครเมื่อ</th><th style="min-width:190px">Role</th></tr></thead><tbody>
+      const canDelete = PM.can('users.delete'); // Admin only — the column isn't shown to anyone else
+      box.innerHTML = users.length ? `<table class="tbl"><thead><tr><th>ผู้ใช้</th><th>อีเมล</th><th>สมัครเมื่อ</th><th style="min-width:190px">Role</th>${canDelete ? '<th></th>' : ''}</tr></thead><tbody>
         ${users.map((u) => `<tr>
           <td><span class="title">${esc(u.full_name || '–')}</span>${u.id === me ? '<small>(คุณ)</small>' : ''}</td>
           <td>${esc(u.email || '')}</td>
           <td>${u.created_at ? U.date(u.created_at.slice(0, 10)) : '–'}</td>
-          <td>${roleCell(u, me)}</td></tr>`).join('')}
+          <td>${roleCell(u, me)}</td>
+          ${canDelete ? `<td>${u.id === me ? '' : `<button type="button" class="btn sm danger" data-action="delete-user" data-id="${esc(u.id)}" data-name="${esc(u.full_name || u.email || '')}" data-email="${esc(u.email || '')}">ลบผู้ใช้</button>`}</td>` : ''}</tr>`).join('')}
         </tbody></table>` : '<p class="empty">ยังไม่มีผู้ใช้</p>';
     } catch (err) {
       box.innerHTML = `<div class="card-b"><div class="auth-msg error">${esc(err.message)}</div></div>`;
+    }
+  }
+
+  /* delete an account — Admin only (the database checks again) */
+  async function deleteUser(el, btn) {
+    if (!PM.can('users.delete')) return;
+    const name = btn.dataset.name, email = btn.dataset.email;
+    if (!confirm(`ลบบัญชีผู้ใช้ "${name}"${email && email !== name ? ` (${email})` : ''}?\n\nคนนี้จะเข้าสู่ระบบไม่ได้อีก และลบคืนไม่ได้\nข้อมูลโครงการ / Timesheet / งานที่เคยบันทึกไว้จะยังอยู่ครบ`)) return;
+    btn.disabled = true; btn.classList.add('loading');
+    try {
+      await PM.roles.remove(btn.dataset.id);
+      U.toast(`ลบบัญชี ${name} แล้ว`);
+      PM.roles.loadTeam();
+      loadUsers(el);
+    } catch (err) {
+      btn.disabled = false; btn.classList.remove('loading');
+      alert(err.message);
     }
   }
 

@@ -71,6 +71,7 @@ Web app สำหรับบริหารโครงการแบบ EPC (
 | สร้าง / แก้ไข PO และแนบไฟล์ (ทุกคนดู / ดาวน์โหลดได้) | ✓ | ✓ | ✓ | – |
 | บันทึก / แก้ไขค่าใช้จ่ายโครงการ (ทุกคนดูได้) | ✓ | ✓ | – | – |
 | กำหนด Role ให้ผู้ใช้ | ✓ | ✓ (ยกเว้น Admin / ตัวเอง) | – | – |
+| ลบบัญชีผู้ใช้ (ยกเว้นบัญชีตัวเอง) — Settings → จัดการ Role ผู้ใช้ | ✓ | – | – | – |
 
 ปรับตารางสิทธิ์ได้ที่ `PM.PERMISSIONS` ใน `assets/js/roles.js`
 
@@ -100,7 +101,7 @@ Web app สำหรับบริหารโครงการแบบ EPC (
 | --- | --- | --- |
 | **Dashboard** | สรุป 3 ส่วน: Bidding · Execution · Resource | ทั้งหมดในหน้าเดียว |
 | **Bidding** (Before Award) | Board / Table: Inquiry → Estimate → Proposal → Submit → Won/Lost, สร้าง Project จาก bid ที่ชนะได้ทันที · แต่ละ bid มี **Sales ผู้หาลูกค้า** (พิมพ์ชื่อเองหรือเลือกจากรายชื่อ — ถ้าชื่อตรงกับพนักงาน/บัญชีผู้ใช้จะผูกกับคนนั้น ถ้าไม่ตรงจะเก็บเป็นชื่อที่พิมพ์), ที่มาของงาน (Lead source), ผู้ติดต่อฝั่งลูกค้า, **ไฟล์แนบ** (ใบเสนอราคาที่ส่งให้ลูกค้า / เอกสาร Inquiry — กด 📎 บนการ์ดเพื่อเปิดดู) · กรองตาม Sales | **Quantity**: จำนวน inquiry, proposal, BOQ items · **Time**: วันเฉลี่ยในแต่ละ stage, cycle time, on-time submission · Win rate · **ผลงาน Sales** (inquiry, win rate, won value, pipeline, โครงการที่รับผิดชอบ) |
-| **Projects (EPC)** | ทุกโครงการพร้อม phase ปัจจุบัน, progress plan vs actual, SPI/CPI, PM / Sales ผู้รับผิดชอบ (กรองตาม Sales ได้) | Portfolio health |
+| **Projects (EPC)** | ทุกโครงการพร้อม phase ปัจจุบัน, progress plan vs actual, SPI/CPI, PM / Sales ผู้รับผิดชอบ · **ค้นหา** (Project No. / ชื่อ / ลูกค้า / PM / Sales / Bid) และ**กรอง**ตาม Phase, สถานะ, PM, Sales | Portfolio health |
 | **Project detail** | EPC phases (update progress / quantity / plan cost), S-Curve, **ค่าใช้จ่าย** (บันทึกทีละรายการ: วันที่ · รายการ · จำนวนเงิน · phase · หมวด · ผู้ขาย · เลขที่เอกสาร · อ้างอิง PO, Export CSV, กราฟต้นทุนสะสม PV / EV / AC), NCR log, Safety รายเดือน, ชั่วโมงทีมงาน | **Quantity** · **Time** (SPI) · **Cost** (CPI, EAC — Actual cost = ผลรวมรายการค่าใช้จ่าย) · **Quality** (NCR) · **Safety** (LTIFR, TRIR) |
 | **Purchase Orders** | PO ของทุกโครงการ (หน้า Purchase Orders + แท็บ PO ในแต่ละโครงการ): ผู้ขาย · รายการ · มูลค่า · วันที่ PO · กำหนดส่ง · สถานะ · จ่ายแล้ว · **ไฟล์แนบ** (PDF/รูป/Excel/Word ≤ 20 MB, เก็บใน Supabase Storage) | มูลค่า PO (Committed) เทียบ Plan cost · เลยกำหนดส่ง · ส่งภายใน 14 วัน · % จ่ายแล้ว — สรุปบน Dashboard |
 | **Weekly Plan** | วางแผนงานรายสัปดาห์ (งาน · โครงการ/bid · phase · ผู้รับผิดชอบ · ชั่วโมง · ปริมาณ · กำหนดเสร็จ), อัปเดตสถานะ Planned → In progress → Done / Not done + สาเหตุ, ยกงานค้างไปสัปดาห์ถัดไป, ดูภาระงานรายคน, ดึงเป็นแถวใน Timesheet | **PPC** = งานเสร็จ ÷ งานในแผน (เป้า ≥ 80%), สาเหตุงานไม่เสร็จ, ชั่วโมงตามแผน vs capacity |
