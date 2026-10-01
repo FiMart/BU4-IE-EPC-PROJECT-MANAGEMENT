@@ -7,7 +7,7 @@
   const U = PM.ui;
   const C = (PM.cloud = { enabled: false, state: 'idle', blocking: false });
   const TABLE = 'app_records';
-  const COLLS = ['bids', 'projects', 'ncrs', 'safety', 'resources', 'levels', 'timesheets', 'plans', 'pos', 'costs'];
+  const COLLS = ['bids', 'projects', 'ncrs', 'safety', 'resources', 'levels', 'timesheets', 'plans', 'pos', 'costs', 'prices'];
   // collections accepted by every version of data.sql
   const LEGACY = ['bids', 'projects', 'ncrs', 'safety', 'resources', 'levels', 'timesheets'];
   /* Collections the cloud table doesn't accept yet (older data.sql): their records are "parked" as
@@ -65,17 +65,20 @@
     return false;
   }
 
+  /* collections this role may not write (data.sql refuses them too): never sent, the cloud copy wins on the next load */
+  const readOnly = (c) => c === 'timesheets' && !PM.can('timesheet.edit');
+
   function diff() {
     const cur = {}, ups = [];
     records(PM.db).forEach((r) => {
       const k = key(r.collection, r.id), h = hash(JSON.stringify(r.data));
       cur[k] = 1;
-      if (base[k] !== h) {
+      if (base[k] !== h && !readOnly(r.collection)) {
         if (ords[k] == null) ords[k] = nextOrd();
         ups.push({ row: { collection: r.collection, id: r.id, data: r.data, ord: ords[k] }, k, h });
       }
     });
-    return { ups, dels: Object.keys(base).filter((k) => !cur[k]) };
+    return { ups, dels: Object.keys(base).filter((k) => !cur[k] && !readOnly(k.slice(0, k.indexOf('|')))) };
   }
   const hasLocalChanges = () => { const d = diff(); return d.ups.length + d.dels.length > 0; };
 

@@ -2,6 +2,7 @@
 (function () {
   const U = PM.ui, V = PM.common, esc = U.esc;
   const state = U.keep('bidding', { period: '12m', mode: 'kanban', q: '', sales: '' }, ['period', 'mode', 'sales']); // sales: '' = everyone, '-' = no salesperson
+  PM.biddingState = state; // the step pages (bid-stage.js) share the period / Sales / search filters
 
   PM.views.bidding = function (el) {
     const db = PM.db, T = PM.today();
@@ -23,6 +24,7 @@
     const salesOpt = (id, label) => `<option value="${esc(id)}"${state.sales === id ? ' selected' : ''}>${esc(label)}</option>`;
 
     el.innerHTML = `
+      ${V.bidTabs('')}
       <div class="row">
         ${V.seg('period', V.periods, state.period)}
         ${V.seg('mode', [{ key: 'kanban', label: 'Board' }, { key: 'table', label: 'Table' }], state.mode)}
@@ -32,11 +34,11 @@
         <button class="btn primary fab" data-action="new" aria-label="New inquiry"><span class="fab-i">+</span><span class="fab-t">New inquiry</span></button>
       </div>
       ${V.flow(PM.BID_STAGES.map((s, i) => ({
-        label: s.label, th: s.th,
+        label: s.label, th: s.th, href: '#/bidding/' + s.key,
         big: `${bs.reached[s.key]} <small class="muted" style="font-size:12px">งาน</small>`,
         meta: `avg ${U.days(bs.stageDays[i].avg)} ${i === 3 ? '→ award' : 'in stage'}`,
-        tip: `${s.label}\nBids reaching this stage: ${bs.reached[s.key]}\nConversion from Inquiry: ${U.pct(bs.total ? bs.reached[s.key] / bs.total : null)}\nAvg time: ${U.days(bs.stageDays[i].avg)}`,
-      })).concat([{ n: '→', label: 'Award', th: 'Won / Lost / No-bid', big: `${bs.won} <small class="muted" style="font-size:12px">/ ${bs.lost} / ${bs.nobid}</small>`, meta: `Win rate ${U.pct(bs.winRate)}` }]))}
+        tip: `${s.label}\nBids reaching this stage: ${bs.reached[s.key]}\nConversion from Inquiry: ${U.pct(bs.total ? bs.reached[s.key] / bs.total : null)}\nAvg time: ${U.days(bs.stageDays[i].avg)}\nคลิกเพื่อเปิดหน้า ${s.label}`,
+      })).concat([{ n: '→', label: 'Award', th: 'Won / Lost / No-bid', href: '#/bidding/award', big: `${bs.won} <small class="muted" style="font-size:12px">/ ${bs.lost} / ${bs.nobid}</small>`, meta: `Win rate ${U.pct(bs.winRate)}` }]))}
       <div class="grid cols-6">
         ${V.tile({ label: 'Inquiries received', tag: 'Quantity', value: bs.total, sub: `${bs.pipeline} ยังอยู่ระหว่างดำเนินการ` })}
         ${V.tile({ label: 'Proposals submitted', tag: 'Quantity', value: bs.submitted, sub: `Submit ratio ${U.pct(bs.total ? bs.submitted / bs.total : null)}` })}
@@ -59,6 +61,7 @@
       </div>
       <div class="card"><div class="card-h"><h2>ที่มาของงาน (Lead source)</h2><p>จำนวน Inquiry และ Win rate แยกตามช่องทางที่ได้งานมา</p></div><div class="card-b"><div class="chart" id="c-source"></div></div></div>`;
 
+    V.bindFlowLinks(el); // each step opens its own page
     if (state.flash) {
       const moved = el.querySelector('.kcard.flash');
       if (moved) moved.scrollIntoView({ block: 'nearest', inline: 'nearest', behavior: 'smooth' });
@@ -107,29 +110,9 @@
       if (act) {
         const b = act.dataset.id && PM.find('bids', act.dataset.id);
         const a = act.dataset.action;
-        if (a === 'bid-files' && b) { // 📎 on a card / row: open the attachments list (one file → open it directly)
-          if ((b.files || []).length === 1) PM.poFiles.open(b.files[0].path);
-          else PM.poFiles.showList(`ไฟล์แนบ — ${b.code}`, b.files);
-          return;
-        }
         if (a === 'new') V.bidForm(null, rerender);
-        if (a === 'next' && b) {
-          const i = PM.BID_STAGES.findIndex((s) => s.key === b.stage);
-          const nx = PM.BID_STAGES[i + 1];
-          b.dates[nx.key] = PM.max(T, b.dates[b.stage]);
-          b.stage = nx.key;
-          PM.upsert('bids', b);
-          state.flash = b.id;
-          U.toast(`${b.code} → ${nx.label}`);
-          rerender();
-        }
-        if ((a === 'won' || a === 'lost') && b) {
-          b.result = a; b.resultDate = T; PM.upsert('bids', b);
-          if (a === 'won' && confirm(`${b.code} ได้งานแล้ว — สร้าง Project จาก bid นี้เลยหรือไม่?`)) V.projectForm(null, b, (p) => (location.hash = '#/projects/' + p.id));
-          rerender();
-        }
-        if (a === 'convert' && b) V.projectForm(null, b, (p) => (location.hash = '#/projects/' + p.id));
-        if (a === 'open-project' && b) location.hash = '#/projects/' + b.projectId;
+        if (a === 'next' && b) state.flash = b.id; // the moved card is highlighted and scrolled into view
+        V.bidAction(a, b, rerender);
         return;
       }
       const card = e.target.closest('[data-bid]');
@@ -140,19 +123,13 @@
   function kanban(cols, hoursBy) {
     return `<div class="kanban">${cols.map((c) => `
       <div class="kcol">
-        <div class="kcol-h" style="flex-wrap:wrap">${esc(c.label)}<span class="count">${c.items.length}</span><span class="sum">${esc(c.th)} · ${U.money(PM.sum(c.items, (b) => b.value))}</span></div>
+        <div class="kcol-h" style="flex-wrap:wrap">${PM.illus.icon(c.key, 'kc-ic')}<a class="kcol-link" href="#/bidding/${c.key === 'won' || c.key === 'lost' ? 'award' : c.key}" title="เปิดหน้า ${esc(c.label)}">${esc(c.label)} →</a><span class="count">${c.items.length}</span><span class="sum">${esc(c.th)} · ${U.money(PM.sum(c.items, (b) => b.value))}</span></div>
         ${c.items.map((b, k) => card(b, c.key, hoursBy, k)).join('') || '<p class="empty">—</p>'}
       </div>`).join('')}</div>`;
   }
 
   function card(b, col, hoursBy, k) {
-    const stageIdx = PM.BID_STAGES.findIndex((s) => s.key === b.stage);
-    let actions = '';
-    if (b.result === 'pending' && stageIdx < 3) actions = `<button class="btn sm" data-action="next" data-id="${b.id}">→ ${PM.BID_STAGES[stageIdx + 1].label}</button>`;
-    else if (b.result === 'pending') actions = `<button class="btn sm good" data-action="won" data-id="${b.id}">✓ Won</button><button class="btn sm" data-action="lost" data-id="${b.id}">✕ Lost</button>`;
-    else if (b.result === 'won') actions = b.projectId && PM.find('projects', b.projectId)
-      ? `<button class="btn sm" data-action="open-project" data-id="${b.id}">Open project →</button>`
-      : `<button class="btn sm primary" data-action="convert" data-id="${b.id}">+ Create project</button>`;
+    const actions = V.bidButtons(b);
     const age = PM.diffDays(b.dates[b.stage], PM.today());
     const flash = state.flash === b.id ? ' flash' : '';
     return `<div class="kcard${flash}" style="--k:${k}" data-bid="${b.id}">

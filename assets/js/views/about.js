@@ -83,5 +83,7 @@
     b.textContent = isNew ? 'ใหม่' : 'v' + PM.VERSION;
     b.classList.toggle('new', isNew);
     b.title = isNew ? `มีอัปเดตใหม่ v${PM.VERSION}` : `เวอร์ชัน ${PM.VERSION}`;
+    const more = document.getElementById('tab-more'); // bottom tab bar: About lives under "เพิ่มเติม"
+    if (more) more.classList.toggle('has-new', isNew);
   };
 })();

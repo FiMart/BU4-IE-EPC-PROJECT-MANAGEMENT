@@ -14,6 +14,9 @@
     { key: 'proposal', label: 'Proposal', th: 'จัดทำข้อเสนอ' },
     { key: 'submit', label: 'Submit', th: 'ยื่นใบเสนอราคา / รอผล' },
   ];
+  PM.bidStageLabel = (key) => { const s = PM.BID_STAGES.find((x) => x.key === key); return s ? s.label : ''; };
+  /* the stage a bid was in on a given date (the last stage that had started by then) */
+  PM.bidStageAt = (b, date) => { let s = 'inquiry'; PM.BID_STAGES.forEach((x) => { if (b.dates[x.key] && b.dates[x.key] <= date) s = x.key; }); return s; };
   PM.BID_RESULTS = { pending: 'Pending', won: 'Won', lost: 'Lost', nobid: 'No-bid' };
   PM.SECTORS = ['Industrial', 'Energy', 'Oil & Gas', 'Infrastructure', 'Building'];
   PM.SCOPES = ['EPC', 'EP', 'E', 'C', 'Design & Build'];
@@ -66,6 +69,21 @@
     { key: 'cancelled', label: 'Cancelled', th: 'ยกเลิก', level: 'neutral' },
   ];
   PM.PO_CATEGORIES = ['Equipment', 'Material', 'Subcontract', 'Service', 'Rental', 'Other'];
+
+  /* Price List / Vendor Cost — one record = one vendor's price for one item (prices.js) */
+  PM.PRICE_UNITS = ['ea', 'pcs', 'set', 'lot', 'm', 'm²', 'm³', 'kg', 't', 'roll', 'man-day', 'day', 'month', 'hr'];
+  PM.CURRENCIES = ['THB', 'USD', 'EUR', 'CNY', 'JPY'];
+  PM.PRICE_EXPIRING_DAYS = 30;
+  /* validity of a quoted price on date T: valid · expiring (≤ 30 days left) · expired · open (no end date) */
+  PM.priceStatus = function (p, T) {
+    if (!p.validUntil) return { key: 'open', level: 'neutral', th: 'ไม่ระบุวันหมดอายุ' };
+    const left = PM.diffDays(T, p.validUntil);
+    if (left < 0) return { key: 'expired', level: 'critical', th: `หมดอายุแล้ว ${-left} วัน`, left };
+    if (left <= PM.PRICE_EXPIRING_DAYS) return { key: 'expiring', level: 'warning', th: `เหลือ ${left} วัน`, left };
+    return { key: 'valid', level: 'good', th: 'ใช้ได้', left };
+  };
+  /* the same item quoted by different vendors: item code if given, otherwise name + unit */
+  PM.priceItemKey = (p) => (String(p.code || '').trim() ? 'c:' + String(p.code).trim().toLowerCase() : 'n:' + PM.normName(p.name) + '|' + (p.unit || '')) + '|' + (p.currency || 'THB');
   const PO_OPEN = ['issued', 'confirmed', 'partial'];
   PM.poStatus = (k) => PM.PO_STATUS.find((s) => s.key === k) || PM.PO_STATUS[0];
   PM.poIsCommitted = (po) => po.status !== 'draft' && po.status !== 'cancelled';
@@ -169,7 +187,7 @@
   };
   /* data saved by older versions may miss newer collections */
   PM.ensureShape = () => {
-    ['bids', 'projects', 'ncrs', 'safety', 'resources', 'levels', 'timesheets', 'plans', 'pos', 'costs'].forEach((c) => { if (!Array.isArray(PM.db[c])) PM.db[c] = []; });
+    ['bids', 'projects', 'ncrs', 'safety', 'resources', 'levels', 'timesheets', 'plans', 'pos', 'costs', 'prices'].forEach((c) => { if (!Array.isArray(PM.db[c])) PM.db[c] = []; });
     // projects from before the expense ledger: carry the typed-in actual cost over as one "opening balance" entry per phase
     // (fixed ids, so two browsers doing this at the same time create the same records)
     PM.db.projects.forEach((p) => {
@@ -212,7 +230,7 @@
   PM.emptyDb = () => ({
     meta: { version: 1, company: PM.COMPANY, created: PM.today() },
     levels: PM.PERSON_LEVELS.map((l) => Object.assign({}, l)),
-    resources: [], bids: [], projects: [], ncrs: [], safety: [], timesheets: [], plans: [], pos: [], costs: [],
+    resources: [], bids: [], projects: [], ncrs: [], safety: [], timesheets: [], plans: [], pos: [], costs: [], prices: [],
   });
 
   /* Build the 4 EPC phases for a new project from its dates and budget */
@@ -660,7 +678,7 @@
         Object.keys(bucket).forEach((k) => {
           const [kind, ref, phase] = a[k];
           if (ref === '*') {
-            if (openBids.length) push(kind, pick(openBids).id, phase, bucket[k]);
+            if (openBids.length) { const b = pick(openBids); push(kind, b.id, kind === 'bid' ? PM.bidStageAt(b, d) : phase, bucket[k]); }
             else push('overhead', 'admin', '', bucket[k]);
           } else push(kind, ref, phase, bucket[k]);
         });
@@ -813,6 +831,37 @@
       if (b.result === 'won') customers.add(b.client);
     });
     db.projects.forEach((p) => { const b = db.bids.find((x) => x.id === p.bidId); if (b) { p.sales = b.sales; p.salesName = b.salesName; } });
+
+    /* price list — 2–3 vendors per item, some quotes renewed (price history), some expiring / expired */
+    const PRICE_ITEMS = [
+      ['EL-TR-1000', 'Transformer 22/0.4 kV 1,000 kVA', 'Oil type, ONAN, Dyn11', 'Equipment', 'set', 1650000, [0, 7]],
+      ['EL-CB-240', 'Cable XLPE 0.6/1 kV 1C × 240 mm²', 'Copper, IEC 60502-1', 'Material', 'm', 1180, [1, 7, 3]],
+      ['EL-CT-300', 'Cable tray 300 mm HDG', 'Ladder type, 2.0 mm, with cover', 'Material', 'm', 760, [2, 1]],
+      ['EL-MCC-01', 'MCC panel 400 V, 12 feeders', 'Form 3b, IP54', 'Equipment', 'set', 980000, [0, 8]],
+      ['ST-FAB-01', 'Steel structure — fabricated & painted', 'SS400, epoxy paint system', 'Material', 't', 68000, [2, 8]],
+      ['CV-RMC-240', 'Ready-mixed concrete 240 ksc (cube)', 'Slump 10 ± 2.5 cm', 'Material', 'm³', 2350, [5, 2]],
+      ['ME-GV-6', 'Gate valve 6" Class 150', 'WCB body, flanged RF', 'Material', 'pcs', 24500, [4, 3]],
+      ['SV-SCF-01', 'Scaffolding rental (frame set)', 'Including erection & dismantling', 'Rental', 'month', 450, [6, 8]],
+      ['SV-CRN-50', 'Mobile crane 50 t with operator', '8 hours / day', 'Rental', 'day', 18500, [6, 8, 2]],
+      ['SC-EL-INS', 'Electrical installation labour', 'Technician team, incl. tools', 'Subcontract', 'man-day', 1450, [8, 0]],
+      ['SV-TC-01', 'Testing & commissioning — MV system', 'Incl. test report', 'Service', 'lot', 185000, [3, 8]],
+      ['PV-MOD-550', 'Solar PV module 550 Wp', 'Mono PERC, Tier 1', 'Equipment', 'pcs', 3650, [7, 0]],
+    ];
+    db.prices = [];
+    PRICE_ITEMS.forEach(([code, name, spec, category, unit, base, vendors], ii) => {
+      vendors.forEach((vi, k) => {
+        const quoteDate = PM.addDays(T, -ri(10, 200));
+        const validUntil = PM.addDays(quoteDate, pick([90, 180, 270, 365]));
+        const price = Math.round(base * rnd(0.92, 1.12) / (base > 10000 ? 100 : 1)) * (base > 10000 ? 100 : 1);
+        const history = R() < 0.45 ? [{ date: PM.addDays(quoteDate, -ri(90, 240)), price: Math.round(price * rnd(0.9, 1.05)), quoteRef: '', by: '' }] : [];
+        db.prices.push({
+          id: 'PL' + (db.prices.length + 1), code, name, spec, category, unit, vendor: SUPPLIERS[vi], contact: '',
+          price, currency: 'THB', moq: unit === 'm' ? 100 : 1, leadTime: pick([7, 14, 21, 30, 45, 60]),
+          quoteRef: `QT-${quoteDate.slice(2, 4)}${quoteDate.slice(5, 7)}-${String(ii * 3 + k + 1).padStart(3, '0')}`, quoteDate, validUntil,
+          note: '', files: [], history, updatedAt: quoteDate, updatedByName: '',
+        });
+      });
+    });
     return db;
   };
 })();

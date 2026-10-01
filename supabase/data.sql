@@ -5,7 +5,8 @@
 --
 -- Every record of the app (bids, projects, NCR, safety, people, levels, timesheets, weekly plans, POs, expenses, meta)
 -- is stored as one row: (collection, id) → data (jsonb).
---  - Any signed-in user who has a role (row in public.profiles) can read & edit records.
+--  - Any signed-in user who has a role (row in public.profiles) can read & edit records
+--    (except timesheets: Project Manager only — see can_write_record()).
 --  - Bulk replace (Reset / Import) goes through app_replace_all() — Admin & Project Manager only.
 --  - PO file attachments: private Storage bucket "po-files" (section at the end).
 -- =====================================================================
@@ -45,13 +46,20 @@ drop policy if exists "records: read"   on public.app_records;
 drop policy if exists "records: insert" on public.app_records;
 drop policy if exists "records: update" on public.app_records;
 drop policy if exists "records: delete" on public.app_records;
+-- Timesheet entries can only be written by a Project Manager (everyone with a role can read them;
+-- Reset / Import by Admin still works through app_replace_all below)
+create or replace function public.can_write_record(coll text)
+returns boolean language sql stable security definer set search_path = public as $$
+  select public.has_app_role() and (coll <> 'timesheets' or public.is_project_manager());
+$$;
+
 create policy "records: read"   on public.app_records for select to authenticated using (public.has_app_role());
-create policy "records: insert" on public.app_records for insert to authenticated with check (public.has_app_role());
-create policy "records: update" on public.app_records for update to authenticated using (public.has_app_role()) with check (public.has_app_role());
+create policy "records: insert" on public.app_records for insert to authenticated with check (public.can_write_record(collection));
+create policy "records: update" on public.app_records for update to authenticated using (public.can_write_record(collection)) with check (public.can_write_record(collection));
 -- Weekly Plan tasks can only be deleted by the person who created them
 -- (tasks without a recorded creator — older data / demo — only by Admin)
 create policy "records: delete" on public.app_records for delete to authenticated using (
-  public.has_app_role() and (
+  public.can_write_record(collection) and (
     collection <> 'plans'
     or data ->> 'createdBy' = auth.uid()::text
     or (coalesce(data ->> 'createdBy', '') = '' and public.is_admin())

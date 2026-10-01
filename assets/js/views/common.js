@@ -3,21 +3,27 @@
   const U = PM.ui, esc = U.esc;
   const V = (PM.common = {});
 
-  V.tile = ({ label, tag, value, sub, tip }) =>
-    `<div class="tile"${tip ? ` data-tip="${esc(tip)}"` : ''}>
+  /* icon: a PM.illus key, false = none; default = picked from the label / tag */
+  V.tile = ({ label, tag, value, sub, tip, icon }) => {
+    const ic = icon === false ? '' : PM.illus.icon(icon || PM.illus.pick(`${label} ${tag || ''}`), 'tile-ic');
+    return `<div class="tile${ic ? ' has-ic' : ''}"${tip ? ` data-tip="${esc(tip)}"` : ''}>${ic}
       <div class="tile-label">${esc(label)}${tag ? `<span class="tag">${esc(tag)}</span>` : ''}</div>
       <div class="tile-value">${value}</div>
       <div class="tile-sub">${sub || ''}</div>
     </div>`;
+  };
 
   const ARROW = '<div class="flow-arrow" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M5 12h14M13 6l6 6-6 6"/></svg></div>';
+  // each step shows the picture of its stage / phase (Inquiry … Award, Engineering … Closing)
   V.flow = (steps) =>
-    `<div class="flow">${steps.map((s, i) =>
-      `${i ? ARROW : ''}<div class="flow-step${s.href || s.action ? ' link' : ''}${s.active ? ' active' : ''}"${s.href ? ` data-href="${esc(s.href)}"` : ''}${s.action ? ` data-action="${esc(s.action)}"` : ''}${s.key ? ` data-key="${esc(s.key)}"` : ''}${s.tip ? ` data-tip="${esc(s.tip)}"` : ''}>
+    `<div class="flow">${steps.map((s, i) => {
+      const ic = PM.illus.icon(s.icon || String(s.label).toLowerCase(), 'flow-ic');
+      return `${i ? ARROW : ''}<div class="flow-step${ic ? ' has-ic' : ''}${s.href || s.action ? ' link' : ''}${s.active ? ' active' : ''}"${s.href ? ` data-href="${esc(s.href)}"` : ''}${s.action ? ` data-action="${esc(s.action)}"` : ''}${s.key ? ` data-key="${esc(s.key)}"` : ''}${s.tip ? ` data-tip="${esc(s.tip)}"` : ''}>${ic}
         <div class="n">${esc(s.n || String(i + 1).padStart(2, '0'))}</div>
         <b>${esc(s.label)}</b><div class="th">${esc(s.th || '')}</div>
         <div class="big">${s.big}</div><div class="meta">${s.meta || ''}</div>
-      </div>`).join('')}</div>`;
+      </div>`;
+    }).join('')}</div>`;
 
   V.bindFlowLinks = (el) => el.querySelectorAll('.flow-step[data-href]').forEach((s) => s.addEventListener('click', () => (location.hash = s.dataset.href)));
 
@@ -63,6 +69,58 @@
       <button class="btn wk-today${diff === 0 ? ' is-current' : ''}" type="button" data-action="this" ${diff === 0 ? 'aria-pressed="true" title="กำลังดูสัปดาห์นี้"' : 'title="กลับไปสัปดาห์ปัจจุบัน"'}>
         <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="5" width="17" height="15.5" rx="2"/><path d="M3.5 9.5h17M8 3v4M16 3v4"/><circle cx="12" cy="15" r="1.6" fill="currentColor" stroke="none"/></svg>
         สัปดาห์นี้</button>`;
+  };
+
+  /* tabs on the Bidding pages: overview + one page per step (count = bids in that step now) */
+  V.bidTabs = function (active) {
+    const pending = PM.db.bids.filter((b) => b.result === 'pending');
+    const tabs = [{ key: '', label: 'ภาพรวม', icon: 'chart', href: '#/bidding' }]
+      .concat(PM.BID_STAGES.map((s) => ({ key: s.key, label: s.label, icon: s.key, href: '#/bidding/' + s.key, n: pending.filter((b) => b.stage === s.key).length })))
+      .concat([{ key: 'award', label: 'Award', icon: 'award', href: '#/bidding/award' }]);
+    return `<nav class="tabs bid-tabs" aria-label="ขั้นตอน Bidding">${tabs.map((t) =>
+      `<a href="${t.href}" class="${t.key === active ? 'active' : ''}"${t.key === active ? ' aria-current="page"' : ''}>${PM.illus.svg(t.icon)}<span>${esc(t.label)}</span>${t.n != null ? `<em class="count">${t.n}</em>` : ''}</a>`).join('')}</nav>`;
+  };
+
+  /* buttons on a bid (card, row): data-action + data-id. Returns true when handled; done() redraws the page */
+  V.bidButtons = function (b) {
+    const i = PM.BID_STAGES.findIndex((s) => s.key === b.stage);
+    const id = esc(b.id);
+    if (b.result === 'pending' && i < PM.BID_STAGES.length - 1) return `<button class="btn sm" data-action="next" data-id="${id}">→ ${PM.BID_STAGES[i + 1].label}</button>`;
+    if (b.result === 'pending') return `<button class="btn sm good" data-action="won" data-id="${id}">✓ Won</button><button class="btn sm" data-action="lost" data-id="${id}">✕ Lost</button>`;
+    if (b.result === 'won') return b.projectId && PM.find('projects', b.projectId)
+      ? `<button class="btn sm" data-action="open-project" data-id="${id}">Open project →</button>`
+      : `<button class="btn sm primary" data-action="convert" data-id="${id}">+ Create project</button>`;
+    return '';
+  };
+  V.bidAction = function (a, b, done) {
+    if (!b) return false;
+    const T = PM.today();
+    if (a === 'bid-files') { // 📎 on a card / row: open the attachments list (one file → open it directly)
+      if ((b.files || []).length === 1) PM.poFiles.open(b.files[0].path);
+      else PM.poFiles.showList(`ไฟล์แนบ — ${b.code}`, b.files);
+      return true;
+    }
+    if (a === 'next') {
+      const i = PM.BID_STAGES.findIndex((s) => s.key === b.stage);
+      const nx = PM.BID_STAGES[i + 1];
+      if (!nx) return true;
+      b.dates[nx.key] = PM.max(T, b.dates[b.stage]);
+      b.stage = nx.key;
+      PM.upsert('bids', b);
+      U.toast(`${b.code} → ${nx.label}`);
+      done();
+      return true;
+    }
+    if (a === 'won' || a === 'lost' || a === 'nobid') {
+      b.result = a; b.resultDate = T; PM.upsert('bids', b);
+      U.toast(`${b.code} → ${PM.BID_RESULTS[a]}`);
+      if (a === 'won' && confirm(`${b.code} ได้งานแล้ว — สร้าง Project จาก bid นี้เลยหรือไม่?`)) V.projectForm(null, b, (p) => (location.hash = '#/projects/' + p.id));
+      done();
+      return true;
+    }
+    if (a === 'convert') { V.projectForm(null, b, (p) => (location.hash = '#/projects/' + p.id)); return true; }
+    if (a === 'open-project') { location.hash = '#/projects/' + b.projectId; return true; }
+    return false;
   };
 
   V.stageOf = (b) => { let s = 'inquiry'; PM.BID_STAGES.forEach((x) => { if (b.dates[x.key]) s = x.key; }); return s; };

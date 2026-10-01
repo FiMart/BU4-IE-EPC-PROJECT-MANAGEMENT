@@ -40,6 +40,9 @@ body.authed .app { animation: fadeIn .2s ease-out both; }
 
 /* page change: one quick fade of the whole view (no staggered cascade) */
 .view-enter { animation: viewIn .2s ease-out both; }
+/* page banner: its picture is swapped only when the page changes, so this plays once per page */
+.page-hero > * { animation: viewIn .25s ease-out both; }
+.page-hero > .hero-art { animation-delay: .05s; }
 
 /* ---------- sidebar ---------- */
 .sidebar {

@@ -3,9 +3,13 @@
   const routes = [
     [/^#\/dashboard$/, 'dashboard', 'Dashboard', 'ภาพรวม'],
     [/^#\/bidding$/, 'bidding', 'Bidding Performance', 'Before Award · Inquiry → Estimate → Proposal → Submit'],
+    // one page per bidding step; title / crumb are worked out from the step (see render)
+    [/^#\/bidding\/(inquiry|estimate|proposal|submit|award)$/, 'bidstage', (m) => `Bidding · ${m[1] === 'award' ? 'Award' : PM.bidStageLabel(m[1])}`,
+      (m) => (m[1] === 'award' ? 'Before Award · ผลการประมูล' : `Before Award · ขั้นที่ ${PM.BID_STAGES.findIndex((s) => s.key === m[1]) + 1} — ${PM.BID_STAGES.find((s) => s.key === m[1]).th}`)],
     [/^#\/projects$/, 'projects', 'Projects (EPC Execution)', 'Engineering → Procurement → Construction → Closing'],
     [/^#\/projects\/([\w-]+)(?:\/(\w+))?$/, 'project', 'Project', 'Execution'],
     [/^#\/pos$/, 'pos', 'Purchase Orders', 'ติดตาม PO · ส่งของ · การจ่ายเงิน · ไฟล์แนบ'],
+    [/^#\/prices$/, 'prices', 'Price List / Vendor Cost', 'ราคาผู้ขาย · เปรียบเทียบราคา · Export Excel / PDF'],
     [/^#\/weekly$/, 'weekly', 'Weekly Plan', 'แผนงานรายสัปดาห์ · PPC · ภาระงาน'],
     [/^#\/resources$/, 'resources', 'Resource Utilization', 'Level · Utilization · Loading'],
     [/^#\/timesheet$/, 'timesheet', 'Timesheet', 'Resource Utilization'],
@@ -19,15 +23,24 @@
     for (const r of routes) { match = hash.match(r[0]); if (match) { route = r; break; } }
     if (!route) { location.hash = '#/dashboard'; return; }
     const el = document.getElementById('view');
-    document.getElementById('page-title').textContent = route[2];
-    document.getElementById('crumb').textContent = route[3];
-    document.querySelectorAll('#nav a').forEach((a) => {
+    const text = (x) => (typeof x === 'function' ? x(match) : x);
+    document.getElementById('page-title').textContent = text(route[2]);
+    document.getElementById('crumb').textContent = text(route[3]);
+    const stage = route[1] === 'bidstage' ? match[1] : null;
+    document.querySelectorAll('#nav a, #tabbar a').forEach((a) => {
       const key = a.dataset.route;
-      a.classList.toggle('active', key === route[1] || (key === 'projects' && route[1] === 'project'));
+      const on = key === route[1] || (key === 'projects' && route[1] === 'project')
+        // step pages: the step's sub-item in the sidebar, "Bidding" on the bottom tab bar
+        || (stage && (key === 'bidding/' + stage || (key === 'bidding' && !!a.closest('#tabbar'))));
+      a.classList.toggle('active', on);
+      if (on) a.setAttribute('aria-current', 'page'); else a.removeAttribute('aria-current');
     });
+    // pages that are not on the bottom tab bar light up "เพิ่มเติม"
+    document.getElementById('tab-more').classList.toggle('active', !document.querySelector('#tabbar a.active'));
     el.onclick = null; el.onchange = null; el.oninput = null; el.onkeydown = null;
     el.ondragstart = el.ondragend = el.ondragover = el.ondragleave = el.ondrop = null;
     try { localStorage.setItem(LAST_ROUTE, hash); } catch (e) { /* ignore */ }
+    PM.illus.hero(stage ? 'bid-' + stage : route[1]);
     if (PM.cloud.waiting()) { // never show (or let anyone edit) the local demo copy instead of the real data
       lastAnimated = null;
       el.innerHTML = `<div class="cloud-wait"><span class="spinner" aria-hidden="true"></span><div>ยังโหลดข้อมูลจาก Cloud ไม่ได้ — กำลังลองใหม่อัตโนมัติ<br><button type="button" class="btn sm" data-sync-retry style="margin-top:10px">ลองใหม่ตอนนี้</button></div></div>`;
@@ -70,12 +83,15 @@
 
   /* ---------- mobile drawer menu ---------- */
   const menuBtn = document.getElementById('menu-btn');
+  const moreBtn = document.getElementById('tab-more');
   const setNav = (open) => {
     document.body.classList.toggle('nav-open', open);
     menuBtn.setAttribute('aria-expanded', String(open));
     menuBtn.setAttribute('aria-label', open ? 'ปิดเมนู' : 'เปิดเมนู');
+    moreBtn.setAttribute('aria-expanded', String(open));
   };
   menuBtn.addEventListener('click', () => setNav(!document.body.classList.contains('nav-open')));
+  moreBtn.addEventListener('click', () => setNav(!document.body.classList.contains('nav-open')));
   document.getElementById('scrim').addEventListener('click', () => setNav(false));
   document.getElementById('sidebar').addEventListener('click', (e) => { if (e.target.closest('a, [data-logout]')) setNav(false); });
   document.addEventListener('keydown', (e) => { if (e.key === 'Escape') setNav(false); });
@@ -139,7 +155,7 @@
     });
   }
   const viewEl = document.getElementById('view');
-  new MutationObserver(() => stackTables(viewEl)).observe(viewEl, { childList: true, subtree: true });
+  new MutationObserver(() => { stackTables(viewEl); PM.illus.decorate(viewEl); }).observe(viewEl, { childList: true, subtree: true });
 
   let rt;
   let lastW = window.innerWidth;

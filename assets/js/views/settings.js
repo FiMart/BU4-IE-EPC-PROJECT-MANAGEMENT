@@ -64,6 +64,7 @@
             <dt>People</dt><dd>${db.resources.length}</dd><dt>Timesheet entries</dt><dd>${U.num(db.timesheets.length)}</dd>
             <dt>Weekly plan tasks</dt><dd>${U.num((db.plans || []).length)}</dd>
             <dt>Purchase orders</dt><dd>${U.num((db.pos || []).length)}</dd><dt>Expense entries</dt><dd>${U.num((db.costs || []).length)}</dd>
+            <dt>Price list</dt><dd>${U.num((db.prices || []).length)}</dd>
             <dt>Storage used</dt><dd>${U.num(size / 1024, 0)} KB</dd>
           </dl>
         </div></div>

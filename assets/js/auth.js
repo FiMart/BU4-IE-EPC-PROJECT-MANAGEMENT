@@ -142,6 +142,7 @@
     <span class="orb"></span><span class="gridlines"></span>
     <div class="auth-side-inner">
       <div class="brand"><div class="brand-mark">BU4</div><div><b>${esc(PM.COMPANY)}</b><small>Bidding · Execution · Resources</small></div></div>
+      <div class="auth-art">${PM.illus.art('projects')}</div>
       <h2>ติดตามงานตั้งแต่ประมูลจนส่งมอบ ในที่เดียว</h2>
       <ol class="auth-pillars">
         <li><b>Bidding Performance</b><span>Inquiry → Estimate → Proposal → Submit</span></li>

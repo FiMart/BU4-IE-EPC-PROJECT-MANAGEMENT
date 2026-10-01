@@ -12,6 +12,7 @@
   function commit() {
     clearTimeout(saveTimer); saveTimer = null;
     if (!state.dirty || !state.rows) return;
+    if (!PM.can('timesheet.edit')) { state.dirty = false; return; } // view only (Project Manager fills in)
     const dates = DAYS.map((_, i) => PM.addDays(state.week, i));
     const who = state.resourceId;
     PM.db.timesheets = PM.db.timesheets.filter((t) => !(t.resourceId === who && t.date >= dates[0] && t.date <= dates[6]));
@@ -44,13 +45,28 @@
 
   function rowLabel(r) {
     if (r.kind === 'project') { const p = PM.find('projects', r.refId); return p ? `${p.code} · ${U.phaseLabel(r.phase)}` : r.refId; }
-    if (r.kind === 'bid') { const b = PM.find('bids', r.refId); return b ? `${b.code} (Bidding)` : r.refId; }
+    if (r.kind === 'bid') { const b = PM.find('bids', r.refId); return b ? `${b.code} · ${PM.bidStageLabel(r.phase) || 'ไม่ระบุขั้นตอน'} (Bidding)` : r.refId; }
     const o = PM.OVERHEAD.find((x) => x.id === r.refId); return o ? o.label : r.refId;
   }
   function rowSub(r) {
     if (r.kind === 'project') { const p = PM.find('projects', r.refId); return p ? p.name : ''; }
-    if (r.kind === 'bid') { const b = PM.find('bids', r.refId); return b ? b.name : ''; }
+    if (r.kind === 'bid') { const b = PM.find('bids', r.refId); return b ? bidInfo(b) : ''; }
     return 'Overhead';
+  }
+  /* bid details shown under the row: scope · client · where the bid is now · due date · value */
+  function bidInfo(b) {
+    const now = b.result === 'pending' ? `ตอนนี้: ${PM.bidStageLabel(b.stage)}` : `ผล: ${PM.BID_RESULTS[b.result] || b.result}`;
+    return [b.name, b.client, now, b.dueDate ? `Due ${U.date(b.dueDate)}` : '', b.value ? U.money(b.value) : ''].filter(Boolean).join(' · ');
+  }
+  /* "sub item" choices for the selected work item: EPC phases for a project, bidding stages for a bid */
+  function subOptions(item) {
+    const [kind, refId] = item.split('|');
+    if (kind === 'project') return { list: PM.PHASES.map((p) => ({ value: p.key, label: p.label })), selected: 'construction' };
+    if (kind === 'bid') {
+      const b = PM.find('bids', refId);
+      return { list: PM.BID_STAGES.map((s) => ({ value: s.key, label: `${s.label} — ${s.th}` })), selected: b ? PM.bidStageAt(b, PM.addDays(state.week, 6)) : 'inquiry' };
+    }
+    return { list: [], selected: '' };
   }
 
   PM.views.timesheet = function (el, fromRouter) {
@@ -64,32 +80,43 @@
     const res = PM.find('resources', state.resourceId);
     const dates = DAYS.map((_, i) => PM.addDays(state.week, i));
 
+    const canEdit = PM.can('timesheet.edit');
     const projects = db.projects.filter((p) => p.status !== 'closed');
-    const bids = db.bids.filter((b) => b.result === 'pending' || (b.dates.submit && PM.diffDays(b.dates.submit, T) < 30));
+    // every bid can be booked: the ones still running first, then the ones that already have a result
+    const openBids = db.bids.filter((b) => b.result === 'pending');
+    const doneBids = db.bids.filter((b) => b.result !== 'pending').sort((a, b) => String(b.resultDate || b.dates.inquiry).localeCompare(String(a.resultDate || a.dates.inquiry)));
+    const bidOpt = (b) => `<option value="bid|${esc(b.id)}">${esc(b.code)} · ${esc(b.name)} — ${esc(b.result === 'pending' ? PM.bidStageLabel(b.stage) : PM.BID_RESULTS[b.result])}</option>`;
 
     el.innerHTML = `
       <div class="row">
         <select id="ts-person" aria-label="Person">${U.options(people.map((r) => ({ value: r.id, label: `${r.name} · ${PM.levelName(r.level)}` })), state.resourceId)}</select>
         ${PM.common.weekNav(state.week)}
         <span class="spacer"></span>
-        <button class="btn" data-action="from-plan">+ แถวจาก Weekly Plan</button>
+        ${canEdit ? `<button class="btn" data-action="from-plan">+ แถวจาก Weekly Plan</button>
         <button class="btn" data-action="copy">Copy rows จากสัปดาห์ก่อน</button>
-        <button class="btn primary" data-action="save">บันทึก Timesheet</button>
+        <button class="btn primary" data-action="save">บันทึก Timesheet</button>` : ''}
       </div>
+      ${canEdit ? '' : `<div class="callout">ดูได้อย่างเดียว — Timesheet กรอกและแก้ไขได้เฉพาะ <b>Project Manager</b> (Role ของคุณ: ${esc(PM.roleLabel(PM.auth && PM.auth.role))})</div>`}
       <div class="card">
         <div class="card-h"><h2>${esc(res.name)}</h2><span class="chip">${esc(PM.levelName(res.level))}</span><span class="chip">${esc(res.discipline)}</span><span class="spacer"></span><span class="muted" id="ts-summary"></span></div>
         <div class="card-b table-wrap" id="ts-grid"></div>
-        <div class="card-b" style="border-top:1px solid var(--border)">
+        ${canEdit ? `<div class="card-b" style="border-top:1px solid var(--border)">
           <div class="row">
             <select id="ts-item" aria-label="Work item">
               <optgroup label="Projects (EPC)">${projects.map((p) => `<option value="project|${esc(p.id)}">${esc(p.code)} · ${esc(p.name)}</option>`).join('')}</optgroup>
-              <optgroup label="Bidding (Before award)">${bids.map((b) => `<option value="bid|${esc(b.id)}">${esc(b.code)} · ${esc(b.name)}</option>`).join('')}</optgroup>
+              ${openBids.length ? `<optgroup label="Bidding — กำลังดำเนินการ">${openBids.map(bidOpt).join('')}</optgroup>` : ''}
+              ${doneBids.length ? `<optgroup label="Bidding — ประกาศผลแล้ว">${doneBids.map(bidOpt).join('')}</optgroup>` : ''}
               <optgroup label="Overhead">${PM.OVERHEAD.map((o) => `<option value="overhead|${o.id}">${esc(o.label)}</option>`).join('')}</optgroup>
             </select>
-            <select id="ts-phase" aria-label="Phase">${U.options(PM.PHASES.map((p) => ({ value: p.key, label: p.label })), 'construction')}</select>
+            <select id="ts-phase" aria-label="Phase / ขั้นตอน Bidding"></select>
             <button class="btn" data-action="add">+ Add row</button>
           </div>
-        </div>
+          <small class="muted" id="ts-item-info"></small>
+        </div>` : ''}
+      </div>
+      <div class="card">
+        <div class="card-h"><h2>ชั่วโมง Bidding แยกตามขั้นตอน — ทั้งทีม</h2><p>ทุก Bid ที่มีการลงชั่วโมงในสัปดาห์นี้ · Inquiry → Estimate → Proposal → Submit</p></div>
+        <div class="card-b flush table-wrap" id="ts-bids"></div>
       </div>
       <div class="card">
         <div class="card-h"><h2>Timesheet status — ทั้งทีม</h2><p>ชั่วโมงที่บันทึกในสัปดาห์นี้เทียบกับ capacity (นับถึงวันนี้)</p></div>
@@ -98,10 +125,18 @@
 
     const phaseSel = el.querySelector('#ts-phase');
     const itemSel = el.querySelector('#ts-item');
-    const syncPhase = () => { phaseSel.disabled = !itemSel.value.startsWith('project|'); };
-    itemSel.addEventListener('change', syncPhase); syncPhase();
+    const syncPhase = () => {
+      const o = subOptions(itemSel.value);
+      phaseSel.innerHTML = U.options(o.list, o.selected);
+      phaseSel.disabled = !o.list.length;
+      const [kind, refId] = itemSel.value.split('|');
+      const b = kind === 'bid' && PM.find('bids', refId);
+      el.querySelector('#ts-item-info').textContent = b ? bidInfo(b) : '';
+    };
+    if (canEdit) { itemSel.addEventListener('change', syncPhase); syncPhase(); }
 
     drawGrid(el, dates, res);
+    drawBids(el, dates);
     drawTeam(el, dates);
 
     const go = (week) => { commit(); state.week = week; state.rows = null; PM.views.timesheet(el); };
@@ -110,14 +145,14 @@
     });
     el.oninput = (e) => {
       const inp = e.target.closest('input[data-r]');
-      if (!inp) return;
+      if (!inp || !canEdit) return;
       const v = Math.max(0, Math.min(24, Number(inp.value) || 0));
       state.rows[+inp.dataset.r].hours[+inp.dataset.d] = v;
       state.dirty = true;
       updateTotals(el, dates, res);
       commitSoon();
     };
-    el.onchange = (e) => { if (e.target.closest('input[data-r]')) { commit(); updateTotals(el, dates, res); drawTeam(el, dates); } };
+    el.onchange = (e) => { if (e.target.closest('input[data-r]')) { commit(); updateTotals(el, dates, res); drawBids(el, dates); drawTeam(el, dates); } };
     el.onclick = (e) => {
       const a = e.target.closest('[data-action]');
       if (!a) return;
@@ -125,17 +160,20 @@
       if (act === 'prev') go(PM.addDays(state.week, -7));
       if (act === 'next') go(PM.addDays(state.week, 7));
       if (act === 'this' && state.week !== PM.monday(T)) go(PM.monday(T));
+      if (!canEdit) return; // everything below changes the timesheet
       if (act === 'add') {
         const [kind, refId] = itemSel.value.split('|');
-        const row = { kind, refId, phase: kind === 'project' ? phaseSel.value : '', hours: [0, 0, 0, 0, 0, 0, 0] };
+        const row = { kind, refId, phase: kind === 'overhead' ? '' : phaseSel.value, hours: [0, 0, 0, 0, 0, 0, 0] };
         if (state.rows.some((r) => keyOf(r) === keyOf(row))) { U.toast('มีแถวนี้อยู่แล้ว'); return; }
         state.rows.push(row); drawGrid(el, dates, res);
       }
-      if (act === 'remove') { state.rows.splice(+a.dataset.r, 1); state.dirty = true; commit(); drawGrid(el, dates, res); drawTeam(el, dates); }
+      if (act === 'remove') { state.rows.splice(+a.dataset.r, 1); state.dirty = true; commit(); drawGrid(el, dates, res); drawBids(el, dates); drawTeam(el, dates); }
       if (act === 'from-plan') {
         let n = 0;
         (PM.db.plans || []).filter((p) => p.week === state.week && p.resourceId === state.resourceId).forEach((p) => {
-          const row = { kind: p.kind, refId: p.refId, phase: p.phase || '', hours: [0, 0, 0, 0, 0, 0, 0] };
+          // plan tasks on a bid have no stage → the stage the bid is in that week
+          const b = p.kind === 'bid' && PM.find('bids', p.refId);
+          const row = { kind: p.kind, refId: p.refId, phase: p.phase || (b ? PM.bidStageAt(b, PM.addDays(state.week, 6)) : ''), hours: [0, 0, 0, 0, 0, 0, 0] };
           if (state.rows.some((r) => keyOf(r) === keyOf(row))) return;
           state.rows.push(row); n++;
         });
@@ -159,6 +197,7 @@
         U.toast('บันทึก Timesheet แล้ว');
         loadRows();
         drawGrid(el, dates, res);
+        drawBids(el, dates);
         drawTeam(el, dates);
       }
     };
@@ -167,8 +206,9 @@
   function drawGrid(el, dates, res) {
     const T = PM.today();
     const box = el.querySelector('#ts-grid');
+    const canEdit = PM.can('timesheet.edit');
     if (!state.rows.length) {
-      box.innerHTML = '<p class="empty">ยังไม่มีรายการในสัปดาห์นี้ — เพิ่มแถวด้านล่าง หรือ Copy rows จากสัปดาห์ก่อน</p>';
+      box.innerHTML = `<p class="empty">${canEdit ? 'ยังไม่มีรายการในสัปดาห์นี้ — เพิ่มแถวด้านล่าง หรือ Copy rows จากสัปดาห์ก่อน' : 'ยังไม่มีชั่วโมงที่บันทึกในสัปดาห์นี้'}</p>`;
       updateTotals(el, dates, res);
       return;
     }
@@ -178,9 +218,11 @@
       <th class="num">Total</th><th></th></tr></thead><tbody>
       ${state.rows.map((r, ri) => `<tr>
         <td><span class="title">${esc(rowLabel(r))}</span><small>${esc(rowSub(r))}</small></td>
-        ${r.hours.map((h, di) => `<td class="num ${dayCls(di)}"><input type="number" min="0" max="24" step="0.5" value="${h || ''}" data-r="${ri}" data-d="${di}" aria-label="${esc(rowLabel(r))} ${DAYS[di]}"></td>`).join('')}
+        ${r.hours.map((h, di) => `<td class="num ${dayCls(di)}">${canEdit
+          ? `<input type="number" min="0" max="24" step="0.5" value="${h || ''}" data-r="${ri}" data-d="${di}" aria-label="${esc(rowLabel(r))} ${DAYS[di]}">`
+          : h ? U.num(h, 1) : '<span class="muted">–</span>'}</td>`).join('')}
         <td class="num" data-rowtotal="${ri}"></td>
-        <td><button class="icon-btn" data-action="remove" data-r="${ri}" aria-label="Remove row">✕</button></td></tr>`).join('')}
+        <td>${canEdit ? `<button class="icon-btn" data-action="remove" data-r="${ri}" aria-label="Remove row">✕</button>` : ''}</td></tr>`).join('')}
       </tbody><tfoot><tr><td>Total / day</td>${DAYS.map((_, i) => `<td class="num ${dayCls(i)}" data-daytotal="${i}"></td>`).join('')}<td class="num" data-grand></td><td></td></tr></tfoot></table>`;
     updateTotals(el, dates, res);
   }
@@ -203,6 +245,34 @@
     const g = el.querySelector('[data-grand]'); if (g) g.textContent = U.num(grand, 1);
     const cap = PM.cap(res) - leave;
     el.querySelector('#ts-summary').textContent = `Total ${U.num(grand, 1)} h · Billable ${U.num(billable, 1)} h · Utilization ${U.pct(cap > 0 ? billable / cap : null)} · ${state.dirty ? 'กำลังบันทึก…' : 'บันทึกอัตโนมัติแล้ว'}`;
+  }
+
+  /* every bid with hours this week (whole team), split by bidding stage */
+  function drawBids(el, dates) {
+    const box = el.querySelector('#ts-bids');
+    const ts = PM.db.timesheets.filter((t) => t.kind === 'bid' && t.date >= dates[0] && t.date <= dates[6]);
+    if (!ts.length) { box.innerHTML = '<p class="empty">ไม่มีชั่วโมง Bidding ในสัปดาห์นี้</p>'; return; }
+    const known = new Set(PM.BID_STAGES.map((s) => s.key));
+    const cols = PM.BID_STAGES.map((s) => ({ key: s.key, label: s.label }));
+    if (ts.some((t) => !known.has(t.phase))) cols.push({ key: '', label: 'ไม่ระบุ' });
+    const stageOf = (t) => (known.has(t.phase) ? t.phase : '');
+    const byBid = {};
+    ts.forEach((t) => {
+      const x = byBid[t.refId] || (byBid[t.refId] = { hours: {}, total: 0, people: new Set() });
+      x.hours[stageOf(t)] = (x.hours[stageOf(t)] || 0) + t.hours;
+      x.total += t.hours;
+      x.people.add(t.resourceId);
+    });
+    const rows = Object.keys(byBid).map((id) => ({ id, b: PM.find('bids', id), ...byBid[id] })).sort((a, b) => b.total - a.total);
+    const colTotal = (k) => PM.sum(ts.filter((t) => stageOf(t) === k), (t) => t.hours);
+    const cell = (h) => (h ? U.num(h, 1) : '<span class="muted">–</span>');
+    box.innerHTML = `<table class="tbl"><thead><tr><th>Bid</th>${cols.map((c) => `<th class="num">${esc(c.label)}</th>`).join('')}<th class="num">Total h</th><th>ผู้ลงชั่วโมง</th></tr></thead><tbody>
+      ${rows.map((x) => `<tr>
+        <td><span class="title">${x.b ? esc(x.b.code) : esc(x.id)}</span><small>${x.b ? esc(bidInfo(x.b)) : 'Bid (ลบแล้ว)'}</small></td>
+        ${cols.map((c) => `<td class="num">${cell(x.hours[c.key])}</td>`).join('')}
+        <td class="num"><b>${U.num(x.total, 1)}</b></td>
+        <td>${Array.from(x.people).map((id) => `<span class="chip">${esc(U.resourceName(id))}</span>`).join(' ')}</td></tr>`).join('')}
+      </tbody><tfoot><tr><td>รวม</td>${cols.map((c) => `<td class="num">${cell(colTotal(c.key))}</td>`).join('')}<td class="num"><b>${U.num(PM.sum(ts, (t) => t.hours), 1)}</b></td><td></td></tr></tfoot></table>`;
   }
 
   function drawTeam(el, dates) {

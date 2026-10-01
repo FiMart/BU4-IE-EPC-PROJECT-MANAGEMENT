@@ -34,9 +34,9 @@
       ${V.flow(PM.BID_STAGES.map((s, i) => {
         const inStage = allPending.filter((b) => b.stage === s.key);
         const sd = bs.stageDays[i];
-        return { label: s.label, th: s.th, big: `${inStage.length} <small class="muted" style="font-size:12px">งาน</small>`, meta: `${U.money(PM.sum(inStage, (b) => b.value))} · avg ${U.days(sd.avg)}`, href: '#/bidding',
+        return { label: s.label, th: s.th, big: `${inStage.length} <small class="muted" style="font-size:12px">งาน</small>`, meta: `${U.money(PM.sum(inStage, (b) => b.value))} · avg ${U.days(sd.avg)}`, href: '#/bidding/' + s.key,
           tip: `${s.label}: ${inStage.length} bids in stage now\nAvg time in stage (12m): ${U.days(sd.avg)}` };
-      }).concat([{ n: '→', label: 'Award', th: 'ผลการประมูล 12 เดือน', big: `${bs.won} <small class="muted" style="font-size:12px">won / ${bs.won + bs.lost}</small>`, meta: `Win rate ${U.pct(bs.winRate)}`, href: '#/bidding' }]))}
+      }).concat([{ n: '→', label: 'Award', th: 'ผลการประมูล 12 เดือน', big: `${bs.won} <small class="muted" style="font-size:12px">won / ${bs.won + bs.lost}</small>`, meta: `Win rate ${U.pct(bs.winRate)}`, href: '#/bidding/award' }]))}
       <div class="grid cols-6">
         ${V.tile({ label: 'Inquiries', tag: 'Quantity', value: bs.total, sub: `ยื่นใบเสนอราคาแล้ว ${bs.submitted} งาน` })}
         ${V.tile({ label: 'BOQ items estimated', tag: 'Quantity', value: U.num(PM.sum(bs.list.filter((b) => b.dates.estimate), (b) => b.boqItems)), sub: 'รายการที่ถอดปริมาณ' })}
