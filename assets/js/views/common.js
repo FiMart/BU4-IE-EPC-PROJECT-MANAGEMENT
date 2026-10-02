@@ -143,12 +143,14 @@
   const people = () => PM.db.resources.filter((r) => r.active !== false).map((r) => ({ value: r.id, label: r.name }));
 
   /* ---------- bid form ---------- */
+  /* Bid No. of a new inquiry starts as this fixed text (current year) — the user types the running number after it */
+  V.bidNoPrefix = () => `PROP-${PM.today().slice(0, 4)}-IE EPC-00`;
   V.bidForm = async function (bid, onSaved) {
     await PM.roles.loadTeam(); // user accounts for the Sales list
     const T = PM.today();
     const isNew = !bid;
     const b = bid || {
-      id: PM.uid('B'), code: 'BD-' + T.slice(2, 4) + '-' + String(PM.db.bids.length + 1).padStart(3, '0'),
+      id: PM.uid('B'), code: V.bidNoPrefix(),
       name: '', client: '', sector: 'Industrial', value: 0, margin: 10, estimator: '', boqItems: 0,
       dueDate: PM.addDays(T, 30), dates: { inquiry: T, estimate: '', proposal: '', submit: '' }, stage: 'inquiry',
       result: 'pending', resultDate: '', projectId: null, notes: '', sales: '', salesName: '', leadSource: 'Sales visit', contact: '',
@@ -191,6 +193,10 @@
         PM.remove('bids', b.id); U.toast('ลบแล้ว'); onSaved && onSaved();
       },
       onSubmit: (f, frm) => {
+        if (f.code === V.bidNoPrefix()) { alert(`พิมพ์เลขต่อท้าย Bid No. ก่อนบันทึก (เช่น ${V.bidNoPrefix()}1)`); frm.code.focus(); return false; }
+        if (PM.db.bids.some((x) => x.id !== b.id && String(x.code).trim().toUpperCase() === f.code.toUpperCase())) {
+          alert(`Bid No. ${f.code} ถูกใช้แล้ว`); frm.code.focus(); return false;
+        }
         const dates = { inquiry: f.d_inquiry, estimate: f.d_estimate, proposal: f.d_proposal, submit: f.d_submit };
         const order = PM.BID_STAGES.map((s) => dates[s.key]).filter(Boolean);
         if (order.some((d, i) => i && d < order[i - 1])) { alert('วันที่แต่ละขั้นต้องเรียงตามลำดับ Inquiry → Estimate → Proposal → Submit'); return false; }
@@ -199,6 +205,8 @@
       },
     });
     files = PM.poFiles.box(form, b.files, true);
+    // new inquiry: cursor at the end of the Bid No. text, ready to type the number
+    if (isNew) { const c = form.code; c.focus(); c.setSelectionRange(c.value.length, c.value.length); }
 
     async function save(f, dates, frm) {
       const btn = frm.querySelector('[type=submit]');

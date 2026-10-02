@@ -14,6 +14,7 @@
     [/^#\/resources$/, 'resources', 'Resource Utilization', 'Level · Utilization · Loading'],
     [/^#\/timesheet$/, 'timesheet', 'Timesheet', 'Resource Utilization'],
     [/^#\/settings$/, 'settings', 'Settings', 'System'],
+    [/^#\/help(?:\/(\w+))?$/, 'help', 'Help', 'คู่มือการใช้งานทุกหน้า'],
     [/^#\/about$/, 'about', 'About', 'เวอร์ชันและประวัติการแก้ไข'],
   ];
 
@@ -37,10 +38,12 @@
     });
     // pages that are not on the bottom tab bar light up "เพิ่มเติม"
     document.getElementById('tab-more').classList.toggle('active', !document.querySelector('#tabbar a.active'));
+    // the Bidding step links in the sidebar show only while a Bidding page is open
+    document.getElementById('nav').classList.toggle('in-bidding', route[1] === 'bidding' || !!stage);
     el.onclick = null; el.onchange = null; el.oninput = null; el.onkeydown = null;
     el.ondragstart = el.ondragend = el.ondragover = el.ondragleave = el.ondrop = null;
     try { localStorage.setItem(LAST_ROUTE, hash); } catch (e) { /* ignore */ }
-    PM.illus.hero(stage ? 'bid-' + stage : route[1]);
+    PM.illus.hero(stage ? 'bid-' + stage : route[1], PM.help.topicFor(route[1]));
     if (PM.cloud.waiting()) { // never show (or let anyone edit) the local demo copy instead of the real data
       lastAnimated = null;
       el.innerHTML = `<div class="cloud-wait"><span class="spinner" aria-hidden="true"></span><div>ยังโหลดข้อมูลจาก Cloud ไม่ได้ — กำลังลองใหม่อัตโนมัติ<br><button type="button" class="btn sm" data-sync-retry style="margin-top:10px">ลองใหม่ตอนนี้</button></div></div>`;
@@ -91,11 +94,52 @@
     moreBtn.setAttribute('aria-expanded', String(open));
   };
   menuBtn.addEventListener('click', () => setNav(!document.body.classList.contains('nav-open')));
-  moreBtn.addEventListener('click', () => setNav(!document.body.classList.contains('nav-open')));
   document.getElementById('scrim').addEventListener('click', () => setNav(false));
   document.getElementById('sidebar').addEventListener('click', (e) => { if (e.target.closest('a, [data-logout]')) setNav(false); });
-  document.addEventListener('keydown', (e) => { if (e.key === 'Escape') setNav(false); });
-  window.addEventListener('hashchange', () => setNav(false));
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape') { setNav(false); setMore(false); } });
+  window.addEventListener('hashchange', () => { setNav(false); setMore(false); });
+
+  /* ---------- "เพิ่มเติม" on the bottom tab bar: a sheet with every page that is not on the tab bar,
+     as a grid that always fits above the tab bar (built from the sidebar menu each time it opens) ---------- */
+  const moreSheet = document.createElement('div');
+  moreSheet.className = 'more-sheet';
+  moreSheet.id = 'more-sheet';
+  moreSheet.setAttribute('role', 'dialog');
+  moreSheet.setAttribute('aria-label', 'เมนูเพิ่มเติม');
+  const moreBackdrop = document.createElement('div');
+  moreBackdrop.className = 'more-backdrop';
+  document.body.append(moreBackdrop, moreSheet);
+  function buildMore() {
+    const onBar = new Set(Array.from(document.querySelectorAll('#tabbar a')).map((a) => a.getAttribute('href')));
+    const groups = [];
+    Array.from(document.getElementById('nav').children).forEach((n) => {
+      if (n.classList.contains('nav-group')) groups.push({ title: n.textContent, links: [] });
+      else if (n.tagName === 'A' && !onBar.has(n.getAttribute('href')) && groups.length) groups[groups.length - 1].links.push(n);
+    });
+    const esc = PM.ui.esc, u = PM.auth && PM.auth.user;
+    const name = u ? PM.auth.displayName(u) : '';
+    moreSheet.innerHTML = `
+      ${u ? `<div class="more-head">
+        <a class="avatar" href="#/settings" title="บัญชีผู้ใช้">${esc(name.split(/\s+/).map((w) => w[0] || '').join('').slice(0, 2).toUpperCase())}</a>
+        <div class="who"><b>${esc(name)}</b><small class="muted">${esc(PM.auth.role ? PM.roleLabel(PM.auth.role) : 'ยังไม่มี Role')} · ${esc(u.email || '')}</small></div>
+        <button class="icon-btn" type="button" data-more-logout title="ออกจากระบบ" aria-label="ออกจากระบบ"><svg viewBox="0 0 24 24"><path d="M15 17l5-5-5-5M20 12H9M12 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h7"/></svg></button>
+      </div>` : ''}
+      <div class="more-body">${groups.filter((g) => g.links.length).map((g) => `
+        <div class="more-group">${esc(g.title)}</div>
+        <div class="more-grid">${g.links.map((a) => `<a href="${esc(a.getAttribute('href'))}" class="${a.classList.contains('active') ? 'active' : ''}">${a.innerHTML}</a>`).join('')}</div>`).join('')}
+      </div>`;
+  }
+  function setMore(open) {
+    if (open) buildMore();
+    document.body.classList.toggle('more-open', open);
+    moreBtn.setAttribute('aria-expanded', String(open));
+  }
+  moreBtn.addEventListener('click', () => setMore(!document.body.classList.contains('more-open')));
+  moreBackdrop.addEventListener('click', () => setMore(false));
+  moreSheet.addEventListener('click', (e) => {
+    if (e.target.closest('[data-more-logout]')) { setMore(false); PM.auth.signOut(); return; }
+    if (e.target.closest('a')) setMore(false); // hashchange also closes it; this covers tapping the page that is already open
+  });
 
   /* ---------- desktop: collapse / expand the sidebar (remembered per browser) ---------- */
   const sideBtn = document.getElementById('sidebar-toggle');
@@ -111,7 +155,17 @@
       if (on) a.setAttribute('data-tip', name); else a.removeAttribute('data-tip');
     });
   };
-  applyCollapsed(document.documentElement.classList.contains('nav-collapsed'));
+  /* 901–1100 px (tablet landscape, small laptop): icons-only by default so the content gets the room;
+     a choice made at that size is remembered separately from the one on a big screen (same rule in index.html) */
+  const compactMq = matchMedia('(min-width: 901px) and (max-width: 1100px)');
+  const navKey = () => (compactMq.matches ? 'epc-pm-nav-collapsed-compact' : 'epc-pm-nav-collapsed');
+  const wantCollapsed = () => {
+    let v = null;
+    try { v = localStorage.getItem(navKey()); } catch (e) { /* ignore */ }
+    return v === null ? compactMq.matches : v === '1';
+  };
+  applyCollapsed(wantCollapsed());
+  compactMq.addEventListener('change', () => applyCollapsed(wantCollapsed()));
   // content width changes → redraw charts once the sidebar has finished resizing
   const appEl = document.querySelector('.app');
   let collapseTimer = null;
@@ -125,7 +179,7 @@
   sideBtn.addEventListener('click', () => {
     const on = !document.documentElement.classList.contains('nav-collapsed');
     applyCollapsed(on);
-    try { localStorage.setItem('epc-pm-nav-collapsed', on ? '1' : '0'); } catch (e) { /* ignore */ }
+    try { localStorage.setItem(navKey(), on ? '1' : '0'); } catch (e) { /* ignore */ }
     clearTimeout(collapseTimer);
     collapseTimer = setTimeout(redrawAfterResize, 450); // fallback if no transition runs
   });

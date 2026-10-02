@@ -173,7 +173,7 @@
     saved: ['ok', 'บันทึกบน Cloud แล้ว'],
     offline: ['warn', 'ยังส่งขึ้น Cloud ไม่ได้ — เก็บไว้ในเครื่องแล้ว จะลองใหม่อัตโนมัติ'],
     denied: ['warn', 'ไม่มีสิทธิ์บันทึกข้อมูลบน Cloud (บัญชียังไม่มี Role)'],
-    forbidden: ['warn', 'Reset / Import บน Cloud ได้เฉพาะ Admin และ Project Manager'],
+    forbidden: ['warn', 'Import บน Cloud ได้เฉพาะ Admin, Department Manager และ Project Manager (Reset เฉพาะ Admin)'],
     outdated: ['ok', 'บันทึกบน Cloud แล้ว (โหมดสำรอง — แนะนำรัน supabase/data.sql อีกครั้ง)'],
     waiting: ['warn', 'ยังเชื่อมต่อ Cloud ไม่ได้ — กำลังลองใหม่'],
     setup: ['warn', 'ยังไม่ได้ติดตั้ง Cloud (รัน supabase/data.sql) — ข้อมูลเก็บเฉพาะเครื่องนี้'],

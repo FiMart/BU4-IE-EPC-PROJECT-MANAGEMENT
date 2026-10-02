@@ -13,7 +13,8 @@
   <link rel="stylesheet" href="assets/css/motion.css">
   <script>
     try { var t = localStorage.getItem('epc-pm-theme'); if (t) document.documentElement.setAttribute('data-theme', t); } catch (e) {}
-    try { if (localStorage.getItem('epc-pm-nav-collapsed') === '1') document.documentElement.classList.add('nav-collapsed'); } catch (e) {}
+    // sidebar icons-only: the saved choice, or by default on 901–1100 px screens (same rule as app.js)
+    try { var c = innerWidth > 900 && innerWidth <= 1100, v = localStorage.getItem(c ? 'epc-pm-nav-collapsed-compact' : 'epc-pm-nav-collapsed'); if (v === '1' || (v === null && c)) document.documentElement.classList.add('nav-collapsed'); } catch (e) {}
   </script>
 </head>
 <body>
@@ -75,6 +76,9 @@
         <a href="#/settings" data-route="settings">
           <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>
           <span>Settings</span></a>
+        <a href="#/help" data-route="help">
+          <svg viewBox="0 0 24 24"><path d="M2.5 5c3-1.6 6.5-1.6 9.5.6 3-2.2 6.5-2.2 9.5-.6v14c-3-1.6-6.5-1.6-9.5.6-3-2.2-6.5-2.2-9.5-.6z"/><path d="M12 5.6v14"/></svg>
+          <span>Help</span></a>
         <a href="#/about" data-route="about">
           <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 11v6M12 7.5v.01"/></svg>
           <span>About</span><em class="nav-ver" id="nav-ver"></em></a>
@@ -144,6 +148,7 @@
   <script src="assets/js/views/timesheet.js"></script>
   <script src="assets/js/views/settings.js"></script>
   <script src="assets/js/views/about.js"></script>
+  <script src="assets/js/views/help.js"></script>
   <script src="assets/js/app.js"></script>
   <script src="assets/js/pull.js"></script>
   <script src="assets/js/config.js"></script>

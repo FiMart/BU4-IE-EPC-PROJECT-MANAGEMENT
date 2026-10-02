@@ -7,7 +7,7 @@
 -- is stored as one row: (collection, id) → data (jsonb).
 --  - Any signed-in user who has a role (row in public.profiles) can read & edit records
 --    (except timesheets: Project Manager only — see can_write_record()).
---  - Bulk replace (Reset / Import) goes through app_replace_all() — Admin & Project Manager only.
+--  - Bulk replace (Reset / Import) goes through app_replace_all() — Admin, Department Manager & Project Manager only.
 --  - PO file attachments: private Storage bucket "po-files" (section at the end).
 -- =====================================================================
 
@@ -97,13 +97,13 @@ drop trigger if exists app_records_keep_creator on public.app_records;
 create trigger app_records_keep_creator before update on public.app_records
   for each row execute function public.app_records_keep_creator();
 
--- Reset / Import: replace everything in one transaction (Admin & Project Manager only)
+-- Reset / Import: replace everything in one transaction (Admin, Department Manager & Project Manager only)
 create or replace function public.app_replace_all(payload jsonb)
 returns integer language plpgsql security definer set search_path = public as $$
 declare n integer;
 begin
-  if not exists (select 1 from public.profiles where id = auth.uid() and role in ('admin', 'project_manager')) then
-    raise exception 'Only Admin or Project Manager can reset or import data';
+  if not exists (select 1 from public.profiles where id = auth.uid() and role::text in ('admin', 'dept_manager', 'project_manager')) then
+    raise exception 'Only Admin, Department Manager or Project Manager can reset or import data';
   end if;
   delete from public.app_records where true;
   insert into public.app_records (collection, id, data, ord)
@@ -120,7 +120,7 @@ grant execute on function public.app_replace_all(jsonb) to authenticated;
 -- Files live at: <projectId>/<poId>/<timestamp>-<file name>   (PO attachments)
 --            and bids/<bidId>/<timestamp>-<file name>        (inquiry / quotation attachments)
 --  - any signed-in user with a role can view / download and upload
---  - delete: the person who uploaded the file, or Admin / Project Manager
+--  - delete: the person who uploaded the file, or Admin / Department Manager / Project Manager
 -- =====================================================================
 insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
 values ('po-files', 'po-files', false, 20971520, array[
@@ -141,5 +141,5 @@ create policy "po-files: upload" on storage.objects for insert to authenticated
 create policy "po-files: delete" on storage.objects for delete to authenticated
   using (bucket_id = 'po-files' and (
     owner_id = auth.uid()::text
-    or exists (select 1 from public.profiles where id = auth.uid() and role in ('admin', 'project_manager'))
+    or exists (select 1 from public.profiles where id = auth.uid() and role::text in ('admin', 'dept_manager', 'project_manager'))
   ));

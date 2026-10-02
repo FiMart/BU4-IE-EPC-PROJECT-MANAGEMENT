@@ -102,7 +102,8 @@ small, .muted { color: var(--muted); }
 .topbar { display: flex; align-items: center; gap: 12px; padding: 14px 28px; border-bottom: 1px solid var(--border); background: var(--surface); position: sticky; top: 0; z-index: 5; }
 .topbar .crumb { color: var(--muted); font-size: 12px; }
 .topbar .spacer { flex: 1; }
-.content { padding: 22px 28px 48px; display: flex; flex-direction: column; gap: 18px; max-width: 1480px; width: 100%; }
+/* content fills the screen up to 1760 px (1704 + padding), then stays centred on very wide monitors */
+.content { padding: 22px 28px 48px; display: flex; flex-direction: column; gap: 18px; max-width: 1760px; width: 100%; margin-inline: auto; }
 
 .grid { display: grid; gap: 14px; }
 .cols-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
@@ -582,6 +583,23 @@ html.nav-collapsed .sidebar-toggle svg { transform: rotate(180deg); }
   .cols-6 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .cols-5 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 }
+/* 1201–1360 px with the full sidebar: ~1,050 px of content — 6 KPI tiles in a row get too narrow */
+@media (min-width: 1201px) and (max-width: 1360px) {
+  html:not(.nav-collapsed) .cols-6 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+/* tablet portrait: the 5 steps of a Flow fit side by side (phones keep the swipe strip) */
+@media (min-width: 641px) and (max-width: 900px) {
+  .flow-step { min-width: 0; padding: 10px 10px; }
+  .flow-arrow { width: 14px; }
+  .flow-arrow svg { width: 14px; height: 14px; }
+  .flow-ic { top: 8px; right: 8px; width: 28px; height: 28px; border-radius: 8px; }
+  .flow-ic svg { width: 16px; height: 16px; }
+  .flow-step.has-ic .n, .flow-step.has-ic b, .flow-step.has-ic .th { padding-right: 30px; }
+  .flow-step .big { font-size: 19px; }
+}
+/* status badges may wrap instead of pushing past a narrow screen */
+.badge { max-width: 100%; }
+.tbl.stack .badge, .tile-sub .badge { white-space: normal; text-align: left; }
 
 /* tablet & phone: sidebar becomes an off-canvas drawer */
 @media (max-width: 900px) {
@@ -731,6 +749,49 @@ html.nav-collapsed .sidebar-toggle svg { transform: rotate(180deg); }
   .pbar span, .hbar-track span { background: Highlight !important; }
 }
 
+/* ---------- วิธีใช้งาน (help.js) ---------- */
+.hero-help { display: inline-flex; align-items: center; gap: 6px; margin-top: 8px; padding: 3px 10px 3px 8px; border-radius: 999px; font-size: 12px; font-weight: 600; background: var(--surface); border: 1px solid var(--border-strong); color: var(--accent); }
+.hero-help:hover { text-decoration: none; border-color: var(--accent); }
+.hero-help svg { width: 15px; height: 15px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.help-layout { display: grid; grid-template-columns: 230px minmax(0, 1fr); gap: 18px; align-items: start; }
+.help-toc { position: sticky; top: 84px; display: flex; flex-direction: column; gap: 2px; padding: 8px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: var(--shadow); }
+.help-toc a { display: flex; align-items: center; gap: 9px; padding: 7px 9px; border-radius: 8px; color: var(--ink-2); font-weight: 600; font-size: 13px; }
+.help-toc a:hover { background: var(--surface-2); text-decoration: none; }
+.help-toc a.active { background: var(--accent-soft); color: var(--accent); }
+.help-toc a[hidden] { display: none; }
+.help-toc svg, .help-tip svg { width: 16px; height: 16px; flex: none; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.help-body { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+.help-sec { scroll-margin-top: 84px; }
+.help-sec.on { box-shadow: 0 0 0 2px var(--accent), var(--shadow); }
+.help-block + .help-block, .help-block + .help-tip, .help-tip + .help-block { margin-top: 14px; }
+.help-block h3 { margin: 0 0 6px; text-transform: none; letter-spacing: 0; font-size: 13.5px; color: var(--ink); }
+.help-steps { list-style: none; counter-reset: s; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 7px; }
+.help-steps li { counter-increment: s; position: relative; padding-left: 32px; line-height: 1.55; }
+.help-steps li::before { content: counter(s); position: absolute; left: 0; top: 0; width: 22px; height: 22px; border-radius: 50%; display: grid; place-items: center; font-size: 12px; font-weight: 700; background: var(--accent); color: #fff; }
+.help-items { margin: 0; padding-left: 20px; display: flex; flex-direction: column; gap: 5px; line-height: 1.55; }
+.help-items li::marker { color: var(--accent); }
+.help-tip { display: flex; gap: 10px; align-items: flex-start; padding: 10px 12px; border-radius: 8px; background: var(--accent-soft); color: var(--ink); font-size: 13px; }
+.help-tip svg { color: var(--accent); margin-top: 2px; }
+.perm-matrix th.me, .perm-matrix td.me { background: var(--accent-soft); }
+.perm-matrix .yes { color: var(--good-text); font-weight: 700; }
+@media (max-width: 900px) {
+  .help-layout { grid-template-columns: minmax(0, 1fr); }
+  .help-toc { position: static; flex-direction: row; overflow-x: auto; padding: 6px; }
+  .help-toc a { flex: none; white-space: nowrap; }
+}
+
+/* ---------- Projects table (projects.js): Health right after Project, sized to its badge ---------- */
+.prj-table .prj-name { min-width: 170px; }
+.prj-table .prj-health { width: 1%; white-space: nowrap; }
+.prj-table .prj-health small { margin-top: 4px; font-variant-numeric: tabular-nums; }
+.prj-table .prj-progress { min-width: 150px; }
+.prj-table .prj-client { min-width: 140px; }
+.tbl.stack.prj-table .prj-health { width: auto; }             /* phone cards: the cell takes its grid slot */
+.tbl.stack.prj-table .prj-health .badge { white-space: nowrap; }
+.hm-good { color: var(--good-text); }
+.hm-warning { color: var(--warning-text); }
+.hm-critical { color: var(--critical-text); }
+
 /* ---------- Price List (prices.js) ---------- */
 .price-table td.num small.up { color: var(--critical-text); font-weight: 600; }
 .price-table td.num small.down { color: var(--good-text); font-weight: 600; }
@@ -751,6 +812,66 @@ td.row-actions .btn + .btn { margin-left: 4px; }
 .nav a.sub svg { width: 15px; height: 15px; }
 .nav a.sub.active { color: #fff; }
 @media (min-width: 901px) { html.nav-collapsed .nav a.sub { display: none; } } /* icon-only sidebar: the Bidding tabs lead to the steps */
+
+/* ---------- sidebar fits the screen: the menu scrolls inside, brand and user box stay put ---------- */
+.sidebar .brand, .sidebar .user-box { flex: none; }
+.nav {
+  flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain;
+  margin: 0 -12px; padding: 0 12px 6px;              /* full sidebar width, so the active marker at the edge isn't clipped */
+  scrollbar-width: thin; scrollbar-color: rgba(160, 196, 255, .22) transparent;
+}
+.nav::-webkit-scrollbar { width: 6px; }
+.nav::-webkit-scrollbar-thumb { background: rgba(160, 196, 255, .22); border-radius: 3px; }
+/* Bidding step links only while a Bidding page is open (the Bidding pages also have the step tabs) */
+.nav a.sub { display: none; }
+.nav.in-bidding a.sub { display: flex; }
+@media (min-width: 901px) and (max-height: 820px) {
+  .sidebar { padding-top: 12px; padding-bottom: 8px; }
+  .sidebar .brand { padding-bottom: 10px; }
+  .nav a { padding-top: 7px; padding-bottom: 7px; }
+  .nav a.sub { padding-top: 5px; padding-bottom: 5px; }
+  .nav .nav-group { padding: 10px 10px 3px; }
+  .user-box { padding: 8px; }
+}
+
+/* ---------- "เพิ่มเติม" sheet (phones & tablets): the pages that are not on the tab bar, as a grid above it ---------- */
+.more-sheet, .more-backdrop { display: none; }
+@media (max-width: 900px) {
+  body.more-open .more-backdrop { display: block; position: fixed; inset: 0; z-index: 43; background: rgba(3, 11, 26, .45); -webkit-backdrop-filter: blur(2px); backdrop-filter: blur(2px); }
+  body.more-open .more-sheet {
+    display: flex; flex-direction: column; position: fixed; z-index: 44;
+    left: 50%; transform: translateX(-50%); width: min(560px, calc(100% - 16px));
+    bottom: calc(66px + env(safe-area-inset-bottom));
+    max-height: calc(100vh - 66px - 24px - env(safe-area-inset-bottom) - env(safe-area-inset-top));
+    max-height: calc(100dvh - 66px - 24px - env(safe-area-inset-bottom) - env(safe-area-inset-top));
+    background: var(--surface); color: var(--ink); border: 1px solid var(--border); border-radius: 16px;
+    box-shadow: 0 -8px 32px rgba(3, 11, 26, .28); overflow: hidden;
+  }
+  body.more-open { overflow: hidden; }
+  .more-head { flex: none; display: flex; align-items: center; gap: 10px; padding: 12px 14px; border-bottom: 1px solid var(--border); }
+  .more-head .avatar { flex: none; }
+  .more-head .who { flex: 1; min-width: 0; }
+  .more-head .who b { display: block; font-size: 14px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .more-head .who small { display: block; font-size: 11.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .more-head .icon-btn { color: var(--ink-2); }
+  .more-head .icon-btn svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+  .more-body { overflow-y: auto; overscroll-behavior: contain; padding: 6px 10px 12px; }
+  .more-group { margin: 8px 4px 4px; font-size: 11px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
+  .more-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); gap: 6px; }
+  .more-grid a {
+    position: relative; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 5px; min-height: 70px; padding: 8px 4px;
+    border-radius: 12px; background: var(--surface-2); color: var(--ink-2); font-size: 12px; font-weight: 600; text-align: center; line-height: 1.2;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .more-grid a:hover { text-decoration: none; }
+  .more-grid a:active { transform: scale(.97); }
+  .more-grid a.active { background: var(--accent-soft); color: var(--accent); }
+  .more-grid svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+  .more-grid .nav-ver { position: absolute; top: 5px; right: 5px; margin: 0; }
+  .more-grid .nav-ver:not(.new) { display: none; }
+  #tab-more.active svg, body.more-open #tab-more svg { background: var(--accent-soft); }
+  body.more-open #tab-more { color: var(--accent); }
+}
 
 /* ---------- bottom tab bar (phones & tablets) — replaces the ☰ button; "เพิ่มเติม" opens the drawer ---------- */
 .tabbar { display: none; }
@@ -794,7 +915,7 @@ td.row-actions .btn + .btn { margin-left: 4px; }
 /* ---------- pictures (illus.js): page banner, topic icons, empty states ---------- */
 .page-hero {
   position: relative; display: flex; align-items: center; gap: 20px; overflow: hidden;
-  margin: 22px 28px 0; max-width: 1424px; min-height: 104px; padding: 12px 18px 12px 22px;
+  margin: 22px max(28px, calc((100% - 1704px) / 2)) 0; min-height: 104px; padding: 12px 18px 12px 22px; /* lines up with .content */
   background: linear-gradient(110deg, var(--surface) 38%, var(--accent-soft));
   border: 1px solid var(--border); border-radius: var(--radius); box-shadow: var(--shadow);
 }

@@ -239,6 +239,13 @@ html.ptr-on, html.ptr-on body { overscroll-behavior-y: contain; }
   .nav a:active { background: rgba(120, 170, 255, .16); }
 }
 
+/* "เพิ่มเติม" sheet rises from the tab bar */
+@keyframes moreIn { from { opacity: 0; transform: translate(-50%, 14px); } to { opacity: 1; transform: translate(-50%, 0); } }
+@media (max-width: 900px) {
+  body.more-open .more-sheet { animation: moreIn .22s var(--ease-out) both; }
+  body.more-open .more-backdrop { animation: fadeIn .18s ease-out both; }
+}
+
 @media (max-width: 640px) {
   /* bottom sheet slides up (with a grab handle) and back down */
   .modal, .modal.wide { animation: sheetIn .32s var(--ease-out) both; }

@@ -2,34 +2,43 @@
    Roles are stored in Supabase table public.profiles (see supabase/roles.sql).
    Who may change a role is enforced by the database (RLS); the checks here only drive the UI. */
 (function () {
+  /* order = seniority (used by the role pickers and the permission table) */
   PM.ROLES = [
     { key: 'admin', label: 'Admin', th: 'ผู้ดูแลระบบ', level: 'info' },
+    { key: 'dept_manager', label: 'Department Manager', th: 'ผู้จัดการแผนก', level: 'info' },
     { key: 'project_manager', label: 'Project Manager', th: 'ผู้จัดการโครงการ', level: 'good' },
     { key: 'engineer', label: 'Engineer', th: 'วิศวกร', level: 'neutral' },
+    { key: 'sales', label: 'Sales', th: 'ฝ่ายขาย', level: 'neutral' },
     { key: 'technician', label: 'Technician', th: 'ช่างเทคนิค', level: 'neutral' },
   ];
 
   /* Permission matrix — change the roles arrays here to adjust who can do what */
   PM.PERMISSIONS = {
     'data.reset': { label: 'Reset ข้อมูล (ล้างทั้งหมด / โหลดข้อมูลตัวอย่าง)', roles: ['admin'] },
-    'data.import': { label: 'Import JSON (เขียนทับข้อมูลทั้งหมด)', roles: ['admin', 'project_manager'] },
-    'data.export': { label: 'Export JSON / Timesheet CSV', roles: ['admin', 'project_manager', 'engineer', 'technician'] },
-    'plan.edit': { label: 'สร้าง / แก้ไขงานใน Weekly Plan', roles: ['admin', 'project_manager', 'engineer'] },
-    'plan.status': { label: 'อัปเดตสถานะงานใน Weekly Plan', roles: ['admin', 'project_manager', 'engineer', 'technician'] },
+    'data.import': { label: 'Import JSON (เขียนทับข้อมูลทั้งหมด)', roles: ['admin', 'dept_manager', 'project_manager'] },
+    'data.export': { label: 'Export JSON / Timesheet CSV', roles: ['admin', 'dept_manager', 'project_manager', 'engineer', 'sales', 'technician'] },
+    'plan.edit': { label: 'สร้าง / แก้ไขงานใน Weekly Plan', roles: ['admin', 'dept_manager', 'project_manager', 'engineer', 'sales'] },
+    'plan.status': { label: 'อัปเดตสถานะงานใน Weekly Plan', roles: ['admin', 'dept_manager', 'project_manager', 'engineer', 'sales', 'technician'] },
     'timesheet.edit': { label: 'กรอก / แก้ไข Timesheet (คนอื่นดูได้อย่างเดียว)', roles: ['project_manager'] },
-    'po.edit': { label: 'สร้าง / แก้ไข PO และแนบไฟล์', roles: ['admin', 'project_manager', 'engineer'] },
-    'price.edit': { label: 'เพิ่ม / แก้ไข Price List (ราคาผู้ขาย) — ทุกคนดูและ Export ได้', roles: ['admin', 'project_manager', 'engineer'] },
-    'cost.edit': { label: 'บันทึก / แก้ไขค่าใช้จ่ายโครงการ (Actual cost)', roles: ['admin', 'project_manager'] },
-    'roles.manage': { label: 'กำหนด Role ให้ผู้ใช้ (Project Manager: ยกเว้น Admin และ Role ของตัวเอง)', roles: ['admin', 'project_manager'] },
+    'po.edit': { label: 'สร้าง / แก้ไข PO และแนบไฟล์', roles: ['admin', 'dept_manager', 'project_manager', 'engineer'] },
+    'price.edit': { label: 'เพิ่ม / แก้ไข Price List (ราคาผู้ขาย) — ทุกคนดูและ Export ได้', roles: ['admin', 'dept_manager', 'project_manager', 'engineer'] },
+    'cost.edit': { label: 'บันทึก / แก้ไขค่าใช้จ่ายโครงการ (Actual cost)', roles: ['admin', 'dept_manager', 'project_manager'] },
+    'roles.manage': { label: 'กำหนด Role ให้ผู้ใช้ (ยกเว้น Role ของตัวเอง และ Role ที่สูงกว่า — ดูกติกาด้านล่างตาราง)', roles: ['admin', 'dept_manager', 'project_manager'] },
     'users.delete': { label: 'ลบบัญชีผู้ใช้', roles: ['admin'] },
   };
 
   /* Which roles the current user may give to `target` ({ id, role }) — same rules as supabase/roles.sql:
-     Admin → any role for anyone · Project Manager → PM / Engineer / Technician for others who are not Admin */
+     Admin              → any role, for anyone
+     Department Manager → any role except Admin, for others who are not Admin
+     Project Manager    → PM / Engineer / Sales / Technician, for others who are not Admin or Department Manager */
+  PM.ROLE_RULES = 'Admin: ตั้งได้ทุก Role ให้ทุกคน · Department Manager: ตั้งได้ทุก Role ยกเว้น Admin ให้คนอื่นที่ไม่ใช่ Admin · Project Manager: ตั้ง Project Manager / Engineer / Sales / Technician ให้คนอื่นที่ไม่ใช่ Admin หรือ Department Manager · เปลี่ยน Role ของตัวเองไม่ได้';
   PM.assignableRoles = function (target) {
     const me = PM.auth && PM.auth.role, myId = PM.auth && PM.auth.user && PM.auth.user.id;
-    if (me === 'admin') return PM.ROLES.map((r) => r.key);
-    if (me === 'project_manager' && target && target.id !== myId && target.role !== 'admin') return PM.ROLES.map((r) => r.key).filter((k) => k !== 'admin');
+    const all = PM.ROLES.map((r) => r.key);
+    if (me === 'admin') return all;
+    if (!target || target.id === myId) return [];
+    if (me === 'dept_manager' && target.role !== 'admin') return all.filter((k) => k !== 'admin');
+    if (me === 'project_manager' && target.role !== 'admin' && target.role !== 'dept_manager') return all.filter((k) => k !== 'admin' && k !== 'dept_manager');
     return [];
   };
 
@@ -89,13 +98,15 @@
     const { data, error } = await PM.auth.client.from('profiles').update({ role }).eq('id', userId).select('id, role');
     if (error) {
       if (/last admin/i.test(error.message)) throw new Error('ต้องมี Admin อย่างน้อย 1 คน — ไม่สามารถลด Role ของ Admin คนสุดท้ายได้');
+      if (/department manager role/i.test(error.message)) throw new Error('เฉพาะ Admin หรือ Department Manager เท่านั้นที่เปลี่ยน Role ของ Department Manager หรือตั้งใครเป็น Department Manager ได้');
       if (/admin role/i.test(error.message)) throw new Error('เฉพาะ Admin เท่านั้นที่เปลี่ยน Role ของ Admin หรือตั้งใครเป็น Admin ได้');
+      if (/invalid input value for enum/i.test(error.message)) throw new Error('ฐานข้อมูลยังไม่รู้จัก Role นี้ — ให้ Admin รัน supabase/roles.sql อีกครั้ง');
       throw new Error(setupError(error));
     }
     if (!data || !data.length) {
-      throw new Error(PM.auth.role === 'project_manager'
-        ? 'ไม่มีสิทธิ์เปลี่ยน Role นี้ — Project Manager เปลี่ยน Role ของ Admin, ของตัวเอง หรือตั้งเป็น Admin ไม่ได้ (ถ้าเพิ่งอัปเดตเว็บ ให้ Admin รัน supabase/roles.sql อีกครั้ง)'
-        : 'ไม่มีสิทธิ์เปลี่ยน Role (เฉพาะ Admin และ Project Manager)');
+      throw new Error(['project_manager', 'dept_manager'].includes(PM.auth.role)
+        ? `ไม่มีสิทธิ์เปลี่ยน Role นี้ — ${PM.ROLE_RULES} (ถ้าเพิ่งอัปเดตเว็บ ให้ Admin รัน supabase/roles.sql อีกครั้ง)`
+        : 'ไม่มีสิทธิ์เปลี่ยน Role (เฉพาะ Admin, Department Manager และ Project Manager)');
     }
     return data[0];
   };

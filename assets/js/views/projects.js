@@ -102,23 +102,25 @@
     if (!rows.length) return filtered
       ? '<p class="empty">ไม่พบโครงการที่ตรงกับคำค้นหา / ตัวกรอง — <button type="button" class="link-btn" data-action="clear-filters">ล้างตัวกรอง</button></p>'
       : '<p class="empty">ไม่มีโครงการในมุมมองนี้</p>';
-    return `<table class="tbl"><thead><tr>
-      <th>Project</th><th>Client / PM / Sales</th><th class="num">Contract</th><th class="num">Plan / Actual cost</th><th>Phase</th><th style="min-width:170px">Progress (actual vs plan)</th>
-      <th class="num">SPI</th><th class="num">CPI</th><th class="num">NCR open</th><th class="num">LTIFR</th><th>Finish</th><th>Health</th></tr></thead><tbody>
+    // Health sits right after Project (always in view without scrolling); SPI / CPI are shown under it as the reason
+    const ratio = (label, v) => `<span class="hm-${U.health(v)}">${label} ${U.ratio(v)}</span>`;
+    return `<table class="tbl prj-table"><thead><tr>
+      <th>Project</th><th>Health</th><th>Phase</th><th>Progress (actual vs plan)</th>
+      <th class="num">Contract / Cost</th><th class="num">NCR open</th><th class="num">LTIFR</th><th>Finish</th><th>Client / PM / Sales</th></tr></thead><tbody>
       ${rows.map(({ p, m }) => {
         const h = p.status === 'closed' ? 'neutral' : U.worst(U.health(m.spi), U.health(m.cpi));
         return `<tr class="click" data-id="${esc(p.id)}">
-          <td><span class="title">${esc(p.code)}</span><small>${esc(p.name)}</small></td>
-          <td>${esc(p.client)}<small>PM: ${esc(V.pmName(p))} · Sales: ${esc(V.salesName(p))}</small></td>
-          <td class="num">${U.money(p.contractValue)}</td>
-          <td class="num" data-tip="${esc(`Plan cost ${U.money(m.bac)}\nActual cost ${U.money(m.ac)}\n${m.ac > m.bac ? 'เกินงบ' : 'คงเหลือ'} ${U.money(Math.abs(m.bac - m.ac))}`)}">${U.money(m.bac)}<small class="${m.ac > m.bac ? 'neg' : ''}">Actual ${U.money(m.ac)} · ${U.pct(m.bac ? m.ac / m.bac : null)}</small></td>
+          <td class="prj-name"><span class="title">${esc(p.code)}</span><small>${esc(p.name)}</small></td>
+          <td class="prj-health" data-tip="${esc(`SPI ${U.ratio(m.spi)} (Time) · CPI ${U.ratio(m.cpi)} (Cost)\n≥ 0.95 On track · 0.90–0.95 At risk · < 0.90 Off track`)}">${p.status === 'closed' ? U.badge('neutral', 'Closed') : p.status === 'onhold' ? U.badge('warning', 'On hold') : U.badge(h, U.healthLabel[h])}
+            <small>${ratio('SPI', m.spi)} · ${ratio('CPI', m.cpi)}</small></td>
           <td>${m.current ? `<span class="chip">${esc(U.phaseLabel(m.current.key))}</span>` : '<span class="chip">Closed</span>'}</td>
-          <td><div class="pbar-wrap">${U.progress(m.act, p.status === 'closed' ? null : m.plan)}<span class="num">${U.pct(m.act)}</span></div></td>
-          <td class="num">${U.ratio(m.spi)}</td><td class="num">${U.ratio(m.cpi)}</td>
+          <td class="prj-progress"><div class="pbar-wrap">${U.progress(m.act, p.status === 'closed' ? null : m.plan)}<span class="num">${U.pct(m.act)}</span></div></td>
+          <td class="num" data-tip="${esc(`Contract ${U.money(p.contractValue)}\nPlan cost ${U.money(m.bac)}\nActual cost ${U.money(m.ac)}\n${m.ac > m.bac ? 'เกินงบ' : 'คงเหลือ'} ${U.money(Math.abs(m.bac - m.ac))}`)}">${U.money(p.contractValue)}
+            <small>Plan ${U.money(m.bac)}</small><small class="${m.ac > m.bac ? 'neg' : ''}">Actual ${U.money(m.ac)} · ${U.pct(m.bac ? m.ac / m.bac : null)}</small></td>
           <td class="num">${m.ncrOpen} <small style="display:inline">/ ${m.ncrTotal}</small></td>
           <td class="num">${U.num(m.ltifr, 2)}</td>
-          <td>${U.date(p.endDate)}</td>
-          <td>${p.status === 'closed' ? U.badge('neutral', 'Closed') : p.status === 'onhold' ? U.badge('warning', 'On hold') : U.badge(h, U.healthLabel[h])}</td></tr>`;
+          <td class="nowrap">${U.date(p.endDate)}</td>
+          <td class="prj-client">${esc(p.client)}<small>PM: ${esc(V.pmName(p))}</small><small>Sales: ${esc(V.salesName(p))}</small></td></tr>`;
       }).join('')}</tbody></table>`;
   }
 })();

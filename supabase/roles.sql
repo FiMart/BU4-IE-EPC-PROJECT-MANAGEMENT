@@ -3,21 +3,26 @@
 -- Run once in Supabase Dashboard → SQL Editor → New query → Run.
 -- Safe to re-run (idempotent).
 --
--- Roles: admin · project_manager · engineer · technician
+-- Roles: admin · dept_manager (ผู้จัดการแผนก) · project_manager · engineer · sales · technician
 --  - Every new sign-up gets 'technician' (least privilege).
 --  - The FIRST user in the project becomes 'admin' automatically.
---  - Admins and Project Managers can read the user list and change roles (enforced by RLS):
---      Admin           → any role, for anyone
---      Project Manager → Project Manager / Engineer / Technician for OTHER users who are not Admin
---                        (cannot grant Admin, cannot change an Admin, cannot change their own role)
+--  - Admins, Department Managers and Project Managers can read the user list and change roles (enforced by RLS):
+--      Admin              → any role, for anyone
+--      Department Manager → any role except Admin, for OTHER users who are not Admin
+--      Project Manager    → Project Manager / Engineer / Sales / Technician, for OTHER users who are not
+--                           Admin or Department Manager
+--      Nobody (except Admin) changes their own role.
 --  - The last remaining admin cannot be demoted (prevents lock-out).
 --  - Only Admins can delete user accounts (admin_delete_user, section 10) — not their own.
+--  Role names are compared as text (role::text) so the values added below can be used in the same run.
 -- =====================================================================
 
--- 1) role type
+-- 1) role type (+ roles added in v1.25: dept_manager, sales — re-running this file adds them to older installs)
 do $$ begin
   create type public.app_role as enum ('admin', 'project_manager', 'engineer', 'technician');
 exception when duplicate_object then null; end $$;
+alter type public.app_role add value if not exists 'dept_manager';
+alter type public.app_role add value if not exists 'sales';
 
 -- 2) profiles table (one row per auth user)
 create table if not exists public.profiles (
@@ -39,23 +44,36 @@ $$;
 -- helper: is the current user a Project Manager?
 create or replace function public.is_project_manager()
 returns boolean language sql stable security definer set search_path = public as $$
-  select exists (select 1 from public.profiles where id = auth.uid() and role = 'project_manager');
+  select exists (select 1 from public.profiles where id = auth.uid() and role::text = 'project_manager');
+$$;
+
+-- helper: is the current user a Department Manager (ผู้จัดการแผนก)?
+create or replace function public.is_dept_manager()
+returns boolean language sql stable security definer set search_path = public as $$
+  select exists (select 1 from public.profiles where id = auth.uid() and role::text = 'dept_manager');
 $$;
 
 -- 4) row level security
 drop policy if exists "profiles: read own"        on public.profiles;
 drop policy if exists "profiles: admin read all"  on public.profiles;
 drop policy if exists "profiles: pm read all"     on public.profiles;
+drop policy if exists "profiles: dm read all"     on public.profiles;
 drop policy if exists "profiles: admin set role"  on public.profiles;
 drop policy if exists "profiles: pm set role"     on public.profiles;
+drop policy if exists "profiles: dm set role"     on public.profiles;
 create policy "profiles: read own"       on public.profiles for select to authenticated using (id = auth.uid());
 create policy "profiles: admin read all" on public.profiles for select to authenticated using (public.is_admin());
 create policy "profiles: pm read all"    on public.profiles for select to authenticated using (public.is_project_manager());
+create policy "profiles: dm read all"    on public.profiles for select to authenticated using (public.is_dept_manager());
 create policy "profiles: admin set role" on public.profiles for update to authenticated using (public.is_admin()) with check (public.is_admin());
--- Project Manager: only other people who are not Admin (USING = the row before), and never to Admin (WITH CHECK = the row after)
+-- Department Manager: only other people who are not Admin (USING = the row before), and never to Admin (WITH CHECK = the row after)
+create policy "profiles: dm set role" on public.profiles for update to authenticated
+  using (public.is_dept_manager() and id <> auth.uid() and role::text <> 'admin')
+  with check (public.is_dept_manager() and id <> auth.uid() and role::text <> 'admin');
+-- Project Manager: only other people who are not Admin / Department Manager, and never to those roles
 create policy "profiles: pm set role" on public.profiles for update to authenticated
-  using (public.is_project_manager() and id <> auth.uid() and role <> 'admin')
-  with check (public.is_project_manager() and id <> auth.uid() and role <> 'admin');
+  using (public.is_project_manager() and id <> auth.uid() and role::text not in ('admin', 'dept_manager'))
+  with check (public.is_project_manager() and id <> auth.uid() and role::text not in ('admin', 'dept_manager'));
 -- no insert / delete policies: rows are created by the trigger below and removed with the auth user
 
 -- column-level privileges: clients may read, and (admins only, via RLS) update the role column only
@@ -67,8 +85,8 @@ grant update (role) on public.profiles to authenticated;
 create or replace function public.protect_last_admin()
 returns trigger language plpgsql security definer set search_path = public as $$
 begin
-  if old.role = 'admin' and new.role <> 'admin'
-     and (select count(*) from public.profiles where role = 'admin') <= 1 then
+  if old.role::text = 'admin' and new.role::text <> 'admin'
+     and (select count(*) from public.profiles where role::text = 'admin') <= 1 then
     raise exception 'Cannot remove the last admin';
   end if;
   new.updated_at := now();
@@ -85,9 +103,15 @@ create or replace function public.protect_admin_role()
 returns trigger language plpgsql security definer set search_path = public as $$
 begin
   if old.role is distinct from new.role
-     and (old.role = 'admin' or new.role = 'admin')
+     and (old.role::text = 'admin' or new.role::text = 'admin')
      and auth.uid() is not null and not public.is_admin() then
     raise exception 'Only an Admin can change the Admin role';
+  end if;
+  -- same idea one level down: only Admin / Department Manager touch the Department Manager role
+  if old.role is distinct from new.role
+     and (old.role::text = 'dept_manager' or new.role::text = 'dept_manager')
+     and auth.uid() is not null and not (public.is_admin() or public.is_dept_manager()) then
+    raise exception 'Only an Admin or a Department Manager can change the Department Manager role';
   end if;
   return new;
 end $$;

@@ -17,7 +17,7 @@
   const text = el.querySelector('.ptr-text');
 
   let startY = null, startX = 0, dist = 0, active = false, busy = false;
-  const blocked = () => busy || !document.body.classList.contains('authed') || document.body.classList.contains('nav-open')
+  const blocked = () => busy || !document.body.classList.contains('authed') || document.body.classList.contains('nav-open') || document.body.classList.contains('more-open')
     || !!document.querySelector('.modal-backdrop') || window.scrollY > 0;
 
   const place = (d) => { el.style.transform = `translate(-50%, ${Math.round(d - 76)}px)`; };

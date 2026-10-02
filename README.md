@@ -12,6 +12,9 @@ Web app สำหรับบริหารโครงการแบบ EPC (
 ข้อมูลทั้งหมดบันทึกบน **Supabase** อัตโนมัติ — เปิดเว็บใหม่ เปิดจากเครื่องอื่น หรือเปิดคนละ browser ก็เห็นข้อมูลเดิม และทุกคนในทีมเห็นข้อมูลชุดเดียวกัน
 (ดูหัวข้อ "บันทึกข้อมูลบน Cloud" ด้านล่าง)
 
+คู่มือการใช้งานแต่ละหน้าอยู่ในเว็บ: เมนู **Help** (หรือปุ่ม "วิธีใช้หน้านี้" ที่แถบภาพด้านบนของทุกหน้า) — เนื้อหาอยู่ใน `assets/js/views/help.js`
+เมื่อเพิ่มหรือเปลี่ยนฟีเจอร์ ให้แก้คู่มือในไฟล์นี้ด้วย (ตาราง "สิทธิ์ตาม Role" สร้างจาก `PM.PERMISSIONS` อัตโนมัติ)
+
 ## Login / Register (Supabase Auth)
 
 ระบบต้องเข้าสู่ระบบก่อนใช้งาน โดยใช้ Supabase Auth แบบอีเมล + รหัสผ่าน มีหน้า สมัครสมาชิก · เข้าสู่ระบบ · ลืมรหัสผ่าน · ตั้งรหัสผ่านใหม่
@@ -49,31 +52,33 @@ Web app สำหรับบริหารโครงการแบบ EPC (
 
 ## Role & Permission
 
-มี 4 Role: **Admin · Project Manager · Engineer · Technician** เก็บในตาราง `public.profiles` ของ Supabase
+มี 6 Role: **Admin · Department Manager (ผู้จัดการแผนก) · Project Manager · Engineer · Sales · Technician** เก็บในตาราง `public.profiles` ของ Supabase
 
 ติดตั้งครั้งเดียว: เปิด **Supabase Dashboard → SQL Editor → New query** วางเนื้อหาไฟล์ [`supabase/roles.sql`](supabase/roles.sql) แล้วกด **Run** (รันซ้ำได้)
+อัปเดตจากเวอร์ชันก่อน v1.25 (เพิ่ม Department Manager / Sales): รัน `roles.sql` แล้วตามด้วย `data.sql` อีกครั้งอย่างละ 1 ครั้ง
 
 - ผู้ใช้คนแรกของระบบ (สมัครก่อนสุด) จะเป็น **Admin** อัตโนมัติ — คนที่สมัครหลังจากนั้นได้ **Technician**
-- **Admin และ Project Manager** เปลี่ยน Role ได้ที่ Settings → จัดการ Role ผู้ใช้ (บังคับด้วย Row Level Security ในฐานข้อมูล)
+- **Admin, Department Manager และ Project Manager** เปลี่ยน Role ได้ที่ Settings → จัดการ Role ผู้ใช้ (บังคับด้วย Row Level Security ในฐานข้อมูล)
   - Admin: ตั้งได้ทุก Role ให้ทุกคน
-  - Project Manager: ตั้ง Project Manager / Engineer / Technician ให้คนอื่นได้ — ตั้งเป็น Admin, เปลี่ยน Role ของ Admin หรือของตัวเองไม่ได้
-  - อัปเดตจากเวอร์ชันก่อน v1.16: รัน `roles.sql` อีกครั้ง 1 ครั้ง
+  - Department Manager: ตั้งได้ทุก Role ยกเว้น Admin ให้คนอื่นที่ไม่ใช่ Admin
+  - Project Manager: ตั้ง Project Manager / Engineer / Sales / Technician ให้คนอื่นที่ไม่ใช่ Admin หรือ Department Manager
+  - เปลี่ยน Role ของตัวเองไม่ได้ (ยกเว้น Admin)
 - ลด Role ของ Admin คนสุดท้ายไม่ได้ (กันระบบไม่มี Admin)
 
-| สิทธิ์ | Admin | Project Manager | Engineer | Technician |
-| --- | --- | --- | --- | --- |
-| Reset ข้อมูล (ล้างทั้งหมด / โหลด Demo) — หัวข้อนี้แสดงเฉพาะ Admin | ✓ | – | – | – |
-| Import JSON | ✓ | ✓ | – | – |
-| Export JSON / CSV | ✓ | ✓ | ✓ | ✓ |
-| สร้าง / แก้ไขงานใน Weekly Plan | ✓ | ✓ | ✓ | – |
-| ลบงานใน Weekly Plan | เฉพาะ **คนที่สร้างงานนั้น** (งานเดิมที่ไม่มีข้อมูลผู้สร้าง: Admin) — บังคับในฐานข้อมูลด้วย | | | |
-| อัปเดตสถานะงานใน Weekly Plan | ✓ | ✓ | ✓ | ✓ |
-| กรอก / แก้ไข Timesheet (ทุกคนดูได้) — บังคับในฐานข้อมูลด้วย | – | ✓ | – | – |
-| สร้าง / แก้ไข PO และแนบไฟล์ (ทุกคนดู / ดาวน์โหลดได้) | ✓ | ✓ | ✓ | – |
-| บันทึก / แก้ไขค่าใช้จ่ายโครงการ (ทุกคนดูได้) | ✓ | ✓ | – | – |
-| เพิ่ม / แก้ไข Price List (ทุกคนดูและ Export Excel / PDF ได้) | ✓ | ✓ | ✓ | – |
-| กำหนด Role ให้ผู้ใช้ | ✓ | ✓ (ยกเว้น Admin / ตัวเอง) | – | – |
-| ลบบัญชีผู้ใช้ (ยกเว้นบัญชีตัวเอง) — Settings → จัดการ Role ผู้ใช้ | ✓ | – | – | – |
+| สิทธิ์ | Admin | Dept. Manager | Project Manager | Engineer | Sales | Technician |
+| --- | --- | --- | --- | --- | --- | --- |
+| Reset ข้อมูล (ล้างทั้งหมด / โหลด Demo) — หัวข้อนี้แสดงเฉพาะ Admin | ✓ | – | – | – | – | – |
+| Import JSON | ✓ | ✓ | ✓ | – | – | – |
+| Export JSON / CSV | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| สร้าง / แก้ไขงานใน Weekly Plan | ✓ | ✓ | ✓ | ✓ | ✓ | – |
+| ลบงานใน Weekly Plan | เฉพาะ **คนที่สร้างงานนั้น** (งานเดิมที่ไม่มีข้อมูลผู้สร้าง: Admin) — บังคับในฐานข้อมูลด้วย | | | | | |
+| อัปเดตสถานะงานใน Weekly Plan | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| กรอก / แก้ไข Timesheet (ทุกคนดูได้) — บังคับในฐานข้อมูลด้วย | – | – | ✓ | – | – | – |
+| สร้าง / แก้ไข PO และแนบไฟล์ (ทุกคนดู / ดาวน์โหลดได้) | ✓ | ✓ | ✓ | ✓ | – | – |
+| บันทึก / แก้ไขค่าใช้จ่ายโครงการ (ทุกคนดูได้) | ✓ | ✓ | ✓ | – | – | – |
+| เพิ่ม / แก้ไข Price List (ทุกคนดูและ Export Excel / PDF ได้) | ✓ | ✓ | ✓ | ✓ | – | – |
+| กำหนด Role ให้ผู้ใช้ (ตามกติกาด้านบน) | ✓ | ✓ | ✓ | – | – | – |
+| ลบบัญชีผู้ใช้ (ยกเว้นบัญชีตัวเอง) — Settings → จัดการ Role ผู้ใช้ | ✓ | – | – | – | – | – |
 
 ปรับตารางสิทธิ์ได้ที่ `PM.PERMISSIONS` ใน `assets/js/roles.js`
 
@@ -92,7 +97,7 @@ Web app สำหรับบริหารโครงการแบบ EPC (
 - เปิดเว็บในเบราว์เซอร์ใหม่แล้วโหลดจาก Cloud ไม่ได้: หน้าเว็บรอและลองใหม่อัตโนมัติ (ไม่แสดงข้อมูลตัวอย่างแทน และไม่ส่งอะไรขึ้น Cloud จนกว่าจะโหลดสำเร็จ)
 - Timesheet บันทึกอัตโนมัติขณะพิมพ์ · ปิดเว็บขณะฟอร์มยังไม่กดบันทึก เบราว์เซอร์จะถามก่อน
 - จำหน้าที่เปิดล่าสุดและตัวกรองของแต่ละหน้า (Bidding, Projects, PO, Weekly Plan, Resource, Timesheet) ไว้ในเบราว์เซอร์ — เปิดเว็บใหม่กลับมาที่เดิม
-- ครั้งแรกที่ Cloud ยังว่าง: Admin / Project Manager จะถูกถามว่าจะอัปโหลดข้อมูลในเครื่องขึ้นไปหรือเริ่มจากข้อมูลว่าง
+- ครั้งแรกที่ Cloud ยังว่าง: Admin / Department Manager / Project Manager จะถูกถามว่าจะอัปโหลดข้อมูลในเครื่องขึ้นไปหรือเริ่มจากข้อมูลว่าง
 - Reset / Import บน Cloud ทำได้เฉพาะ Admin และ Project Manager (ตรวจสอบในฐานข้อมูลด้วย)
 - ข้อมูลเก็บในตาราง `public.app_records` — 1 แถวต่อ 1 รายการ (bid, project, NCR, timesheet …) พร้อมเวลาและผู้แก้ไขล่าสุด
 
@@ -153,5 +158,5 @@ assets/js/roles.js           Role + ตารางสิทธิ์ + เร�
 assets/js/cloud.js           ซิงค์ข้อมูลทั้งหมดกับ Supabase (บันทึกอัตโนมัติ / โหลดเมื่อเปิดเว็บ)
 supabase/roles.sql           SQL สร้างตาราง profiles, RLS, trigger (รันใน Supabase ก่อน)
 supabase/data.sql            SQL สร้างตาราง app_records สำหรับเก็บข้อมูลทั้งหมด (รันต่อจาก roles.sql)
-assets/js/views/*.js         แต่ละหน้า (weekly.js = Weekly Plan, costs.js = รายการค่าใช้จ่ายโครงการ, bid-stage.js = หน้าแยกของแต่ละขั้น Bidding)
+assets/js/views/*.js         แต่ละหน้า (weekly.js = Weekly Plan, costs.js = รายการค่าใช้จ่ายโครงการ, bid-stage.js = หน้าแยกของแต่ละขั้น Bidding, help.js = คู่มือวิธีใช้งาน)
 ```

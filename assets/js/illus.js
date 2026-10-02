@@ -42,6 +42,7 @@
     download: '<path d="M12 3.5v11M7.5 10l4.5 4.5 4.5-4.5M4 16.5v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/>',
     chart: '<path d="M3.5 20.5h17M6.5 17v-5M11 17V7M15.5 17v-7M20 17V4.5"/>',
     tag: '<path d="M3 12.2V4.5A1.5 1.5 0 0 1 4.5 3h7.7l8.8 8.8a1.5 1.5 0 0 1 0 2.1l-7.1 7.1a1.5 1.5 0 0 1-2.1 0z"/><circle cx="8" cy="8" r="1.6"/>',
+    book: '<path d="M2.5 5c3-1.6 6.5-1.6 9.5.6 3-2.2 6.5-2.2 9.5-.6v14c-3-1.6-6.5-1.6-9.5.6-3-2.2-6.5-2.2-9.5-.6z"/><path d="M12 5.6v14"/>',
   };
   ICONS.won = ICONS.award;
 
@@ -190,6 +191,16 @@
       <path class="sf ln" d="M152 6h24l8 8v30h-32z"/><path class="bg ln" d="M176 6v8h8"/>
       <rect class="a" x="157" y="14" width="12" height="4" rx="2"/><rect class="bg" x="157" y="23" width="22" height="3" rx="1.5"/><rect class="bg" x="157" y="29" width="17" height="3" rx="1.5"/><rect class="bg" x="157" y="35" width="22" height="3" rx="1.5"/>`,
 
+    help: () => `${ground()}
+      <path class="sf ln" d="M100 30c-22-12-48-12-70-2v66c22-10 48-10 70 2z"/>
+      <path class="sf ln" d="M100 30c22-12 48-12 70-2v66c-22-10-48-10-70 2z"/>
+      <path class="ln nf" d="M100 30v66"/>
+      ${[0, 1, 2, 3].map((r) => `<rect class="bg" x="40" y="${40 + r * 11}" width="${r === 3 ? 30 : 48}" height="4" rx="2"/><rect class="${r === 0 ? 'a' : 'bg'}" x="110" y="${40 + r * 11}" width="${r === 2 ? 34 : 48}" height="4" rx="2"/>`).join('')}
+      <circle class="g" cx="54" cy="84" r="6"/>${tick(54, 84)}
+      <circle class="a ln" cx="168" cy="22" r="14"/>
+      <text class="tx w" x="168" y="27.5" text-anchor="middle" font-size="16">?</text>
+      ${sparkle(20, 30, 5, 'y')}${sparkle(138, 12, 3.5, 'y')}`,
+
     prices: () => `${ground()}
       <rect class="sf ln" x="18" y="12" width="96" height="84" rx="7"/>
       <path class="a ln" d="M18 19a7 7 0 0 1 7-7h82a7 7 0 0 1 7 7v7H18z"/>
@@ -314,8 +325,10 @@
     timesheet: ['บันทึกชั่วโมงทำงาน', 'กรอกชั่วโมงรายสัปดาห์ แยก Project / Bid / Overhead / Leave'],
     settings: ['ตั้งค่าระบบ', 'บัญชีผู้ใช้ · Role และสิทธิ์ · Cloud · Backup & Restore'],
     about: ['เวอร์ชันและประวัติการแก้ไข', 'ดูว่ามีอะไรใหม่และอะไรเปลี่ยนไปในแต่ละเวอร์ชัน'],
+    help: ['วิธีใช้งาน', 'คู่มือของทุกหน้า — ขั้นตอนทีละข้อ สิทธิ์ตาม Role และวิธีแก้ปัญหาที่พบบ่อย · ค้นหาได้'],
   };
-  I.hero = function (route) {
+  /* help = topic of the user guide for this page (help.js) → "วิธีใช้หน้านี้" link */
+  I.hero = function (route, help) {
     const el = document.getElementById('page-hero');
     if (!el) return;
     const h = HERO[route];
@@ -323,6 +336,7 @@
     el.hidden = false;
     if (el.dataset.route === route) return; // same page (resize / data refresh) — keep it as is
     el.dataset.route = route;
-    el.innerHTML = `<div class="hero-text"><b>${PM.ui.esc(h[0])}</b><p>${PM.ui.esc(h[1])}</p></div><div class="hero-art">${I.art(route)}</div>`;
+    el.innerHTML = `<div class="hero-text"><b>${PM.ui.esc(h[0])}</b><p>${PM.ui.esc(h[1])}</p>
+      ${help ? `<a class="hero-help" href="#/help/${help}">${I.svg('book')}วิธีใช้หน้านี้</a>` : ''}</div><div class="hero-art">${I.art(route)}</div>`;
   };
 })();

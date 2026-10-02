@@ -15,7 +15,7 @@
     const canRoles = PM.can('roles.manage');
 
     el.innerHTML = `
-      ${user ? `<div class="card"><div class="card-h"><h2>บัญชีผู้ใช้</h2><span class="spacer"></span>${roleBadge(A.role)}<p>เชื่อมต่อกับ Supabase Auth · Role กำหนดโดย Admin หรือ Project Manager</p></div>
+      ${user ? `<div class="card"><div class="card-h"><h2>บัญชีผู้ใช้</h2><span class="spacer"></span>${roleBadge(A.role)}<p>เชื่อมต่อกับ Supabase Auth · Role กำหนดโดย Admin, Department Manager หรือ Project Manager</p></div>
         ${A.roleError ? `<div class="card-b" style="padding-bottom:0"><div class="auth-msg error">${esc(A.roleError)}</div></div>` : ''}
         <div class="card-b grid cols-3">
           <div class="auth-form" style="margin:0">
@@ -39,15 +39,16 @@
         </div></div>` : ''}
 
       ${canRoles ? `<div class="card">
-        <div class="card-h"><h2>จัดการ Role ผู้ใช้</h2><span class="chip">Admin · Project Manager</span><span class="spacer"></span><button class="btn sm" data-action="reload-users">รีเฟรช</button>
-          <p>ผู้สมัครใหม่จะได้ Role เป็น Technician อัตโนมัติ — เปลี่ยน Role ได้จากตารางนี้ (บันทึกทันที)${A.role === 'project_manager' ? ' · Project Manager ตั้ง Role เป็น Project Manager / Engineer / Technician ให้คนอื่นได้ แต่เปลี่ยน Admin, ตั้งเป็น Admin หรือเปลี่ยน Role ของตัวเองไม่ได้' : ''}${PM.can('users.delete') ? ' · ลบบัญชีผู้ใช้ได้เฉพาะ Admin' : ''}</p></div>
+        <div class="card-h"><h2>จัดการ Role ผู้ใช้</h2><span class="chip">Admin · Department Manager · Project Manager</span><span class="spacer"></span><button class="btn sm" data-action="reload-users">รีเฟรช</button>
+          <p>ผู้สมัครใหม่จะได้ Role เป็น Technician อัตโนมัติ — เปลี่ยน Role ได้จากตารางนี้ (บันทึกทันที)${A.role !== 'admin' ? ' · ' + esc(PM.ROLE_RULES) : ''}${PM.can('users.delete') ? ' · ลบบัญชีผู้ใช้ได้เฉพาะ Admin' : ''}</p></div>
         <div class="card-b flush table-wrap" id="user-roles"><p class="empty">กำลังโหลดรายชื่อผู้ใช้…</p></div>
       </div>` : ''}
 
       <div class="card">
         <div class="card-h"><h2>สิทธิ์การใช้งานตาม Role</h2><p>✓ = ทำได้ · คอลัมน์ที่ไฮไลต์คือ Role ของคุณ</p></div>
         <div class="card-b flush table-wrap">${matrix(A && A.role)}</div>
-        <div class="card-b" style="padding-top:0"><p class="perm-note">${LOCK}ลบงานใน Weekly Plan: ได้เฉพาะคนที่สร้างงานนั้น (งานเดิมที่ไม่มีข้อมูลผู้สร้าง — เฉพาะ Admin)</p></div>
+        <div class="card-b" style="padding-top:0"><p class="perm-note">${LOCK}ลบงานใน Weekly Plan: ได้เฉพาะคนที่สร้างงานนั้น (งานเดิมที่ไม่มีข้อมูลผู้สร้าง — เฉพาะ Admin)</p>
+          <p class="perm-note">${LOCK}กำหนด Role — ${esc(PM.ROLE_RULES)}</p></div>
       </div>
 
       <div class="grid cols-2">
@@ -255,7 +256,8 @@
   function roleCell(u, me) {
     const allowed = PM.assignableRoles(u);
     if (!allowed.length) {
-      const why = u.id === me ? 'เปลี่ยน Role ของตัวเองไม่ได้' : u.role === 'admin' ? 'เปลี่ยนได้เฉพาะ Admin' : '';
+      const why = u.id === me ? 'เปลี่ยน Role ของตัวเองไม่ได้' : u.role === 'admin' ? 'เปลี่ยนได้เฉพาะ Admin'
+        : u.role === 'dept_manager' ? 'เปลี่ยนได้เฉพาะ Admin / Department Manager' : '';
       return `${roleBadge(u.role)}${why ? `<small>${LOCK}${esc(why)}</small>` : ''}`;
     }
     return `<select data-role-for="${esc(u.id)}" data-prev="${esc(u.role)}" data-self="${u.id === me ? 1 : ''}" aria-label="Role ของ ${esc(u.email || '')}">
@@ -264,10 +266,10 @@
 
   async function changeRole(el, sel) {
     const role = sel.value, prev = sel.dataset.prev, self = !!sel.dataset.self;
-    // same rules as the database: a Project Manager can't touch the Admin role (checked again by roles.sql)
+    // same rules as the database (checked again by roles.sql)
     if (!PM.assignableRoles({ id: sel.dataset.roleFor, role: prev }).includes(role)) {
       sel.value = prev;
-      alert('เฉพาะ Admin เท่านั้นที่เปลี่ยน Role ของ Admin หรือตั้งใครเป็น Admin ได้');
+      alert('ไม่มีสิทธิ์ตั้ง Role นี้ — ' + PM.ROLE_RULES);
       return;
     }
     if (self && prev === 'admin' && role !== 'admin' && !confirm('คุณกำลังลด Role ของตัวเองจาก Admin — จะไม่สามารถจัดการ Role ได้อีก ดำเนินการต่อ?')) {
