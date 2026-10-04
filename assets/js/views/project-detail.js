@@ -33,7 +33,7 @@
           <dt>Client</dt><dd>${esc(p.client)}</dd>
           <dt>Project Manager</dt><dd>${esc(V.pmName(p))}</dd>
           <dt>Contract value</dt><dd>${U.money(p.contractValue)}</dd>
-          <dt>From bid</dt><dd>${bid ? `${esc(bid.code)} ${PM.poFiles.clip(bid.files, `data-action="bid-files" data-id="${esc(bid.id)}"`)}` : '–'}</dd>
+          <dt>From bid</dt><dd>${bid ? `${esc(bid.code)} ${PM.canSeeBidPrice(bid) ? PM.poFiles.clip(bid.files, `data-action="bid-files" data-id="${esc(bid.id)}"`) : ''}` : '–'}</dd>
           <dt>Start</dt><dd>${U.date(p.startDate)}</dd>
           <dt>Finish</dt><dd>${U.date(p.endDate)}</dd>
           <dt>Time elapsed</dt><dd>${U.pct(Math.max(0, Math.min(1, PM.diffDays(p.startDate, PM.today()) / (PM.diffDays(p.startDate, p.endDate) || 1))))}</dd>
@@ -54,7 +54,7 @@
       if (!a) return;
       const act = a.dataset.action, id = a.dataset.id;
       if (act === 'edit-project') V.projectForm(p, null, rerender);
-      if (act === 'bid-files') { const b = PM.find('bids', id); if (b) PM.poFiles.showList(`ไฟล์แนบของ ${b.code} (ใบเสนอราคา / Inquiry)`, b.files); }
+      if (act === 'bid-files') { const b = PM.find('bids', id); if (b && PM.canSeeBidPrice(b)) PM.poFiles.showList(`ไฟล์แนบของ ${b.code} (ใบเสนอราคา / Inquiry)`, b.files); }
       if (act === 'edit-costs') costForm(p, rerender);
       if (act === 'new-cost') PM.costEntryForm(p, null, rerender);
       if (act === 'edit-phase') phaseForm(p, id, rerender);
@@ -359,10 +359,11 @@
     PM.charts.columns(document.getElementById('c-inc'), {
       categories: last.map((s) => U.month(s.month)), label: 'Incidents',
       series: [
-        { name: 'Near miss', color: 'var(--s1)', values: last.map((s) => s.nearMiss) },
-        { name: 'First aid', color: 'var(--s2)', values: last.map((s) => s.firstAid) },
-        { name: 'Recordable', color: 'var(--s3)', values: last.map((s) => s.recordable) },
-        { name: 'LTI', color: 'var(--s4)', values: last.map((s) => s.lti) },
+        // ordered by severity → one-hue ramp, darker = more serious (validated light & dark)
+        { name: 'Near miss', color: 'var(--seq-3)', values: last.map((s) => s.nearMiss) },
+        { name: 'First aid', color: 'var(--seq-4)', values: last.map((s) => s.firstAid) },
+        { name: 'Recordable', color: 'var(--seq-5)', values: last.map((s) => s.recordable) },
+        { name: 'LTI', color: 'var(--seq-6)', values: last.map((s) => s.lti) },
       ],
     });
   }

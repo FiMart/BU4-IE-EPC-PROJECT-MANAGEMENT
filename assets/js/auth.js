@@ -153,6 +153,8 @@
     </div>`;
 
   function screen(view, o = {}) {
+    // checking the saved session: the loading screen covers it · any real screen (login, register …) takes over
+    if (view === 'loading') PM.splash.show('กำลังตรวจสอบการเข้าสู่ระบบ…'); else PM.splash.hide();
     document.body.classList.remove('authed');
     const root = document.getElementById('auth-root');
     root.innerHTML = `<div class="auth-wrap">
@@ -215,7 +217,7 @@
     async login(f) {
       const { data, error } = await A.client.auth.signInWithPassword({ email: f.email, password: f.password });
       if (error) throw error;
-      await enter(data.user);
+      await enter(data.user, true);
     },
     async register(f) {
       const { data, error } = await A.client.auth.signUp({
@@ -223,7 +225,7 @@
         options: { data: { full_name: f.fullName }, emailRedirectTo: redirectUrl() },
       });
       if (error) throw error;
-      if (data.session) { await enter(data.user); U.toast('สมัครสมาชิกสำเร็จ'); return; }
+      if (data.session) { await enter(data.user, true); U.toast('สมัครสมาชิกสำเร็จ'); return; }
       // With "Confirm email" on, Supabase returns a user with no identities when the email is already taken
       if (data.user && Array.isArray(data.user.identities) && data.user.identities.length === 0) throw new Error('User already registered');
       screen('sent', { text: `เราส่งลิงก์ยืนยันไปที่ ${f.email} แล้ว — คลิกลิงก์ในอีเมลเพื่อยืนยันบัญชี จากนั้นกลับมาเข้าสู่ระบบ` });
@@ -237,16 +239,20 @@
       const { data, error } = await A.client.auth.updateUser({ password: f.password });
       if (error) throw error;
       recovering = false;
-      await enter(data.user);
+      await enter(data.user, true);
       U.toast('ตั้งรหัสผ่านใหม่เรียบร้อย');
     },
   };
 
   /* ---------- signed-in state ---------- */
-  async function enter(user) {
+  /* fresh = just logged in / registered / set a new password → always start on the Dashboard */
+  async function enter(user, fresh) {
     A.user = user;
+    PM.splash.show(fresh ? 'เข้าสู่ระบบสำเร็จ — กำลังเปิด Dashboard…' : 'กำลังโหลดข้อมูล…');
+    if (fresh) PM.goStart();
     await A.refreshRole();
-    if (A.user !== user) return; // signed out while the role was loading
+    if (A.user !== user) { PM.splash.hide(); return; } // signed out while the role was loading
+    PM.prefs.load(user); // this account's display settings (theme, sidebar) — on every device it signs in on
     document.getElementById('auth-root').innerHTML = '';
     document.body.classList.add('authed');
     renderUserBox();

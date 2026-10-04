@@ -15,6 +15,7 @@
     [/^#\/timesheet$/, 'timesheet', 'Timesheet', 'Resource Utilization'],
     [/^#\/settings$/, 'settings', 'Settings', 'System'],
     [/^#\/help(?:\/(\w+))?$/, 'help', 'Help', 'คู่มือการใช้งานทุกหน้า'],
+    [/^#\/present$/, 'present', 'โหมดนำเสนอ', 'นำเสนอขึ้นจอ'],
     [/^#\/about$/, 'about', 'About', 'เวอร์ชันและประวัติการแก้ไข'],
   ];
 
@@ -24,6 +25,16 @@
     for (const r of routes) { match = hash.match(r[0]); if (match) { route = r; break; } }
     if (!route) { location.hash = '#/dashboard'; return; }
     const el = document.getElementById('view');
+    applyRoleNav();
+    // presentation mode: the page takes the whole screen (no sidebar, top bar, banner or tab bar — CSS)
+    document.body.classList.toggle('presenting', route[1] === 'present');
+    // pages a role may not open (menu items are hidden too) — e.g. Resources: Admin / Department Manager / Project Manager
+    const need = PAGE_PERM[route[1]];
+    if (need && PM.auth && PM.auth.user && !PM.can(need)) {
+      PM.ui.toast('หน้านี้เปิดได้เฉพาะ Admin, Department Manager และ Project Manager');
+      PM.goStart();
+      if (location.hash !== hash) return render();
+    }
     const text = (x) => (typeof x === 'function' ? x(match) : x);
     document.getElementById('page-title').textContent = text(route[2]);
     document.getElementById('crumb').textContent = text(route[3]);
@@ -42,11 +53,10 @@
     document.getElementById('nav').classList.toggle('in-bidding', route[1] === 'bidding' || !!stage);
     el.onclick = null; el.onchange = null; el.oninput = null; el.onkeydown = null;
     el.ondragstart = el.ondragend = el.ondragover = el.ondragleave = el.ondrop = null;
-    try { localStorage.setItem(LAST_ROUTE, hash); } catch (e) { /* ignore */ }
     PM.illus.hero(stage ? 'bid-' + stage : route[1], PM.help.topicFor(route[1]));
     if (PM.cloud.waiting()) { // never show (or let anyone edit) the local demo copy instead of the real data
       lastAnimated = null;
-      el.innerHTML = `<div class="cloud-wait"><span class="spinner" aria-hidden="true"></span><div>ยังโหลดข้อมูลจาก Cloud ไม่ได้ — กำลังลองใหม่อัตโนมัติ<br><button type="button" class="btn sm" data-sync-retry style="margin-top:10px">ลองใหม่ตอนนี้</button></div></div>`;
+      el.innerHTML = skeleton(`ยังโหลดข้อมูลจาก Cloud ไม่ได้ — กำลังลองใหม่อัตโนมัติ <button type="button" class="btn sm" data-sync-retry>ลองใหม่ตอนนี้</button>`);
       return;
     }
     PM.views[route[1]](el, match.slice(1));
@@ -61,14 +71,63 @@
   let lastAnimated = null;
   PM.render = render;
 
-  /* reopening the site (no page in the address) goes back to the page that was open last time */
-  const LAST_ROUTE = 'epc-pm-last-route';
-  if (!location.hash || location.hash === '#' || location.hash === '#/') {
-    try {
-      const last = localStorage.getItem(LAST_ROUTE);
-      if (last && routes.some((r) => r[0].test(last))) history.replaceState(null, '', last);
-    } catch (e) { /* ignore */ }
+  /* pages behind a permission (roles.js) — their menu entries (sidebar, bottom bar, "เพิ่มเติม") are hidden as well */
+  const PAGE_PERM = { resources: 'resource.view', timesheet: 'resource.view' };
+  function applyRoleNav() {
+    const signedIn = PM.auth && PM.auth.user;
+    document.querySelectorAll('#nav a[data-route], #tabbar a[data-route]').forEach((a) => {
+      const need = PAGE_PERM[a.dataset.route];
+      a.hidden = !!(need && signedIn && !PM.can(need));
+    });
+    // a group heading with nothing left under it goes too (e.g. "Resources")
+    document.querySelectorAll('#nav .nav-group').forEach((g) => {
+      let n = g.nextElementSibling, any = false;
+      while (n && !n.classList.contains('nav-group')) { if (n.tagName === 'A' && !n.hidden && !n.classList.contains('sub')) any = true; n = n.nextElementSibling; }
+      g.hidden = !any;
+    });
   }
+
+  /* opening the site always starts on the Dashboard (login / register do the same — auth.js);
+     a refresh or Back / Forward keeps the page that was open. Supabase e-mail links carry tokens in the
+     address (#access_token=… / #error=…) — those are left for auth.js to read. */
+  PM.startPage = '#/dashboard';
+  PM.goStart = () => { if (location.hash !== PM.startPage) history.replaceState(null, '', location.pathname + location.search + PM.startPage); };
+  const navEntry = (performance.getEntriesByType && performance.getEntriesByType('navigation')[0]) || {};
+  if (navEntry.type !== 'reload' && navEntry.type !== 'back_forward' && (!location.hash || location.hash.startsWith('#/'))) PM.goStart();
+  try { localStorage.removeItem('epc-pm-last-route'); } catch (e) { /* the old "reopen the last page" key — no longer used */ }
+
+  /* ---------- loading screen (index.html #boot-splash) ---------- */
+  const splash = document.getElementById('boot-splash');
+  let splashTimer = null;
+  PM.splash = {
+    show(text) {
+      clearTimeout(splashTimer);
+      if (text) document.getElementById('boot-text').textContent = text;
+      splash.hidden = false;
+      splash.classList.remove('out');
+      splashTimer = setTimeout(() => PM.splash.hide(), 20000); // never stays up forever (slow network → the page shows its own state)
+    },
+    text(t) { document.getElementById('boot-text').textContent = t; },
+    hide() {
+      if (splash.hidden || splash.classList.contains('out')) return; // already going (keep its timer)
+      clearTimeout(splashTimer);
+      splash.classList.add('out'); // fades out (motion.css), then removed from view
+      splashTimer = setTimeout(() => { splash.hidden = true; }, 320);
+    },
+  };
+
+  /* placeholder page while data is on its way: shimmering tiles + cards, with a message on top */
+  function skeleton(message) {
+    const block = (cls) => `<div class="sk ${cls}"></div>`;
+    return `<div class="skeleton-page" aria-busy="true">
+      <div class="sk-msg"><span class="spinner" aria-hidden="true"></span><span>${message}</span></div>
+      ${block('sk-hero')}
+      <div class="grid cols-6">${block('sk-tile').repeat(6)}</div>
+      <div class="grid cols-2">${block('sk-card').repeat(2)}</div>
+      ${block('sk-card sk-wide')}
+    </div>`;
+  }
+  PM.skeleton = skeleton;
 
   function applyAsOf() {
     document.getElementById('asof').textContent = 'Status date: ' + PM.ui.date(PM.today());
@@ -79,9 +138,7 @@
   document.getElementById('theme-toggle').addEventListener('click', () => {
     const root = document.documentElement;
     const cur = root.getAttribute('data-theme') || (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
-    const next = cur === 'dark' ? 'light' : 'dark';
-    root.setAttribute('data-theme', next);
-    try { localStorage.setItem('epc-pm-theme', next); } catch (e) { /* ignore */ }
+    PM.prefs.set('theme', cur === 'dark' ? 'light' : 'dark'); // saved on the account (see PM.prefs below)
   });
 
   /* ---------- mobile drawer menu ---------- */
@@ -114,7 +171,7 @@
     const groups = [];
     Array.from(document.getElementById('nav').children).forEach((n) => {
       if (n.classList.contains('nav-group')) groups.push({ title: n.textContent, links: [] });
-      else if (n.tagName === 'A' && !onBar.has(n.getAttribute('href')) && groups.length) groups[groups.length - 1].links.push(n);
+      else if (n.tagName === 'A' && !n.hidden && !onBar.has(n.getAttribute('href')) && groups.length) groups[groups.length - 1].links.push(n);
     });
     const esc = PM.ui.esc, u = PM.auth && PM.auth.user;
     const name = u ? PM.auth.displayName(u) : '';
@@ -178,11 +235,71 @@
   appEl.addEventListener('transitionend', (e) => { if (e.target === appEl && e.propertyName === 'grid-template-columns') redrawAfterResize(); });
   sideBtn.addEventListener('click', () => {
     const on = !document.documentElement.classList.contains('nav-collapsed');
-    applyCollapsed(on);
-    try { localStorage.setItem(navKey(), on ? '1' : '0'); } catch (e) { /* ignore */ }
-    clearTimeout(collapseTimer);
-    collapseTimer = setTimeout(redrawAfterResize, 450); // fallback if no transition runs
+    PM.prefs.set(compactMq.matches ? 'navCompact' : 'nav', on ? '1' : '0'); // saved on the account
   });
+  const relayout = () => { clearTimeout(collapseTimer); collapseTimer = setTimeout(redrawAfterResize, 450); }; // fallback if no transition runs
+
+  /* ---------- display settings follow the ACCOUNT ----------
+     Theme (light · dark · system) and the sidebar (full · icons) are saved on the user's account
+     (Supabase Auth user_metadata.prefs) — every device / browser the person signs in on gets them.
+     This browser keeps a copy (localStorage, read by index.html) so the very first paint is already right. */
+  const PREF_LS = { theme: 'epc-pm-theme', nav: 'epc-pm-nav-collapsed', navCompact: 'epc-pm-nav-collapsed-compact' };
+  const lsGet = (k) => { try { return localStorage.getItem(k); } catch (e) { return null; } };
+  const lsSet = (k, v) => { try { if (v == null) localStorage.removeItem(k); else localStorage.setItem(k, v); } catch (e) { /* ignore */ } };
+  const applyTheme = (t) => { const r = document.documentElement; if (t === 'light' || t === 'dark') r.setAttribute('data-theme', t); else r.removeAttribute('data-theme'); };
+  let prefTimer = null;
+  PM.prefs = {
+    state: 'local', // local · saving · saved · error
+    get: () => ({ theme: lsGet(PREF_LS.theme) || 'system', nav: lsGet(PREF_LS.nav), navCompact: lsGet(PREF_LS.navCompact) }),
+    /* change one setting here, then save it to the account */
+    set(key, value) {
+      lsSet(PREF_LS[key], key === 'theme' && value === 'system' ? null : value);
+      if (key === 'theme') applyTheme(value);
+      else { const was = document.documentElement.classList.contains('nav-collapsed'), now = wantCollapsed(); applyCollapsed(now); if (was !== now) relayout(); }
+      saveSoon();
+    },
+    /* signed in: the account's settings win; an account that has none yet takes this browser's */
+    fromAccount(user) {
+      const p = user && user.user_metadata && user.user_metadata.prefs;
+      if (!p) { saveSoon(); return; }
+      lsSet(PREF_LS.theme, p.theme === 'light' || p.theme === 'dark' ? p.theme : null);
+      lsSet(PREF_LS.nav, p.nav == null ? null : String(p.nav));
+      lsSet(PREF_LS.navCompact, p.navCompact == null ? null : String(p.navCompact));
+      applyTheme(p.theme);
+      const was = document.documentElement.classList.contains('nav-collapsed'), now = wantCollapsed();
+      applyCollapsed(now);
+      if (was !== now) relayout();
+      PM.prefs.state = 'saved';
+    },
+    /* after sign-in: apply what the session carries at once, then the newest copy from the server (another device may have changed it) */
+    async load(user) {
+      PM.prefs.fromAccount(user);
+      const c = PM.auth && PM.auth.client;
+      if (!c || !c.auth || !c.auth.getUser) return;
+      try {
+        const { data } = await c.auth.getUser();
+        if (data && data.user && PM.auth.user && data.user.id === PM.auth.user.id && data.user.user_metadata && data.user.user_metadata.prefs) PM.prefs.fromAccount(data.user);
+      } catch (e) { /* offline — the session copy stays */ }
+    },
+  };
+  function saveSoon() { clearTimeout(prefTimer); prefTimer = setTimeout(savePrefs, 600); }
+  async function savePrefs() {
+    const c = PM.auth && PM.auth.client, u = PM.auth && PM.auth.user;
+    if (!c || !c.auth || !u) { PM.prefs.state = 'local'; return; }
+    PM.prefs.state = 'saving'; prefsChanged();
+    try {
+      const { data, error } = await c.auth.updateUser({ data: { prefs: PM.prefs.get() } }); // merges into user_metadata (full_name stays)
+      if (error) throw error;
+      if (data && data.user) PM.auth.user = data.user;
+      PM.prefs.state = 'saved';
+    } catch (e) {
+      console.warn('Saving display settings to the account failed:', e && e.message);
+      PM.prefs.state = 'error';
+    }
+    prefsChanged();
+  }
+  // the Settings page shows where the settings live (and refreshes its controls)
+  const prefsChanged = () => document.dispatchEvent(new CustomEvent('pm-prefs'));
 
   /* ---------- tables → cards on phones ----------
      Copies each column header into data-label on its cells so CSS can show "label : value" rows.
@@ -219,7 +336,34 @@
     clearTimeout(rt);
     rt = setTimeout(() => { if (PM.booted && PM.auth.user && !document.querySelector('.modal-backdrop')) render(); }, 200);
   });
-  window.addEventListener('hashchange', () => { if (!PM.booted || !PM.auth.user || PM.cloud.blocking) return; window.scrollTo(0, 0); render(); });
+  /* page change: the tapped tab pulses, the page dims and the top bar runs (phones / tablets — CSS), and the new
+     page is drawn on the next frame so that feedback shows at once even when a page with charts takes a moment */
+  let navSeq = 0;
+  window.addEventListener('hashchange', () => {
+    if (!PM.booted || !PM.auth.user || PM.cloud.blocking) return;
+    const seq = ++navSeq, body = document.body, t0 = Date.now();
+    body.classList.add('is-navigating', 'nav-progress');
+    let done = false;
+    const go = () => {
+      if (done || seq !== navSeq) return; // drawn already, or tapped again meanwhile — only the last page is drawn
+      done = true;
+      window.scrollTo(0, 0);
+      render();
+      body.classList.remove('is-navigating');
+      document.querySelectorAll('.is-loading[data-nav-loading]').forEach((a) => { a.classList.remove('is-loading'); a.removeAttribute('data-nav-loading'); });
+      setTimeout(() => { if (seq === navSeq) body.classList.remove('nav-progress'); }, Math.max(0, 350 - (Date.now() - t0))); // bar stays long enough to be seen
+    };
+    requestAnimationFrame(() => setTimeout(go, 0)); // after the feedback has been painted …
+    setTimeout(go, 60);                             // … or soon anyway (frames are paused in background tabs)
+  });
+  // the tab / tile that was tapped shows it is loading (the "เพิ่มเติม" sheet closes, so its tab button carries it)
+  document.addEventListener('click', (e) => {
+    const a = e.target.closest('#tabbar a[href], #more-sheet a[href]');
+    if (!a || a.getAttribute('href') === location.hash) return;
+    const mark = a.closest('#more-sheet') ? document.getElementById('tab-more') : a;
+    mark.classList.add('is-loading');
+    mark.setAttribute('data-nav-loading', '');
+  }, true);
 
   /* Called by auth.js once a user is signed in */
   PM.boot = async function () {
@@ -229,8 +373,14 @@
     PM.updateVersionBadge();
     // First time on this browser: wait for the cloud instead of flashing local demo data
     const waitCloud = PM.cloud.available() && !PM.cloud.hasBase();
-    if (waitCloud) document.getElementById('view').innerHTML = '<div class="cloud-wait"><span class="spinner" aria-hidden="true"></span>กำลังโหลดข้อมูลจาก Cloud…</div>';
-    else render();
+    if (waitCloud) {
+      // first time on this browser: the loading screen stays up until the cloud data is here
+      PM.splash.show('กำลังโหลดข้อมูลจาก Cloud…');
+      document.getElementById('view').innerHTML = skeleton('กำลังโหลดข้อมูลจาก Cloud…');
+    } else {
+      render();          // this browser's copy right away — the newest cloud data follows (top progress bar)
+      PM.splash.hide();
+    }
     // ask the browser not to evict this site's saved data when the phone / tablet runs low on space
     try { if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(() => {}); } catch (e) { /* ignore */ }
     const draft = PM.ui.pendingDraft();
@@ -242,5 +392,6 @@
       applyAsOf();
       render();
     }
+    PM.splash.hide();
   };
 })();

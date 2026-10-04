@@ -42,15 +42,38 @@
   const nextOrd = () => Date.now() * 1000 + (ordSeq++ % 1000);
   const enqueue = (fn) => (queue = queue.then(fn, fn)); // cloud operations run one at a time
 
-  function records(db) {
+  /* bid price rows: keys in the order Postgres jsonb returns them (length, then name), so an unchanged row
+     hashes the same before and after a round trip */
+  const canon = (o) => Object.keys(o).sort((a, b) => a.length - b.length || (a < b ? -1 : 1)).reduce((x, k) => { x[k] = o[k]; return x; }, {});
+  const hasPrice = (b) => b.value != null || b.margin != null || (Array.isArray(b.files) && b.files.length > 0);
+  /* who may write a bid's price row (same rule as data.sql): Admin, or the Sales who owns the bid */
+  const canWritePrice = (owner) => PM.myRole() === 'admin' || (PM.myRole() === 'sales' && !!owner && owner === PM.myUid());
+
+  /* a bid → its public record (+ its price row when this user may write it).
+     Someone who may not write the price keeps the bid exactly as stored, so nothing they hold is ever dropped. */
+  function bidRecords(b, all) {
+    const owner = PM.bidOwner(b);
+    const pub = {};
+    Object.keys(b).forEach((k) => { if (!PM.BID_SECRET.includes(k)) pub[k] = b[k]; });
+    // not allowed to write the price: older data that still carries it is sent back untouched;
+    // otherwise the empty placeholders apply() put on the bid are left out (the stored row never had them).
+    // all = Reset / Import (app_replace_all writes every row): always split, so prices never land on the public bid
+    if (!all && !canWritePrice(owner)) return [{ collection: 'bids', id: String(b.id), data: hasPrice(b) ? b : pub }];
+    pub.owner = owner;
+    const out = [{ collection: 'bids', id: String(b.id), data: pub }];
+    if (hasPrice(b)) out.push({ collection: 'bidprices', id: String(b.id), data: canon({ value: b.value == null ? null : b.value, margin: b.margin == null ? null : b.margin, files: b.files || [], owner }) });
+    return out;
+  }
+
+  function records(db, all) {
     const map = new Map();
     map.set(key('meta', 'main'), { collection: 'meta', id: 'main', data: db.meta || {} });
     COLLS.forEach((c) => (db[c] || []).forEach((r) => {
       if (r == null || r.id == null) return;
-      const rec = outdated.has(c)
-        ? { collection: 'meta', id: PARK + c + '/' + r.id, data: r }
-        : { collection: c, id: String(r.id), data: r };
-      map.set(key(rec.collection, rec.id), rec);
+      (c === 'bids' ? bidRecords(r, all) : [{ collection: c, id: String(r.id), data: r }]).forEach((rec) => {
+        if (outdated.has(rec.collection)) rec = { collection: 'meta', id: PARK + rec.collection + '/' + rec.id, data: rec.data };
+        map.set(key(rec.collection, rec.id), rec);
+      });
     }));
     return Array.from(map.values());
   }
@@ -65,8 +88,9 @@
     return false;
   }
 
-  /* collections this role may not write (data.sql refuses them too): never sent, the cloud copy wins on the next load */
-  const readOnly = (c) => c === 'timesheets' && !PM.can('timesheet.edit');
+  /* collections this role may not write (data.sql refuses them too): never sent, the cloud copy wins on the next load.
+     Bid price rows: only Admin / Sales ever hold them (the database sends them to no one else). */
+  const readOnly = (c) => (c === 'timesheets' && !PM.can('timesheet.edit')) || (c === 'bidprices' && !PM.seesBidPrices());
 
   function diff() {
     const cur = {}, ups = [];
@@ -140,7 +164,17 @@
     COLLS.forEach((c) => (db[c] = []));
     const nb = {}, no = {};
     const real = new Set(rows.filter((r) => r.collection !== 'meta').map((r) => key(r.collection, r.id)));
+    const prices = {}; // bid id → price row this user is allowed to read
     rows.forEach((r) => {
+      if (r.collection === 'bidprices') {
+        prices[r.id] = r.data;
+        const k = key(r.collection, r.id);
+        nb[k] = hash(JSON.stringify(r.data));
+        no[k] = r.ord;
+      }
+    });
+    rows.forEach((r) => {
+      if (r.collection === 'bidprices') return;
       if (r.collection === 'meta' && String(r.id).startsWith(PARK)) {
         // parked record of a collection the table did not accept (see records())
         const s = String(r.id).slice(PARK.length), i = s.indexOf('/');
@@ -154,6 +188,12 @@
       const k = key(r.collection, r.id);
       nb[k] = hash(JSON.stringify(r.data));
       no[k] = r.ord;
+    });
+    // put each bid's price back on it; no row = not allowed to see it (older data may still carry it on the bid itself)
+    db.bids.forEach((b) => {
+      const p = prices[b.id];
+      if (p) { b.value = p.value; b.margin = p.margin; b.files = p.files || []; }
+      else if (!hasPrice(b)) { b.value = null; b.margin = null; b.files = []; }
     });
     const changed = Object.keys(nb).length !== Object.keys(base).length || Object.keys(nb).some((k) => nb[k] !== base[k]);
     base = nb; ords = no; saveBase();
@@ -183,6 +223,8 @@
     if (s === 'saved' && outdated.size) { s = 'outdated'; detail = 'Saved in backup mode (parked under meta) — the cloud table does not accept yet: ' + Array.from(outdated).join(', ') + '. Re-run supabase/data.sql.'; }
     C.state = s;
     C.detail = detail || '';
+    // thin progress bar at the top of the page while talking to the cloud (index.html .top-progress)
+    document.body.classList.toggle('is-syncing', s === 'loading' || s === 'saving');
     if (s === 'saved') C.savedAt = new Date();
     const el = document.getElementById('sync-status');
     if (!el) return;
@@ -260,7 +302,7 @@
     return enqueue(async () => {
       try {
         const send = async () => {
-          const list = records(PM.db).map((r, i) => ({ collection: r.collection, id: r.id, data: r.data, ord: i }));
+          const list = records(PM.db, true).map((r, i) => ({ collection: r.collection, id: r.id, data: r.data, ord: i }));
           return { list, error: (await client().rpc('app_replace_all', { payload: list })).error };
         };
         let { list: recs, error } = await send();
@@ -274,6 +316,8 @@
         base = {}; ords = {};
         recs.forEach((r) => { const k = key(r.collection, r.id); base[k] = hash(JSON.stringify(r.data)); ords[k] = r.ord; });
         saveBase();
+        // anyone but Admin: reload what the database lets them see (bid prices they may not see leave this browser)
+        if (PM.myRole() !== 'admin') { apply(await pull()); if (PM.auth.user && PM.booted) PM.render(); }
         setState('saved');
       } catch (e) { fail(e); }
     });
@@ -353,11 +397,23 @@
   document.addEventListener('visibilitychange', maybeRefresh);
   window.addEventListener('online', () => { if (C.enabled) C.sync(true); });
   document.addEventListener('click', (e) => { if (e.target.closest('[data-sync-retry]')) C.sync(true); });
-  // best-effort send on close — no "leave page?" prompt: unsent edits stay in this browser and go up next time.
-  // Phones & tablets rarely "close" a page: the browser is sent to the background and may be discarded
-  // there without warning (timers are paused too), so pending edits are sent the moment the page is hidden.
+  // Everything is meant to live in the cloud: pending edits are sent the moment the page is hidden or closed
+  // (phones & tablets rarely "close" a page — the browser is sent to the background and may be discarded
+  // there without warning, timers paused), and closing a tab while an edit has not reached the cloud yet
+  // makes the browser ask first. Unsent edits also stay in this browser and go up on the next visit.
   const flushNow = () => { if (C.enabled && timer) C.flush(); };
   window.addEventListener('pagehide', flushNow);
   document.addEventListener('visibilitychange', () => { if (document.hidden) flushNow(); });
   document.addEventListener('freeze', flushNow);
+  const unsent = () => C.enabled && synced && (timer !== null || C.state === 'saving' || (C.state === 'offline' && hasLocalChanges()));
+  window.addEventListener('beforeunload', (e) => {
+    if (!unsent()) return;
+    flushNow();
+    e.preventDefault();
+    e.returnValue = '';
+  });
+  // safety net: every 30 s, anything still not in the cloud (e.g. after a failed save) is sent again
+  setInterval(() => {
+    if (C.enabled && synced && !document.hidden && timer === null && C.state !== 'saving' && hasLocalChanges()) C.flush();
+  }, 30000);
 })();

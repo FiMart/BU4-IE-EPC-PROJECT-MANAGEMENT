@@ -17,6 +17,30 @@
   PM.bidStageLabel = (key) => { const s = PM.BID_STAGES.find((x) => x.key === key); return s ? s.label : ''; };
   /* the stage a bid was in on a given date (the last stage that had started by then) */
   PM.bidStageAt = (b, date) => { let s = 'inquiry'; PM.BID_STAGES.forEach((x) => { if (b.dates[x.key] && b.dates[x.key] <= date) s = x.key; }); return s; };
+  /* ---------- bid commercial data (value · margin · quotation files) ----------
+     Stored apart from the bid in cloud collection "bidprices" (cloud.js splits / merges it). The database sends a
+     price row only to Admin and to the Sales who owns the bid (data.sql) — everyone else sees the bid without them.
+     bid.owner = user id (auth) of the Sales account responsible for the bid. */
+  PM.BID_SECRET = ['value', 'margin', 'files'];
+  PM.myUid = () => (PM.auth && PM.auth.user ? PM.auth.user.id : '');
+  PM.myRole = () => (PM.auth && PM.auth.role) || '';
+  /* the Sales account behind the chosen Sales person (an account id, or an employee whose name matches an account) */
+  PM.bidOwnerFor = function (salesId, salesName) {
+    const team = PM.team || [];
+    if (salesId && team.some((u) => u.id === salesId)) return salesId;
+    const r = salesId && PM.db.resources.find((x) => x.id === salesId);
+    const name = PM.normName(r ? r.name : salesName);
+    const acc = name && team.find((u) => PM.normName(u.full_name) === name);
+    return acc ? acc.id : '';
+  };
+  PM.bidOwner = (b) => (b && (b.owner || PM.bidOwnerFor(b.sales, b.salesName))) || '';
+  const isMine = (b) => PM.myRole() === 'sales' && !!PM.myUid() && PM.bidOwner(b) === PM.myUid();
+  /* price / margin / quotation files of this bid: Admin all · Sales their own */
+  PM.canSeeBidPrice = (b) => PM.myRole() === 'admin' || isMine(b);
+  /* add / edit / move a bid and record Won · Lost: Admin all · Sales their own (no bid = a new inquiry) */
+  PM.canEditBid = (b) => PM.myRole() === 'admin' || (PM.myRole() === 'sales' && (!b || isMine(b)));
+  /* does this role see any bid price at all (Sales: their own)? — decides whether money columns are shown */
+  PM.seesBidPrices = () => PM.myRole() === 'admin' || PM.myRole() === 'sales';
   PM.BID_RESULTS = { pending: 'Pending', won: 'Won', lost: 'Lost', nobid: 'No-bid' };
   PM.SECTORS = ['Industrial', 'Energy', 'Oil & Gas', 'Infrastructure', 'Building'];
   PM.SCOPES = ['EPC', 'EP', 'E', 'C', 'Design & Build'];

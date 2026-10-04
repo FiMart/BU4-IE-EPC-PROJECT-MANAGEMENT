@@ -56,7 +56,7 @@
   /* bid details shown under the row: scope · client · where the bid is now · due date · value */
   function bidInfo(b) {
     const now = b.result === 'pending' ? `ตอนนี้: ${PM.bidStageLabel(b.stage)}` : `ผล: ${PM.BID_RESULTS[b.result] || b.result}`;
-    return [b.name, b.client, now, b.dueDate ? `Due ${U.date(b.dueDate)}` : '', b.value ? U.money(b.value) : ''].filter(Boolean).join(' · ');
+    return [b.name, b.client, now, b.dueDate ? `Due ${U.date(b.dueDate)}` : '', b.value && PM.canSeeBidPrice(b) ? U.money(b.value) : ''].filter(Boolean).join(' · ');
   }
   /* "sub item" choices for the selected work item: EPC phases for a project, bidding stages for a bid */
   function subOptions(item) {

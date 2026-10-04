@@ -59,19 +59,29 @@
         <div class="card-b flush table-wrap">${table(rows, filtered)}</div>
       </div>
       <div class="grid cols-2">
-        <div class="card"><div class="card-h"><h2>SPI by project</h2><p>Time — ≥ 0.95 On track · 0.90–0.95 At risk · &lt; 0.90 Off track</p></div><div class="card-b"><div class="chart" id="c-spi"></div></div></div>
-        <div class="card"><div class="card-h"><h2>CPI by project</h2><p>Cost — Earned Value ÷ Actual Cost</p></div><div class="card-b"><div class="chart" id="c-cpi"></div></div></div>
+        <div class="card"><div class="card-h"><h2>สุขภาพโครงการ — SPI × CPI</h2><p>แต่ละจุด = 1 โครงการ · แกนนอน SPI (เวลา) · แกนตั้ง CPI (ต้นทุน) · เส้น 1.0 = ตามแผน / ตามงบ · สีจุด = Health</p></div><div class="card-b"><div class="chart" id="c-health"></div></div></div>
+        <div class="card"><div class="card-h"><h2>Progress จริง เทียบแผน</h2><p>ส่วนต่าง % งานเสร็จจริง − ตามแผน ณ วันนี้ · ขวา = เร็วกว่าแผน · ซ้าย = ช้ากว่าแผน</p></div><div class="card-b"><div class="chart" id="c-gap"></div></div></div>
       </div>`;
 
-    const bar = (key, label) => ({
-      max: 1.2,
-      items: rows.filter((r) => r.m[key] != null).map((r) => {
-        const v = r.m[key], h = U.health(v);
-        return { label: r.p.code, sub: U.healthLabel[h], value: v, target: 1, display: U.ratio(v), color: 'var(--s1)', tip: `${r.p.code} ${r.p.name}\n${label} ${U.ratio(v)} — ${U.healthLabel[h]}` };
+    // both ratios of a project on one plot, judged against 1.0 — reads "late and over budget" at a glance
+    PM.charts.quadrant(document.getElementById('c-health'), {
+      label: 'SPI × CPI by project', xName: 'SPI (เวลา)', yName: 'CPI (ต้นทุน)',
+      quads: { tr: 'เร็วกว่าแผน · ต่ำกว่างบ', tl: 'ช้ากว่าแผน · ต่ำกว่างบ', br: 'เร็วกว่าแผน · เกินงบ', bl: 'ช้ากว่าแผน · เกินงบ' },
+      points: rows.filter((r) => r.p.status !== 'closed').map((r) => {
+        const h = healthOf(r);
+        return { label: r.p.code, x: r.m.spi, y: r.m.cpi, level: h === 'onhold' ? 'neutral' : h,
+          tip: `${r.p.code} ${r.p.name}\nSPI ${U.ratio(r.m.spi)} · CPI ${U.ratio(r.m.cpi)}\n${h === 'onhold' ? 'On hold' : U.healthLabel[h]}` };
       }),
     });
-    PM.charts.hbars(document.getElementById('c-spi'), bar('spi', 'SPI'));
-    PM.charts.hbars(document.getElementById('c-cpi'), bar('cpi', 'CPI'));
+    // ahead of / behind plan, in progress points — a diverging bar around 0
+    PM.charts.diverging(document.getElementById('c-gap'), {
+      neg: { label: 'ช้ากว่าแผน', color: 'var(--s2)' }, pos: { label: 'เร็วกว่าแผน', color: 'var(--s1)' },
+      items: rows.filter((r) => r.p.status !== 'closed' && r.m.plan != null).map((r) => {
+        const gap = (r.m.act - r.m.plan) * 100;
+        return { label: r.p.code, sub: `จริง ${U.pct(r.m.act)} · แผน ${U.pct(r.m.plan)}`, value: gap,
+          display: `${gap > 0 ? '+' : ''}${gap.toFixed(1)}`, tip: `${r.p.code} ${r.p.name}\nงานเสร็จจริง ${U.pct(r.m.act, 1)}\nตามแผน ณ วันนี้ ${U.pct(r.m.plan, 1)}\nส่วนต่าง ${gap > 0 ? '+' : ''}${gap.toFixed(1)} จุด %` };
+      }).sort((a, b) => a.value - b.value),
+    });
 
     const rerender = () => PM.views.projects(el);
     [['#prj-sales', 'sales'], ['#prj-pm', 'pm'], ['#prj-phase', 'phase'], ['#prj-health', 'health']].forEach(([sel, k]) => {

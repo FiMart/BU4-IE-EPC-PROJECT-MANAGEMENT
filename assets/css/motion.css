@@ -265,7 +265,10 @@ html.ptr-on, html.ptr-on body { overscroll-behavior-y: contain; }
 
 /* ---------- reduced motion ---------- */
 @media (prefers-reduced-motion: reduce) {
-  *, *::before, *::after { animation-duration: .01ms !important; animation-delay: 0s !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }
+  /* transitions: 0s = none at all. (A tiny non-zero duration on "*" would start a transition on every property —
+     transition-property defaults to "all" — including layout widths and colours.) */
+  /* animations: 0s = jump straight to the end state (fill-mode keeps it) — nothing waits for animationend */
+  *, *::before, *::after { animation-duration: 0s !important; animation-delay: 0s !important; animation-iteration-count: 1 !important; transition-duration: 0s !important; }
   .auth-preview .spark { stroke-dashoffset: 0; }
   .rv { opacity: 1; transform: none; }
 }

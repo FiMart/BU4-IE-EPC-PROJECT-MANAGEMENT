@@ -124,11 +124,13 @@
     const weeks = [];
     for (let i = 7; i >= 0; i--) weeks.push(PM.addDays(week, -7 * i));
     const hist = db.plans.filter((p) => p.week >= weeks[0] && p.week <= week && match(p));
-    PM.charts.columns(document.getElementById('c-ppc'), {
-      categories: weeks.map((w) => U.date(w).slice(0, 6)), label: 'PPC by week',
+    // a trend against a target → one line + the target rule (weeks with no plan are gaps, not 0%)
+    PM.charts.lines(document.getElementById('c-ppc'), {
+      labels: weeks.map((w) => U.date(w).slice(0, 6)), label: 'PPC by week', yMax: 100,
       tipTitle: weeks.map((w) => { const s = PM.planStats(hist.filter((p) => p.week === w)); return `Week of ${U.date(w)} · ${s.done}/${s.total} tasks`; }),
       fmt: (v) => v + '%', axisFmt: (v) => v + '%',
-      series: [{ name: 'PPC', color: 'var(--s1)', values: weeks.map((w) => { const s = PM.planStats(hist.filter((p) => p.week === w)); return s.total ? Math.round(s.ppc * 100) : 0; }) }],
+      ref: { value: Math.round(PPC_TARGET * 100), label: `เป้า ${U.pct(PPC_TARGET)}` },
+      series: [{ name: 'PPC', color: 'var(--s1)', values: weeks.map((w) => { const s = PM.planStats(hist.filter((p) => p.week === w)); return s.total ? Math.round(s.ppc * 100) : null; }) }],
     });
     const rc = {};
     hist.filter((p) => p.status === 'not_done').forEach((p) => { const k = p.reason || 'ไม่ระบุ'; rc[k] = (rc[k] || 0) + 1; });

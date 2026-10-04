@@ -82,11 +82,19 @@
   };
 
   /* buttons on a bid (card, row): data-action + data-id. Returns true when handled; done() redraws the page */
+  /* money of a bid for whoever may see it (Admin · the Sales who owns it) — everyone else gets a lock */
+  V.LOCK_PRICE = '<span class="price-lock" title="มูลค่าเห็นได้เฉพาะ Sales ผู้รับผิดชอบงานนี้และ Admin">🔒</span>';
+  V.bidMoney = (b) => (PM.canSeeBidPrice(b) ? U.money(b.value) : V.LOCK_PRICE);
+  /* sum of bid values for a summary: only the bids this user may see; '' for roles that see no prices */
+  V.bidSum = (list) => (PM.seesBidPrices() ? U.money(PM.sum(list.filter(PM.canSeeBidPrice), (b) => b.value || 0)) : '');
+
+  /* buttons on a bid (card, row): moving on and Won / Lost only for the Sales who owns it (and Admin) */
   V.bidButtons = function (b) {
     const i = PM.BID_STAGES.findIndex((s) => s.key === b.stage);
     const id = esc(b.id);
-    if (b.result === 'pending' && i < PM.BID_STAGES.length - 1) return `<button class="btn sm" data-action="next" data-id="${id}">→ ${PM.BID_STAGES[i + 1].label}</button>`;
-    if (b.result === 'pending') return `<button class="btn sm good" data-action="won" data-id="${id}">✓ Won</button><button class="btn sm" data-action="lost" data-id="${id}">✕ Lost</button>`;
+    const mine = PM.canEditBid(b);
+    if (b.result === 'pending' && i < PM.BID_STAGES.length - 1) return mine ? `<button class="btn sm" data-action="next" data-id="${id}">→ ${PM.BID_STAGES[i + 1].label}</button>` : '';
+    if (b.result === 'pending') return mine ? `<button class="btn sm good" data-action="won" data-id="${id}">✓ Won</button><button class="btn sm" data-action="lost" data-id="${id}">✕ Lost</button>` : '';
     if (b.result === 'won') return b.projectId && PM.find('projects', b.projectId)
       ? `<button class="btn sm" data-action="open-project" data-id="${id}">Open project →</button>`
       : `<button class="btn sm primary" data-action="convert" data-id="${id}">+ Create project</button>`;
@@ -95,6 +103,9 @@
   V.bidAction = function (a, b, done) {
     if (!b) return false;
     const T = PM.today();
+    // same rules as the buttons (and the database for the price): Sales who owns the bid, or Admin
+    if (['next', 'won', 'lost', 'nobid'].includes(a) && !PM.canEditBid(b)) { U.toast('เฉพาะ Sales ผู้รับผิดชอบงานนี้ หรือ Admin'); return true; }
+    if (a === 'bid-files' && !PM.canSeeBidPrice(b)) return true;
     if (a === 'bid-files') { // 📎 on a card / row: open the attachments list (one file → open it directly)
       if ((b.files || []).length === 1) PM.poFiles.open(b.files[0].path);
       else PM.poFiles.showList(`ไฟล์แนบ — ${b.code}`, b.files);
@@ -149,16 +160,26 @@
     await PM.roles.loadTeam(); // user accounts for the Sales list
     const T = PM.today();
     const isNew = !bid;
+    const canEdit = PM.canEditBid(bid || null); // Admin · Sales (their own bids; any new inquiry)
+    if (isNew && !canEdit) { alert('เพิ่ม Inquiry ได้เฉพาะ Sales และ Admin'); return; }
+    const canPrice = isNew || PM.canSeeBidPrice(bid); // value · margin · quotation files
     const b = bid || {
       id: PM.uid('B'), code: V.bidNoPrefix(),
       name: '', client: '', sector: 'Industrial', value: 0, margin: 10, estimator: '', boqItems: 0,
       dueDate: PM.addDays(T, 30), dates: { inquiry: T, estimate: '', proposal: '', submit: '' }, stage: 'inquiry',
       result: 'pending', resultDate: '', projectId: null, notes: '', sales: '', salesName: '', leadSource: 'Sales visit', contact: '',
     };
-    // a salesperson opening "New inquiry" is most likely adding their own lead
-    if (isNew) { const me = PM.auth && PM.auth.user; const r = me && PM.db.resources.find((x) => x.discipline === 'Sales' && x.name === PM.auth.displayName(me)); if (r) b.sales = r.id; }
+    // a salesperson opening "New inquiry" is adding their own lead: they are the Sales (their employee record, else their account)
+    if (isNew) {
+      const me = PM.auth && PM.auth.user;
+      const r = me && PM.db.resources.find((x) => x.discipline === 'Sales' && PM.normName(x.name) === PM.normName(PM.auth.displayName(me)));
+      if (r) b.sales = r.id;
+      else if (me && PM.myRole() === 'sales') { b.sales = me.id; b.salesName = PM.auth.displayName(me); }
+    }
     const sources = PM.LEAD_SOURCES.includes(b.leadSource) || !b.leadSource ? PM.LEAD_SOURCES : PM.LEAD_SOURCES.concat(b.leadSource);
+    const lockNote = '<p class="full perm-note">🔒 มูลค่า · Margin · ไฟล์ใบเสนอราคา เห็นได้เฉพาะ Sales ผู้รับผิดชอบงานนี้และ Admin</p>';
     const body = `
+      ${canEdit ? '' : '<p class="full perm-note">ดูได้อย่างเดียว — เพิ่ม / แก้ไข Inquiry, เลื่อนขั้น และบันทึกผล Won / Lost ได้เฉพาะ Sales ผู้รับผิดชอบงานนี้และ Admin</p>'}
       <div class="sub-h">ข้อมูลงานประมูล</div>
       ${U.field('Bid No.', 'code', b.code, { required: true })}
       ${U.field('ลูกค้า (Client)', 'client', b.client, { required: true })}
@@ -167,11 +188,11 @@
       <label><span>Sales ผู้รับผิดชอบลูกค้า</span>${V.salesInput(b)}<small class="muted">${PM.teamError ? esc(PM.teamError) : 'พิมพ์ชื่อได้เลย หรือเลือกจากรายชื่อที่ขึ้นมา'}</small></label>
       ${U.field('ที่มาของงาน (Lead source)', 'leadSource', b.leadSource || '', { options: sources, placeholder: '— เลือก —' })}
       ${U.field('ผู้ติดต่อฝั่งลูกค้า (Contact)', 'contact', b.contact || '', { placeholder: 'ชื่อ / ตำแหน่ง / เบอร์โทร', full: true })}
-      ${PM.poFiles.boxHtml(true, 'ไฟล์แนบ — ใบเสนอราคา / เอกสาร Inquiry', 'ใบเสนอราคาที่ส่งให้ลูกค้า, TOR, แบบ, BOQ')}
+      ${canPrice ? PM.poFiles.boxHtml(canEdit, 'ไฟล์แนบ — ใบเสนอราคา / เอกสาร Inquiry', 'ใบเสนอราคาที่ส่งให้ลูกค้า, TOR, แบบ, BOQ') : ''}
       <div class="sub-h">ประมาณราคา</div>
       ${U.field('Sector', 'sector', b.sector, { options: PM.SECTORS, full: true })}
-      ${U.field('มูลค่าประมาณการ (THB)', 'value', b.value, { type: 'number', min: 0, step: 'any' })}
-      ${U.field('Margin (%)', 'margin', b.margin, { type: 'number', step: 0.1 })}
+      ${canPrice ? `${U.field('มูลค่าประมาณการ (THB)', 'value', b.value, { type: 'number', min: 0, step: 'any' })}
+      ${U.field('Margin (%)', 'margin', b.margin, { type: 'number', step: 0.1 })}` : lockNote}
       ${U.field('Estimator', 'estimator', b.estimator, { options: people(), placeholder: '— เลือก —' })}
       ${U.field('จำนวนรายการ BOQ (Quantity)', 'boqItems', b.boqItems, { type: 'number', min: 0 })}
       <div class="sub-h">Timeline — Inquiry → Estimate → Proposal → Submit</div>
@@ -188,11 +209,11 @@
     let files = null;
     const form = U.modal({
       title: isNew ? 'New inquiry' : `${b.code} · ${b.name}`, body, wide: true,
-      onDelete: isNew ? null : () => {
+      onDelete: isNew || !canEdit ? null : () => {
         PM.poFiles.remove((b.files || []).map((f) => f.path)).catch(() => { /* files may already be gone */ });
         PM.remove('bids', b.id); U.toast('ลบแล้ว'); onSaved && onSaved();
       },
-      onSubmit: (f, frm) => {
+      onSubmit: !canEdit ? null : (f, frm) => {
         if (f.code === V.bidNoPrefix()) { alert(`พิมพ์เลขต่อท้าย Bid No. ก่อนบันทึก (เช่น ${V.bidNoPrefix()}1)`); frm.code.focus(); return false; }
         if (PM.db.bids.some((x) => x.id !== b.id && String(x.code).trim().toUpperCase() === f.code.toUpperCase())) {
           alert(`Bid No. ${f.code} ถูกใช้แล้ว`); frm.code.focus(); return false;
@@ -204,20 +225,29 @@
         return false; // closed by save() once the files are uploaded
       },
     });
-    files = PM.poFiles.box(form, b.files, true);
+    files = canPrice ? PM.poFiles.box(form, b.files, canEdit) : null;
+    if (!canEdit) { // view only
+      form.querySelectorAll('input, select, textarea').forEach((i) => { i.disabled = true; });
+      if (document.activeElement) document.activeElement.blur();
+      return;
+    }
     // new inquiry: cursor at the end of the Bid No. text, ready to type the number
     if (isNew) { const c = form.code; c.focus(); c.setSelectionRange(c.value.length, c.value.length); }
 
     async function save(f, dates, frm) {
       const btn = frm.querySelector('[type=submit]');
       btn.disabled = true; btn.classList.add('loading');
-      const { files: kept, problems } = await files.commit(`bids/${b.id}`, btn);
+      const { files: kept, problems } = files ? await files.commit(`bids/${b.id}`, btn) : { files: b.files, problems: [] };
       Object.assign(b, {
-        code: f.code, name: f.name, client: f.client, sector: f.sector, value: f.value, margin: f.margin,
+        code: f.code, name: f.name, client: f.client, sector: f.sector,
         estimator: f.estimator, boqItems: f.boqItems, dueDate: f.dueDate, dates, result: f.result,
         resultDate: f.result === 'pending' ? '' : f.resultDate || T, notes: f.notes,
-        leadSource: f.leadSource, contact: f.contact, files: kept,
+        leadSource: f.leadSource, contact: f.contact,
       }, V.resolveSales(f.salesName, b));
+      if (canPrice) Object.assign(b, { value: f.value, margin: f.margin, files: kept });
+      // owner = the Sales account whose price this is: a Sales adding / editing → themselves; Admin → the Sales chosen
+      if (PM.myRole() === 'sales') b.owner = (isNew ? PM.myUid() : PM.bidOwner(b)) || PM.myUid();
+      else b.owner = PM.bidOwnerFor(b.sales, b.salesName);
       b.stage = V.stageOf(b);
       PM.upsert('bids', b);
       U.closeModal();
@@ -336,15 +366,17 @@
   /* Sales performance table (Bidding page + Dashboard). rows = PM.salesStats(); selected = highlighted id */
   V.salesTable = function (rows, selected) {
     if (!rows.length) return '<p class="empty">ยังไม่มีข้อมูล Sales — เพิ่มพนักงาน Discipline = Sales ที่ Resource Utilization แล้วเลือก Sales ในแต่ละ Bid</p>';
-    rows = rows.slice().sort((a, b) => (b.bs.wonValue - a.bs.wonValue) || (b.pipelineValue - a.pipelineValue));
+    // money of a Sales row only when every bid in it is one this user may see (Admin: all · Sales: their own row)
+    const rowPrices = (x) => x.bids.length > 0 && x.bids.every(PM.canSeeBidPrice);
+    rows = rows.slice().sort((a, b) => (b.bs.won - a.bs.won) || (b.bs.total - a.bs.total));
     return `<table class="tbl"><thead><tr><th>Sales</th><th class="num">Inquiries</th><th class="num">ยื่นใบเสนอราคา</th><th class="num">Won / Lost</th><th class="num">Win rate</th>
       <th class="num">Won value</th><th class="num">Pipeline (รอผล)</th><th>โครงการที่รับผิดชอบ</th><th class="num">มูลค่าโครงการ Active</th></tr></thead><tbody>
       ${rows.map((x) => `<tr class="click sales-row${selected != null && selected === x.id ? ' on' : ''}" data-sales="${esc(x.id || '-')}">
         <td><span class="title">${x.id ? esc(V.personName(x.id, x.fallbackName)) : '<span class="muted">ไม่ระบุ Sales</span>'}</span></td>
         <td class="num">${x.bs.total}</td><td class="num">${x.bs.submitted}</td>
         <td class="num">${x.bs.won} / ${x.bs.lost}</td><td class="num">${U.pct(x.bs.winRate)}</td>
-        <td class="num">${U.money(x.bs.wonValue)}</td>
-        <td class="num">${U.money(x.pipelineValue)}<small>${x.pipeline} งาน</small></td>
+        <td class="num">${rowPrices(x) ? U.money(x.bs.wonValue) : V.LOCK_PRICE}</td>
+        <td class="num">${rowPrices(x) ? U.money(x.pipelineValue) : V.LOCK_PRICE}<small>${x.pipeline} งาน</small></td>
         <td>${x.active.length ? x.active.map((p) => `<a class="chip" href="#/projects/${esc(p.id)}" title="${esc(p.name)}">${esc(p.code)}</a>`).join(' ') : '<span class="muted">–</span>'}${x.projects.length > x.active.length ? `<small>ปิดแล้ว ${x.projects.length - x.active.length} โครงการ</small>` : ''}</td>
         <td class="num">${U.money(x.activeValue)}</td></tr>`).join('')}
       </tbody></table>`;
@@ -371,8 +403,9 @@
     const p = project || {
       id: PM.uid('P'), code: V.nextProjectCode(),
       name: fromBid ? fromBid.name : '', client: fromBid ? fromBid.client : '',
-      contractValue: fromBid ? fromBid.value : 0,
-      budget: fromBid ? Math.round(fromBid.value * (1 - (fromBid.margin || 10) / 100)) : 0,
+      // the bid's value only when this user may see it — otherwise the PM types the contract value in
+      contractValue: fromBid && PM.canSeeBidPrice(fromBid) ? fromBid.value || 0 : 0,
+      budget: fromBid && PM.canSeeBidPrice(fromBid) ? Math.round((fromBid.value || 0) * (1 - (fromBid.margin || 10) / 100)) : 0,
       startDate: T, endDate: PM.addDays(T, 365), pm: '', status: 'active', bidId: fromBid ? fromBid.id : null, phases: null, progressLog: [],
       sales: fromBid ? fromBid.sales || '' : '', salesName: fromBid ? fromBid.salesName || '' : '', costMode: 'ledger',
     };

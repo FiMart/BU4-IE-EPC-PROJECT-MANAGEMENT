@@ -56,6 +56,7 @@ Web app สำหรับบริหารโครงการแบบ EPC (
 
 ติดตั้งครั้งเดียว: เปิด **Supabase Dashboard → SQL Editor → New query** วางเนื้อหาไฟล์ [`supabase/roles.sql`](supabase/roles.sql) แล้วกด **Run** (รันซ้ำได้)
 อัปเดตจากเวอร์ชันก่อน v1.25 (เพิ่ม Department Manager / Sales): รัน `roles.sql` แล้วตามด้วย `data.sql` อีกครั้งอย่างละ 1 ครั้ง
+อัปเดตจากเวอร์ชันก่อน v1.26 (ราคา Bid เห็นเฉพาะ Sales เจ้าของงาน / Admin): รัน `data.sql` อีกครั้ง 1 ครั้ง — ย้ายราคาของ Bid เดิมไปเก็บแยก และผูก Bid กับบัญชี Sales ที่ชื่อตรงกับ Sales ของงานนั้น
 
 - ผู้ใช้คนแรกของระบบ (สมัครก่อนสุด) จะเป็น **Admin** อัตโนมัติ — คนที่สมัครหลังจากนั้นได้ **Technician**
 - **Admin, Department Manager และ Project Manager** เปลี่ยน Role ได้ที่ Settings → จัดการ Role ผู้ใช้ (บังคับด้วย Row Level Security ในฐานข้อมูล)
@@ -70,10 +71,13 @@ Web app สำหรับบริหารโครงการแบบ EPC (
 | Reset ข้อมูล (ล้างทั้งหมด / โหลด Demo) — หัวข้อนี้แสดงเฉพาะ Admin | ✓ | – | – | – | – | – |
 | Import JSON | ✓ | ✓ | ✓ | – | – | – |
 | Export JSON / CSV | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| เพิ่ม / แก้ไข Inquiry · เลื่อนขั้น · กด Won / Lost / No-bid | ✓ | – | – | – | ✓ งานของตัวเอง | – |
+| เห็นมูลค่า · Margin · ไฟล์ใบเสนอราคาของ Bid — บังคับในฐานข้อมูล (collection `bidprices`) | ✓ | – | – | – | ✓ งานของตัวเอง | – |
 | สร้าง / แก้ไขงานใน Weekly Plan | ✓ | ✓ | ✓ | ✓ | ✓ | – |
 | ลบงานใน Weekly Plan | เฉพาะ **คนที่สร้างงานนั้น** (งานเดิมที่ไม่มีข้อมูลผู้สร้าง: Admin) — บังคับในฐานข้อมูลด้วย | | | | | |
 | อัปเดตสถานะงานใน Weekly Plan | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
-| กรอก / แก้ไข Timesheet (ทุกคนดูได้) — บังคับในฐานข้อมูลด้วย | – | – | ✓ | – | – | – |
+| เปิดหัวข้อ Resources (Resource Utilization · Timesheet) และส่วน Resource Utilization บน Dashboard | ✓ | ✓ | ✓ | – | – | – |
+| กรอก / แก้ไข Timesheet — บังคับในฐานข้อมูลด้วย | – | – | ✓ | – | – | – |
 | สร้าง / แก้ไข PO และแนบไฟล์ (ทุกคนดู / ดาวน์โหลดได้) | ✓ | ✓ | ✓ | ✓ | – | – |
 | บันทึก / แก้ไขค่าใช้จ่ายโครงการ (ทุกคนดูได้) | ✓ | ✓ | ✓ | – | – | – |
 | เพิ่ม / แก้ไข Price List (ทุกคนดูและ Export Excel / PDF ได้) | ✓ | ✓ | ✓ | ✓ | – | – |
@@ -96,7 +100,10 @@ Web app สำหรับบริหารโครงการแบบ EPC (
 - Timesheet: ตั้งแต่ v1.21 เขียนได้เฉพาะ Project Manager — รัน `data.sql` อีกครั้ง 1 ครั้งเพื่อให้ฐานข้อมูลบังคับสิทธิ์นี้ด้วย
 - เปิดเว็บในเบราว์เซอร์ใหม่แล้วโหลดจาก Cloud ไม่ได้: หน้าเว็บรอและลองใหม่อัตโนมัติ (ไม่แสดงข้อมูลตัวอย่างแทน และไม่ส่งอะไรขึ้น Cloud จนกว่าจะโหลดสำเร็จ)
 - Timesheet บันทึกอัตโนมัติขณะพิมพ์ · ปิดเว็บขณะฟอร์มยังไม่กดบันทึก เบราว์เซอร์จะถามก่อน
-- จำหน้าที่เปิดล่าสุดและตัวกรองของแต่ละหน้า (Bidding, Projects, PO, Weekly Plan, Resource, Timesheet) ไว้ในเบราว์เซอร์ — เปิดเว็บใหม่กลับมาที่เดิม
+- เปิดเว็บ / เข้าสู่ระบบ / สมัครสมาชิก: เริ่มที่หน้า **Dashboard** เสมอ (กดรีเฟรชอยู่หน้าเดิม) · ระหว่างโหลดมีหน้า Loading และแถบความคืบหน้าด้านบนขณะรับส่งข้อมูลกับ Cloud
+- การแสดงผล (ธีม สว่าง / มืด / ตามระบบ · เมนูด้านซ้ายแสดงเต็ม / หุบ) **บันทึกตามบัญชีผู้ใช้** ใน Supabase Auth (`user_metadata.prefs`) — เข้าสู่ระบบจากเครื่องไหนก็ได้ค่าเดียวกัน · ตั้งได้ที่ Settings → การแสดงผล (ไม่ต้องรัน SQL)
+- จำตัวกรองของแต่ละหน้า (Bidding, Projects, PO, Weekly Plan, Resource, Timesheet) ไว้ในเบราว์เซอร์
+- ปิดแท็บขณะที่การแก้ไขยังส่งขึ้น Cloud ไม่เสร็จ เบราว์เซอร์จะถามก่อน · ระบบส่งซ้ำให้อัตโนมัติทุก 30 วินาทีถ้ายังมีรายการค้าง
 - ครั้งแรกที่ Cloud ยังว่าง: Admin / Department Manager / Project Manager จะถูกถามว่าจะอัปโหลดข้อมูลในเครื่องขึ้นไปหรือเริ่มจากข้อมูลว่าง
 - Reset / Import บน Cloud ทำได้เฉพาะ Admin และ Project Manager (ตรวจสอบในฐานข้อมูลด้วย)
 - ข้อมูลเก็บในตาราง `public.app_records` — 1 แถวต่อ 1 รายการ (bid, project, NCR, timesheet …) พร้อมเวลาและผู้แก้ไขล่าสุด
@@ -107,6 +114,7 @@ Web app สำหรับบริหารโครงการแบบ EPC (
 
 | เมนู | เนื้อหา | KPI |
 | --- | --- | --- |
+| **โหมดนำเสนอ** (`#/present`) | หน้าจอเต็มสำหรับทีวี / โปรเจกเตอร์ — ตัวเลขใหญ่ สลับหน้าอัตโนมัติ (Bidding · Projects · SPI × CPI · PO · Weekly Plan · Resource · Safety) ตามสิทธิ์ของบัญชี · อัปเดตจาก Cloud ทุก 1 นาที · ปุ่มลัด ← → Space F Esc | ภาพรวมทั้งองค์กร |
 | **Dashboard** | สรุป 3 ส่วน: Bidding · Execution · Resource | ทั้งหมดในหน้าเดียว |
 | **Bidding** (Before Award) | Board / Table: Inquiry → Estimate → Proposal → Submit → Won/Lost, สร้าง Project จาก bid ที่ชนะได้ทันที · แต่ละ bid มี **Sales ผู้หาลูกค้า** (พิมพ์ชื่อเองหรือเลือกจากรายชื่อ — ถ้าชื่อตรงกับพนักงาน/บัญชีผู้ใช้จะผูกกับคนนั้น ถ้าไม่ตรงจะเก็บเป็นชื่อที่พิมพ์), ที่มาของงาน (Lead source), ผู้ติดต่อฝั่งลูกค้า, **ไฟล์แนบ** (ใบเสนอราคาที่ส่งให้ลูกค้า / เอกสาร Inquiry — กด 📎 บนการ์ดเพื่อเปิดดู) · กรองตาม Sales | **Quantity**: จำนวน inquiry, proposal, BOQ items · **Time**: วันเฉลี่ยในแต่ละ stage, cycle time, on-time submission · Win rate · **ผลงาน Sales** (inquiry, win rate, won value, pipeline, โครงการที่รับผิดชอบ) |
 | **Bidding — หน้าแยกแต่ละขั้น** (`#/bidding/inquiry` · `estimate` · `proposal` · `submit` · `award`) | เมนูย่อยใต้ Bidding / แท็บ / คลิกขั้นใน Flow: งานที่อยู่ในขั้นนั้นตอนนี้ (เลื่อนขั้น / บันทึกผล) · งานที่ผ่านขั้นนั้นแล้ว · กราฟรายเดือน · ชั่วโมงจาก Timesheet ของขั้นนั้น · หน้า Award: รอผล / Won (สร้างโครงการ) / Lost / No-bid | ต่อขั้น: จำนวนในขั้น · conversion · เวลาเฉลี่ย · เลยกำหนด · ชั่วโมง · Award: Win rate, Submit → Award |
@@ -158,5 +166,5 @@ assets/js/roles.js           Role + ตารางสิทธิ์ + เร�
 assets/js/cloud.js           ซิงค์ข้อมูลทั้งหมดกับ Supabase (บันทึกอัตโนมัติ / โหลดเมื่อเปิดเว็บ)
 supabase/roles.sql           SQL สร้างตาราง profiles, RLS, trigger (รันใน Supabase ก่อน)
 supabase/data.sql            SQL สร้างตาราง app_records สำหรับเก็บข้อมูลทั้งหมด (รันต่อจาก roles.sql)
-assets/js/views/*.js         แต่ละหน้า (weekly.js = Weekly Plan, costs.js = รายการค่าใช้จ่ายโครงการ, bid-stage.js = หน้าแยกของแต่ละขั้น Bidding, help.js = คู่มือวิธีใช้งาน)
+assets/js/views/*.js         แต่ละหน้า (weekly.js = Weekly Plan, costs.js = รายการค่าใช้จ่ายโครงการ, bid-stage.js = หน้าแยกของแต่ละขั้น Bidding, help.js = คู่มือวิธีใช้งาน, present.js = โหมดนำเสนอขึ้นจอ)
 ```

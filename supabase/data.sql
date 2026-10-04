@@ -6,7 +6,9 @@
 -- Every record of the app (bids, projects, NCR, safety, people, levels, timesheets, weekly plans, POs, expenses, meta)
 -- is stored as one row: (collection, id) → data (jsonb).
 --  - Any signed-in user who has a role (row in public.profiles) can read & edit records
---    (except timesheets: Project Manager only — see can_write_record()).
+--    (except timesheets: Project Manager only — see can_write_record();
+--     and bidprices — value / margin / quotation files of a bid: only Admin and the Sales who owns the bid,
+--     see can_see_bid_price(). Re-running this file also moves prices off bids saved before v1.26.)
 --  - Bulk replace (Reset / Import) goes through app_replace_all() — Admin, Department Manager & Project Manager only.
 --  - PO file attachments: private Storage bucket "po-files" (section at the end).
 -- =====================================================================
@@ -53,18 +55,69 @@ returns boolean language sql stable security definer set search_path = public as
   select public.has_app_role() and (coll <> 'timesheets' or public.is_project_manager());
 $$;
 
-create policy "records: read"   on public.app_records for select to authenticated using (public.has_app_role());
-create policy "records: insert" on public.app_records for insert to authenticated with check (public.can_write_record(collection));
-create policy "records: update" on public.app_records for update to authenticated using (public.can_write_record(collection)) with check (public.can_write_record(collection));
+-- Bid prices (collection 'bidprices': value · margin · quotation files of a bid, one row per bid id) are
+-- read and written ONLY by Admin and by the Sales who owns the bid (data.owner = their user id).
+-- Everyone else still sees the bid itself (collection 'bids') — without the money.
+create or replace function public.can_see_bid_price(owner text)
+returns boolean language sql stable security definer set search_path = public as $$
+  select public.is_admin()
+      or (coalesce(owner, '') <> '' and owner = auth.uid()::text
+          and exists (select 1 from public.profiles where id = auth.uid() and role::text = 'sales'));
+$$;
+-- may this user see the attachments of bid <bid_id> (Storage path bids/<bid_id>/…)?
+create or replace function public.can_see_bid_files(bid_id text)
+returns boolean language sql stable security definer set search_path = public as $$
+  select public.is_admin() or exists (
+    select 1 from public.app_records
+     where collection = 'bidprices' and id = bid_id and public.can_see_bid_price(data ->> 'owner'));
+$$;
+
+create policy "records: read"   on public.app_records for select to authenticated using (
+  public.has_app_role() and (collection <> 'bidprices' or public.can_see_bid_price(data ->> 'owner')));
+create policy "records: insert" on public.app_records for insert to authenticated with check (
+  public.can_write_record(collection) and (collection <> 'bidprices' or public.can_see_bid_price(data ->> 'owner')));
+create policy "records: update" on public.app_records for update to authenticated
+  using (public.can_write_record(collection) and (collection <> 'bidprices' or public.can_see_bid_price(data ->> 'owner')))
+  with check (public.can_write_record(collection) and (collection <> 'bidprices' or public.can_see_bid_price(data ->> 'owner')));
 -- Weekly Plan tasks can only be deleted by the person who created them
 -- (tasks without a recorded creator — older data / demo — only by Admin)
 create policy "records: delete" on public.app_records for delete to authenticated using (
-  public.can_write_record(collection) and (
+  public.can_write_record(collection) and (collection <> 'bidprices' or public.can_see_bid_price(data ->> 'owner')) and (
     collection <> 'plans'
     or data ->> 'createdBy' = auth.uid()::text
     or (coalesce(data ->> 'createdBy', '') = '' and public.is_admin())
   )
 );
+
+-- one-time move (safe to re-run): bids saved before v1.26 carry value / margin / files on the bid itself →
+-- move them to a 'bidprices' row and take them off the bid. The owner is the Sales account behind the bid:
+-- its 'sales' id when that is an account, else the account whose name matches the Sales employee / typed name.
+with src as (
+  select b.id, b.ord, b.data,
+         coalesce(
+           nullif(b.data ->> 'owner', ''),
+           (select p.id::text from public.profiles p where p.id::text = b.data ->> 'sales'),
+           (select p.id::text from public.app_records r join public.profiles p
+               on lower(trim(p.full_name)) = lower(trim(r.data ->> 'name'))
+             where r.collection = 'resources' and r.id = b.data ->> 'sales' limit 1),
+           (select p.id::text from public.profiles p
+             where coalesce(b.data ->> 'salesName', '') <> '' and lower(trim(p.full_name)) = lower(trim(b.data ->> 'salesName')) limit 1),
+           '') as owner
+    from public.app_records b
+   where b.collection = 'bids' and b.data ?| array['value', 'margin', 'files']
+), moved as (
+  insert into public.app_records (collection, id, data, ord)
+  select 'bidprices', s.id,
+         jsonb_build_object('value', s.data -> 'value', 'margin', s.data -> 'margin', 'files', coalesce(s.data -> 'files', '[]'::jsonb), 'owner', s.owner),
+         s.ord
+    from src s
+  on conflict (collection, id) do nothing
+  returning id
+)
+update public.app_records b
+   set data = (b.data - 'value' - 'margin' - 'files') || jsonb_build_object('owner', s.owner)
+  from src s
+ where b.collection = 'bids' and b.id = s.id;
 
 revoke all on public.app_records from anon, authenticated;
 grant select, insert, update, delete on public.app_records to authenticated;
@@ -120,6 +173,7 @@ grant execute on function public.app_replace_all(jsonb) to authenticated;
 -- Files live at: <projectId>/<poId>/<timestamp>-<file name>   (PO attachments)
 --            and bids/<bidId>/<timestamp>-<file name>        (inquiry / quotation attachments)
 --  - any signed-in user with a role can view / download and upload
+--    (except bids/…: only Admin and the Sales who owns the bid — see can_see_bid_files)
 --  - delete: the person who uploaded the file, or Admin / Department Manager / Project Manager
 -- =====================================================================
 insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
@@ -134,10 +188,13 @@ on conflict (id) do update
 drop policy if exists "po-files: read"   on storage.objects;
 drop policy if exists "po-files: upload" on storage.objects;
 drop policy if exists "po-files: delete" on storage.objects;
+-- bid attachments (quotations, bids/<bidId>/…) follow the bid price: Admin and the Sales who owns the bid
 create policy "po-files: read" on storage.objects for select to authenticated
-  using (bucket_id = 'po-files' and public.has_app_role());
+  using (bucket_id = 'po-files' and public.has_app_role()
+         and (name not like 'bids/%' or public.can_see_bid_files(split_part(name, '/', 2))));
 create policy "po-files: upload" on storage.objects for insert to authenticated
-  with check (bucket_id = 'po-files' and public.has_app_role());
+  with check (bucket_id = 'po-files' and public.has_app_role()
+              and (name not like 'bids/%' or exists (select 1 from public.profiles where id = auth.uid() and role::text in ('admin', 'sales'))));
 create policy "po-files: delete" on storage.objects for delete to authenticated
   using (bucket_id = 'po-files' and (
     owner_id = auth.uid()::text

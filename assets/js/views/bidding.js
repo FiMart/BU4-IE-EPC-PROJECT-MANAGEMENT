@@ -31,7 +31,7 @@
         <select id="bid-sales" aria-label="Sales" style="width:auto">${salesOpt('', 'Sales: ทุกคน')}${salesRows.map((x) => salesOpt(x.id || '-', x.id ? 'Sales: ' + V.personName(x.id, x.fallbackName) : 'ไม่ระบุ Sales')).join('')}</select>
         <input type="search" id="bid-q" placeholder="ค้นหา bid / ลูกค้า / Sales…" value="${esc(state.q)}" style="width:220px">
         <span class="spacer"></span>
-        <button class="btn primary fab" data-action="new" aria-label="New inquiry"><span class="fab-i">+</span><span class="fab-t">New inquiry</span></button>
+        ${PM.can('bid.edit') ? '<button class="btn primary fab" data-action="new" aria-label="New inquiry"><span class="fab-i">+</span><span class="fab-t">New inquiry</span></button>' : ''}
       </div>
       ${V.flow(PM.BID_STAGES.map((s, i) => ({
         label: s.label, th: s.th, href: '#/bidding/' + s.key,
@@ -45,10 +45,14 @@
         ${V.tile({ label: 'Avg cycle time', tag: 'Time', value: `${U.num(bs.avgCycle, 1)} <small>days</small>`, sub: 'Inquiry → Submit' })}
         ${V.tile({ label: 'On-time submission', tag: 'Time', value: U.pct(bs.onTimeRate), sub: 'ยื่นก่อน / ตรง due date' })}
         ${V.tile({ label: 'Win rate', value: U.pct(bs.winRate), sub: `${bs.won} won / ${bs.won + bs.lost} decided` })}
-        ${V.tile({ label: 'Won value', value: U.money(bs.wonValue), sub: `Pipeline ${U.money(bs.pipelineValue)}` })}
+        ${PM.seesBidPrices()
+          ? V.tile({ label: 'Won value', value: U.money(bs.wonValue), sub: `Pipeline ${U.money(bs.pipelineValue)}${PM.myRole() === 'sales' ? ' · เฉพาะงานของคุณ' : ''}` })
+          : V.tile({ label: 'Won / Lost', value: `${bs.won} <small>/ ${bs.lost}</small>`, sub: `No-bid ${bs.nobid} · มูลค่าเห็นได้เฉพาะ Sales / Admin`, icon: 'award' })}
       </div>
       <div class="card">
-        <div class="card-h"><h2>${state.mode === 'kanban' ? 'Bid board' : 'Bid register'}</h2><p>${state.mode === 'kanban' ? 'คลิกการ์ดเพื่อแก้ไข · ปุ่ม → เลื่อนไปขั้นถัดไป (บันทึกวันที่ = วันนี้)' : 'รายการ Bid ทั้งหมดในช่วงเวลาที่เลือก + งานที่ยังดำเนินการ'}</p></div>
+        <div class="card-h"><h2>${state.mode === 'kanban' ? 'Bid board' : 'Bid register'}</h2><p>${state.mode === 'kanban'
+          ? (PM.can('bid.edit') ? 'คลิกการ์ดเพื่อแก้ไข · ปุ่ม → เลื่อนไปขั้นถัดไป (บันทึกวันที่ = วันนี้) · เลื่อนขั้น / Won / Lost ได้เฉพาะงานของคุณ' : 'คลิกการ์ดเพื่อดูรายละเอียด · เลื่อนขั้นและบันทึกผล Won / Lost ทำได้เฉพาะ Sales ผู้รับผิดชอบงานและ Admin')
+          : 'รายการ Bid ทั้งหมดในช่วงเวลาที่เลือก + งานที่ยังดำเนินการ'}</p></div>
         <div class="card-b">${state.mode === 'kanban' ? kanban(cols, hoursBy) : table(bids.filter((b) => match(b) && (b.result === 'pending' || inPeriod(b.dates.inquiry))), hoursBy)}</div>
       </div>
       <div class="card">
@@ -89,7 +93,7 @@
         const mine = bs.list.filter((b) => (b.leadSource || '') === s);
         const w = mine.filter((b) => b.result === 'won').length, d = mine.filter((b) => b.result === 'won' || b.result === 'lost').length;
         const label = s || 'ไม่ระบุ';
-        return { label, sub: `Win ${d ? U.pct(w / d) : '–'}`, value: mine.length, display: `${mine.length} งาน`, color: 'var(--s3)', tip: `${label}\nInquiries ${mine.length} · ${U.money(PM.sum(mine, (b) => b.value))}\nWon ${w} of ${d} decided` };
+        return { label, sub: `Win ${d ? U.pct(w / d) : '–'}`, value: mine.length, display: `${mine.length} งาน`, color: 'var(--s3)', tip: `${label}\nInquiries ${mine.length}${V.bidSum(mine) ? ' · ' + V.bidSum(mine) : ''}\nWon ${w} of ${d} decided` };
       }).filter((x) => x.value).sort((a, b) => b.value - a.value),
     });
 
@@ -123,7 +127,7 @@
   function kanban(cols, hoursBy) {
     return `<div class="kanban">${cols.map((c) => `
       <div class="kcol">
-        <div class="kcol-h" style="flex-wrap:wrap">${PM.illus.icon(c.key, 'kc-ic')}<a class="kcol-link" href="#/bidding/${c.key === 'won' || c.key === 'lost' ? 'award' : c.key}" title="เปิดหน้า ${esc(c.label)}">${esc(c.label)} →</a><span class="count">${c.items.length}</span><span class="sum">${esc(c.th)} · ${U.money(PM.sum(c.items, (b) => b.value))}</span></div>
+        <div class="kcol-h" style="flex-wrap:wrap">${PM.illus.icon(c.key, 'kc-ic')}<a class="kcol-link" href="#/bidding/${c.key === 'won' || c.key === 'lost' ? 'award' : c.key}" title="เปิดหน้า ${esc(c.label)}">${esc(c.label)} →</a><span class="count">${c.items.length}</span><span class="sum">${esc(c.th)}${V.bidSum(c.items) ? ' · ' + V.bidSum(c.items) : ''}</span></div>
         ${c.items.map((b, k) => card(b, c.key, hoursBy, k)).join('') || '<p class="empty">—</p>'}
       </div>`).join('')}</div>`;
   }
@@ -136,7 +140,7 @@
       <div class="code">${esc(b.code)} · ${esc(b.sector)}</div>
       <div class="name">${esc(b.name)}</div>
       <div class="client">${esc(b.client)}</div>
-      <div class="foot"><span class="v">${U.money(b.value)}</span>${PM.poFiles.clip(b.files, `data-action="bid-files" data-id="${esc(b.id)}"`)}${V.dueBadge(b)}</div>
+      <div class="foot"><span class="v">${V.bidMoney(b)}</span>${PM.canSeeBidPrice(b) ? PM.poFiles.clip(b.files, `data-action="bid-files" data-id="${esc(b.id)}"`) : ''}${V.dueBadge(b)}</div>
       <div class="foot muted">Sales ${esc(V.salesName(b))} · Est. ${esc(U.resourceName(b.estimator))}${hoursBy[b.id] ? ` · ${U.num(hoursBy[b.id])} h` : ''}${b.result === 'pending' ? ` · ${age}d in stage` : ''}</div>
       ${actions ? `<div class="actions">${actions}</div>` : ''}
     </div>`;
@@ -151,12 +155,12 @@
       ${list.map((b) => `<tr class="click" data-bid="${b.id}">
         <td><span class="title">${esc(b.code)}</span><small>${esc(b.name)}</small></td>
         <td>${esc(b.client)}${b.contact ? `<small>${esc(b.contact)}</small>` : ''}</td><td>${esc(V.salesName(b))}${b.leadSource ? `<small>${esc(b.leadSource)}</small>` : ''}</td><td>${esc(b.sector)}</td>
-        <td class="num">${U.money(b.value)}</td><td class="num">${U.num(b.boqItems)}</td>
+        <td class="num">${V.bidMoney(b)}</td><td class="num">${U.num(b.boqItems)}</td>
         <td>${U.date(b.dates.inquiry)}</td><td>${U.date(b.dates.submit)}</td><td>${U.date(b.dueDate)}</td>
         <td class="num">${b.dates.submit ? PM.diffDays(b.dates.inquiry, b.dates.submit) : '–'}</td>
         <td class="num">${U.num(hoursBy[b.id] || 0)}</td>
         <td>${V.resultBadge(b)}</td><td>${V.dueBadge(b)}</td>
-        <td class="num">${PM.poFiles.clip(b.files, `data-action="bid-files" data-id="${esc(b.id)}"`) || '–'}</td></tr>`).join('')}
+        <td class="num">${PM.canSeeBidPrice(b) ? PM.poFiles.clip(b.files, `data-action="bid-files" data-id="${esc(b.id)}"`) || '–' : V.LOCK_PRICE}</td></tr>`).join('')}
       </tbody></table></div>`;
   }
 })();

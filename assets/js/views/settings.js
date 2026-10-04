@@ -38,6 +38,12 @@
           </form>
         </div></div>` : ''}
 
+      <div class="card" id="prefs-card">
+        <div class="card-h"><h2>การแสดงผล</h2><span class="spacer"></span><span class="muted" id="prefs-state"></span>
+          <p>บันทึกในบัญชีของคุณ — เข้าสู่ระบบจากเครื่องไหน / เบราว์เซอร์ไหน ก็ได้การตั้งค่าเดียวกัน (ปุ่ม ◐ มุมขวาบน และปุ่มหุบเมนูก็บันทึกที่นี่)</p></div>
+        <div class="card-b prefs-grid" id="prefs-body">${prefsBody()}</div>
+      </div>
+
       ${canRoles ? `<div class="card">
         <div class="card-h"><h2>จัดการ Role ผู้ใช้</h2><span class="chip">Admin · Department Manager · Project Manager</span><span class="spacer"></span><button class="btn sm" data-action="reload-users">รีเฟรช</button>
           <p>ผู้สมัครใหม่จะได้ Role เป็น Technician อัตโนมัติ — เปลี่ยน Role ได้จากตารางนี้ (บันทึกทันที)${A.role !== 'admin' ? ' · ' + esc(PM.ROLE_RULES) : ''}${PM.can('users.delete') ? ' · ลบบัญชีผู้ใช้ได้เฉพาะ Admin' : ''}</p></div>
@@ -158,7 +164,10 @@
       const sel = e.target.closest('select[data-role-for]');
       if (sel) changeRole(el, sel);
     };
+    showPrefsState();
     el.onclick = (e) => {
+      const pref = e.target.closest('[data-pref]');
+      if (pref) { PM.prefs.set(pref.dataset.pref, pref.dataset.val); refreshPrefs(); return; }
       const a = e.target.closest('[data-action]');
       if (!a || a.disabled) return;
       const act = a.dataset.action;
@@ -193,6 +202,32 @@
       if (act === 'empty' && confirm('ลบข้อมูลทั้งหมด (Bids, Projects, NCR, Safety, People, Timesheet)? แนะนำให้ Export ก่อน')) { PM.reset(true); PM.applyAsOf(); U.toast('ล้างข้อมูลแล้ว'); PM.render(); }
     };
   };
+
+  /* ---------- display settings (saved on the account — app.js PM.prefs) ---------- */
+  function prefsBody() {
+    const p = PM.prefs.get();
+    const seg = (key, cur, items) => `<div class="seg" role="group">${items.map(([v, label]) =>
+      `<button type="button" data-pref="${key}" data-val="${v}" class="${v === cur ? 'on' : ''}" aria-pressed="${v === cur}">${esc(label)}</button>`).join('')}</div>`;
+    return `
+      <div class="pref-row"><div><b>ธีม</b><small class="muted">"ตามระบบ" = ใช้ตามการตั้งค่าสว่าง / มืดของเครื่อง</small></div>
+        ${seg('theme', p.theme, [['light', '☀ สว่าง'], ['dark', '☾ มืด'], ['system', '◐ ตามระบบ']])}</div>
+      <div class="pref-row"><div><b>เมนูด้านซ้าย — จอคอมพิวเตอร์</b><small class="muted">จอกว้างกว่า 1,100 px</small></div>
+        ${seg('nav', p.nav === '1' ? '1' : '0', [['0', 'แสดงเต็ม'], ['1', 'หุบเหลือไอคอน']])}</div>
+      <div class="pref-row"><div><b>เมนูด้านซ้าย — แท็บเล็ตแนวนอน / โน้ตบุ๊กจอเล็ก</b><small class="muted">จอ 901–1,100 px</small></div>
+        ${seg('navCompact', p.navCompact === '0' ? '0' : '1', [['0', 'แสดงเต็ม'], ['1', 'หุบเหลือไอคอน']])}</div>`;
+  }
+  function showPrefsState() {
+    const s = document.getElementById('prefs-state');
+    if (!s) return;
+    s.textContent = { saved: '● บันทึกในบัญชีแล้ว', saving: 'กำลังบันทึกในบัญชี…', error: 'บันทึกในบัญชีไม่สำเร็จ — ใช้ได้เฉพาะเครื่องนี้ (จะลองใหม่เมื่อเปลี่ยนค่า)', local: 'เก็บเฉพาะเครื่องนี้ (ยังไม่ได้เชื่อมบัญชี)' }[PM.prefs.state] || '';
+    s.className = PM.prefs.state === 'error' ? 'neg' : 'muted';
+  }
+  function refreshPrefs() {
+    const b = document.getElementById('prefs-body');
+    if (b) b.innerHTML = prefsBody();
+    showPrefsState();
+  }
+  document.addEventListener('pm-prefs', refreshPrefs); // saved / loaded from the account while Settings is open
 
   function cloudLabel() {
     const s = PM.cloud.state;

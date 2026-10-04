@@ -106,6 +106,12 @@
       g += `<line class="today" x1="${x(o.marker)}" x2="${x(o.marker)}" y1="${m.t}" y2="${m.t + ih}"/>`;
       g += `<text class="tick strong" x="${x(o.marker) + 4}" y="${m.t + 10}">${esc(o.markerLabel || 'Today')}</text>`;
     }
+    // ref: { value, label } — a target the series is judged against (e.g. PPC ≥ 80%), drawn as a solid ink rule
+    if (o.ref && o.ref.value != null) {
+      // label at the left end, just above the rule — the right end belongs to the series' end value
+      g += `<line class="ref" x1="${m.l}" x2="${W - m.r}" y1="${y(o.ref.value)}" y2="${y(o.ref.value)}"/>`;
+      g += `<text class="tick strong" x="${m.l + 6}" y="${y(o.ref.value) - 6}">${esc(o.ref.label || '')}</text>`;
+    }
     let paths = '', ends = '';
     const endYs = [];
     o.series.forEach((s) => {
@@ -149,5 +155,95 @@
         <div class="hbar-value">${esc(it.display != null ? it.display : fmt(it.value))}</div>
       </div>`;
     }).join('')}</div>`;
+  };
+
+  /* Part-to-whole: one 100% bar split into segments (≤ 6) + a legend list with value and share.
+     opts: { segments:[{name, color, value, display}], fmt, totalLabel } */
+  C.share = function (el, o) {
+    const fmt = o.fmt || ((v) => PM.ui.num(v));
+    const segs = o.segments.filter((s) => (s.value || 0) > 0);
+    const total = PM.sum(segs, (s) => s.value);
+    if (!total) { el.innerHTML = '<p class="empty">ยังไม่มีข้อมูล</p>'; return; }
+    const pct = (v) => PM.ui.pct(v / total, v / total < 0.1 ? 1 : 0);
+    el.innerHTML = `<div class="share">
+      <div class="share-bar" role="img" aria-label="${esc(o.label || 'Share')}">${segs.map((s) =>
+        `<span style="flex-grow:${s.value};background:${s.color}" data-tip="${esc(`${s.name}\n${s.display != null ? s.display : fmt(s.value)} · ${pct(s.value)}`)}"></span>`).join('')}</div>
+      <ul class="share-legend">${o.segments.map((s) => `<li><i class="sw" style="background:${s.color}"></i><span>${esc(s.name)}</span>
+        <b>${esc(s.display != null ? s.display : fmt(s.value || 0))}</b><small>${(s.value || 0) > 0 ? pct(s.value) : '–'}</small></li>`).join('')}
+        <li class="share-total"><span>${esc(o.totalLabel || 'รวม')}</span><b>${esc(fmt(total))}</b><small>100%</small></li></ul>
+    </div>`;
+  };
+
+  /* Above / below a baseline per item (e.g. progress actual − plan): bars grow left (behind) or right (ahead)
+     from a centre line. items:[{label, sub, value, display, tip}] · opts: { neg:{label,color}, pos:{label,color} } */
+  C.diverging = function (el, o) {
+    if (!o.items.length) { el.innerHTML = '<p class="empty">ยังไม่มีข้อมูล</p>'; return; }
+    const max = o.max || Math.max(1e-9, ...o.items.map((it) => Math.abs(it.value || 0)));
+    const neg = o.neg || { label: 'ต่ำกว่า', color: 'var(--s2)' }, pos = o.pos || { label: 'สูงกว่า', color: 'var(--s1)' };
+    el.innerHTML = `<div class="legend"><span><i class="sw" style="background:${neg.color}"></i>${esc(neg.label)}</span><span><i class="sw" style="background:${pos.color}"></i>${esc(pos.label)}</span></div>
+      <div class="hbars div-bars">${o.items.map((it, i) => {
+        const v = it.value || 0, w = Math.min(50, (Math.abs(v) / max) * 50);
+        return `<div class="hbar" style="--d:${i}" data-tip="${esc(it.tip || `${it.label}\n${it.display}`)}">
+          <div class="hbar-label">${esc(it.label)}${it.sub ? `<small>${esc(it.sub)}</small>` : ''}</div>
+          <div class="hbar-track div-track"><i class="mid"></i><span class="${v < 0 ? 'neg' : 'pos'}" style="${v < 0 ? `right:50%` : `left:50%`};width:${w}%;background:${v < 0 ? neg.color : pos.color}"></span></div>
+          <div class="hbar-value">${esc(it.display)}</div></div>`;
+      }).join('')}</div>`;
+  };
+
+  /* Two ratios per item on one plot, each judged against 1.0 (e.g. SPI × CPI) — four quadrants, every point
+     labelled with its name and coloured by its status (good / warning / critical — status tokens, plus the label).
+     points:[{label, x, y, level, tip}] · opts: { xName, yName, quads:{tl,tr,bl,br}, height } */
+  C.quadrant = function (el, o) {
+    const pts = o.points.filter((p) => p.x != null && p.y != null && isFinite(p.x) && isFinite(p.y));
+    if (!pts.length) { el.innerHTML = '<p class="empty">ยังไม่มีข้อมูล</p>'; return; }
+    const W = width(el), H = fitH(W, o.height || 300);
+    const m = { t: 12, r: 16, b: 40, l: 52 };
+    const iw = W - m.l - m.r, ih = H - m.t - m.b;
+    // symmetric range around 1.0 so the cross sits in the middle, just wide enough for the points (at least ±0.1)
+    const span = Math.max(0.1, ...pts.map((p) => Math.abs(p.x - 1)), ...pts.map((p) => Math.abs(p.y - 1))) * 1.2;
+    const step = span > 0.4 ? 0.2 : span > 0.2 ? 0.1 : 0.05;
+    const dec = step < 0.1 ? 2 : 1;
+    const lo = 1 - Math.ceil(span / step) * step, hi = 1 + Math.ceil(span / step) * step;
+    const x = (v) => m.l + ((v - lo) / (hi - lo)) * iw;
+    const y = (v) => m.t + ih - ((v - lo) / (hi - lo)) * ih;
+    let g = '';
+    for (let v = lo; v <= hi + 1e-9; v += step) {
+      const r = Math.round(v * 100) / 100;
+      if (Math.abs(r - 1) > 1e-9) {
+        g += `<line class="grid" x1="${x(r)}" x2="${x(r)}" y1="${m.t}" y2="${m.t + ih}"/><line class="grid" x1="${m.l}" x2="${m.l + iw}" y1="${y(r)}" y2="${y(r)}"/>`;
+      }
+      g += `<text class="tick" x="${x(r)}" y="${m.t + ih + 16}" text-anchor="middle">${r.toFixed(dec)}</text>`;
+      g += `<text class="tick" x="${m.l - 8}" y="${y(r) + 4}" text-anchor="end">${r.toFixed(dec)}</text>`;
+    }
+    // the 1.0 cross: on plan / on budget
+    g += `<line class="ref" x1="${x(1)}" x2="${x(1)}" y1="${m.t}" y2="${m.t + ih}"/><line class="ref" x1="${m.l}" x2="${m.l + iw}" y1="${y(1)}" y2="${y(1)}"/>`;
+    const q = o.quads || {};
+    g += `<text class="quad" x="${m.l + 8}" y="${m.t + 16}">${esc(q.tl || '')}</text>
+      <text class="quad" x="${m.l + iw - 8}" y="${m.t + 16}" text-anchor="end">${esc(q.tr || '')}</text>
+      <text class="quad" x="${m.l + 8}" y="${m.t + ih - 8}">${esc(q.bl || '')}</text>
+      <text class="quad" x="${m.l + iw - 8}" y="${m.t + ih - 8}" text-anchor="end">${esc(q.br || '')}</text>`;
+    g += `<text class="tick strong" x="${m.l + iw / 2}" y="${H - 4}" text-anchor="middle">${esc(o.xName || 'x')} →</text>`;
+    g += `<text class="tick strong" transform="translate(12 ${m.t + ih / 2}) rotate(-90)" text-anchor="middle">${esc(o.yName || 'y')} →</text>`;
+    // points: dot with a surface ring + its name. Each label takes the first spot (right, left, above, below)
+    // that doesn't overlap a label already placed or another dot.
+    const boxes = pts.map((p) => ({ x0: x(p.x) - 7, x1: x(p.x) + 7, y0: y(p.y) - 7, y1: y(p.y) + 7 }));
+    const hitsBox = (b) => boxes.some((o2) => b.x0 < o2.x1 && b.x1 > o2.x0 && b.y0 < o2.y1 && b.y1 > o2.y0);
+    let dots = '', labels = '', hits = '';
+    pts.forEach((p) => {
+      const cx = x(p.x), cy = y(p.y), tw = String(p.label).length * 7 + 4;
+      const spots = [
+        { lx: cx + 10, ly: cy + 4, anchor: 'start', b: { x0: cx + 9, x1: cx + 9 + tw, y0: cy - 7, y1: cy + 7 } },
+        { lx: cx - 10, ly: cy + 4, anchor: 'end', b: { x0: cx - 9 - tw, x1: cx - 9, y0: cy - 7, y1: cy + 7 } },
+        { lx: cx, ly: cy - 11, anchor: 'middle', b: { x0: cx - tw / 2, x1: cx + tw / 2, y0: cy - 22, y1: cy - 8 } },
+        { lx: cx, ly: cy + 20, anchor: 'middle', b: { x0: cx - tw / 2, x1: cx + tw / 2, y0: cy + 8, y1: cy + 22 } },
+      ].filter((s) => s.b.x0 >= m.l && s.b.x1 <= m.l + iw);
+      const spot = spots.find((s) => !hitsBox(s.b)) || spots[0] || { lx: cx + 10, ly: cy + 4, anchor: 'start', b: { x0: 0, x1: 0, y0: 0, y1: 0 } };
+      boxes.push(spot.b);
+      const lx = spot.lx, ly = spot.ly, anchor = spot.anchor;
+      dots += `<circle class="pt" cx="${cx}" cy="${cy}" r="6" style="fill:var(--${p.level === 'good' ? 'good' : p.level === 'warning' ? 'warning' : p.level === 'critical' ? 'critical' : 'muted'})"/>`;
+      labels += `<text class="pt-label" x="${lx}" y="${ly}" text-anchor="${anchor}">${esc(p.label)}</text>`;
+      hits += `<circle class="hit" cx="${cx}" cy="${cy}" r="14" data-tip="${esc(p.tip || p.label)}"/>`;
+    });
+    el.innerHTML = `<svg class="chart-svg" viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" role="img" aria-label="${esc(o.label || 'Quadrant chart')}">${g}${dots}${labels}${hits}</svg>`;
   };
 })();

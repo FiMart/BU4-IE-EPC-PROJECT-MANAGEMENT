@@ -18,7 +18,7 @@
         ] },
         { h: 'เมนู', items: [
           '<b>คอมพิวเตอร์:</b> เมนูอยู่ด้านซ้าย (จอเตี้ยเลื่อนเมนูขึ้นลงได้) กดปุ่ม ‹ ที่ขอบเมนูเพื่อหุบเหลือเฉพาะไอคอน · เมนูย่อยของขั้น Bidding แสดงเมื่ออยู่หน้า Bidding',
-          '<b>มือถือ / แท็บเล็ต:</b> เมนูหลักอยู่แถบด้านล่าง — Dashboard · Bidding · Projects · Weekly · Timesheet · <b>เพิ่มเติม</b> (หน้าที่เหลือ เช่น ขั้น Bidding, PO, Price List, Settings แสดงเป็นปุ่มไอคอน พร้อมบัญชีผู้ใช้และปุ่มออกจากระบบ — แตะนอกกรอบเพื่อปิด)',
+          '<b>มือถือ / แท็บเล็ต:</b> เมนูหลักอยู่แถบด้านล่าง — Dashboard · Bidding · Projects · Weekly · Timesheet (เฉพาะ Admin / Dept Manager / PM) · <b>เพิ่มเติม</b> (หน้าที่เหลือ เช่น ขั้น Bidding, PO, Price List, Settings แสดงเป็นปุ่มไอคอน พร้อมบัญชีผู้ใช้และปุ่มออกจากระบบ — แตะนอกกรอบเพื่อปิด)',
           'แต่ละหน้ามีแถบภาพด้านบน กด <b>วิธีใช้หน้านี้</b> เพื่อเปิดคู่มือของหน้านั้น',
         ] },
         { h: 'การบันทึกข้อมูล', items: [
@@ -30,8 +30,9 @@
         ] },
         { h: 'ใช้ได้ในทุกหน้า', items: [
           'วางเมาส์ (หรือแตะ) ที่กราฟ การ์ด หรือแถบ Progress เพื่อดูตัวเลขละเอียด',
-          'ปุ่ม <b>◐</b> มุมขวาบน สลับธีมสว่าง / มืด',
-          'ระบบจำหน้าที่เปิดล่าสุดและตัวกรองของแต่ละหน้าไว้ในเบราว์เซอร์นี้',
+          'ปุ่ม <b>◐</b> มุมขวาบน สลับธีมสว่าง / มืด · ตั้งค่าธีม (สว่าง / มืด / ตามระบบ) และเมนูด้านซ้าย (แสดงเต็ม / หุบเหลือไอคอน) ได้ที่ <a href="#/settings">Settings</a> → การแสดงผล — <b>บันทึกตามบัญชี</b> เข้าสู่ระบบจากเครื่องไหนก็ได้การตั้งค่าเดียวกัน',
+          'เปิดเว็บ / เข้าสู่ระบบ / สมัครสมาชิก เริ่มที่หน้า <b>Dashboard</b> เสมอ (กดรีเฟรชจะอยู่หน้าเดิม) · ระบบจำตัวกรองของแต่ละหน้าไว้ในเบราว์เซอร์นี้',
+          'แถบบาง ๆ ด้านบนสุดของจอ = กำลังโหลด / บันทึกข้อมูลกับ Cloud · ปิดแท็บขณะยังบันทึกไม่เสร็จ เบราว์เซอร์จะถามก่อน',
           'ป้ายสถานะ: <b>On track</b> (SPI / CPI ≥ 0.95) · <b>At risk</b> (0.90–0.95) · <b>Off track</b> (&lt; 0.90)',
         ] },
       ],
@@ -49,11 +50,31 @@
       ],
     },
     {
+      key: 'present', title: 'โหมดนำเสนอขึ้นจอ', icon: 'chart', route: '#/present',
+      intro: 'หน้าจอเต็มสำหรับเปิดบนทีวี / โปรเจกเตอร์ในออฟฟิศหรือห้องประชุม — ตัวเลขใหญ่ อ่านได้จากระยะไกล สลับหน้าอัตโนมัติ',
+      blocks: [
+        { h: 'เปิดใช้งาน', steps: [
+          'กดเมนู <b>โหมดนำเสนอ</b> (ใต้ Dashboard) หรือปุ่มจอภาพมุมขวาบน',
+          'กด <b>⛶ เต็มจอ</b> หรือปุ่ม <b>F</b> — เบราว์เซอร์จะซ่อนแถบเมนูทั้งหมด',
+          'เลือกความเร็วสลับหน้า (ทุก 10 / 15 / 30 / 60 วินาที) แล้วปล่อยไว้ได้เลย',
+        ] },
+        { h: 'หน้าที่แสดง', items: [
+          'Bidding · Projects · สุขภาพโครงการ (SPI × CPI) · Purchase Orders · Weekly Plan สัปดาห์นี้ · Resource Utilization · Safety',
+          'แสดงตามสิทธิ์ของบัญชีที่เปิดอยู่ — หน้า Resource เฉพาะ Admin / Department Manager / Project Manager · มูลค่า Bid เฉพาะผู้ที่เห็นราคาได้ <b>(เปิดบนทีวีส่วนกลาง แนะนำใช้บัญชีที่สิทธิ์เหมาะกับคนที่ดูจอ)</b>',
+          'ข้อมูลอัปเดตจาก Cloud ทุก 1 นาที · มีนาฬิกามุมขวาบน · ระบบกันจอดับ (ถ้าเบราว์เซอร์รองรับ)',
+        ] },
+        { h: 'ปุ่มลัด', items: [
+          '<b>→ / ←</b> หน้าถัดไป / ก่อนหน้า · <b>Space</b> หยุด / เล่น · <b>F</b> เต็มจอ · <b>Esc</b> ออกกลับไป Dashboard',
+          'ปุ่มควบคุมอยู่มุมขวาล่าง (จางลงเมื่อไม่ได้ชี้) · จุดมุมซ้ายล่างกดเพื่อไปหน้านั้นทันที',
+        ] },
+      ],
+    },
+    {
       key: 'bidding', title: 'Bidding (ภาพรวม)', icon: 'proposal', route: '#/bidding',
       intro: 'ติดตามงานประมูลตั้งแต่รับ Inquiry จนรู้ผล: Inquiry → Estimate → Proposal → Submit → Award',
       blocks: [
         { h: 'เพิ่มงานประมูลใหม่', steps: [
-          'กด <b>+ New inquiry</b>',
+          'กด <b>+ New inquiry</b> (ปุ่มนี้มีเฉพาะ Sales และ Admin)',
           '<b>Bid No.</b> ขึ้น <b>PROP-ปี-IE EPC-00</b> ให้แล้ว — พิมพ์เลขต่อท้าย (ห้ามซ้ำกับ Bid เดิม) แล้วกรอกลูกค้า · ชื่องาน · <b>Sales</b> (พิมพ์ชื่อหรือเลือกจากรายชื่อ) · ที่มาของงาน · ผู้ติดต่อ',
           'กรอกมูลค่าประมาณการ · Margin · Estimator · จำนวน BOQ และ<b>กำหนดยื่นใบเสนอราคา (Due date)</b>',
           'แนบไฟล์ได้ (ใบเสนอราคา, TOR, แบบ, BOQ) แล้วกด <b>บันทึก</b>',
@@ -70,6 +91,12 @@
           'สลับ <b>Board</b> (การ์ดตามขั้น) / <b>Table</b> (ทะเบียน Bid ทั้งหมด)',
           'ตาราง <b>ผลงาน Sales</b>: กดแถวเพื่อกรองเฉพาะ Sales คนนั้น · 📎 บนการ์ด = เปิดไฟล์แนบ',
           'ป้าย Due: <b>Overdue</b> = เลยกำหนดยื่น · <b>Due 5d</b> = เหลือไม่เกิน 5 วัน',
+        ] },
+        { h: 'ใครทำอะไรได้ใน Bidding', items: [
+          '<b>Sales</b>: เพิ่ม Inquiry · แก้ไข · เลื่อนขั้น · กด <b>Won / Lost / No-bid</b> และเห็น<b>มูลค่า · Margin · ไฟล์ใบเสนอราคา</b> — เฉพาะงานที่ตัวเองเป็น Sales ผู้รับผิดชอบ',
+          '<b>Admin</b>: ทำได้ทุกอย่างและเห็นราคาทุกงาน',
+          '<b>Department Manager · Project Manager · Engineer · Technician</b>: เห็นทุก Bid ขั้นตอน และผล Won / Lost แต่ไม่เห็นราคา (แสดงเป็น 🔒) และแก้ไขไม่ได้ — กดการ์ดเพื่อดูรายละเอียดแบบอ่านอย่างเดียว',
+          'ราคาถูกเก็บแยกในฐานข้อมูล — ฐานข้อมูลไม่ส่งราคาไปยังเครื่องของคนที่ไม่มีสิทธิ์เลย',
         ] },
       ],
     },
@@ -175,7 +202,7 @@
     },
     {
       key: 'resources', title: 'Resource Utilization', icon: 'gauge', route: '#/resources',
-      intro: 'ภาระงานของทีมจาก Timesheet — Utilization = (ชั่วโมง Project + Bidding) ÷ (Capacity − Leave)',
+      intro: 'ภาระงานของทีมจาก Timesheet — Utilization = (ชั่วโมง Project + Bidding) ÷ (Capacity − Leave) · เปิดได้เฉพาะ Admin, Department Manager และ Project Manager (รวมถึงส่วน Resource Utilization บน Dashboard)',
       blocks: [
         { h: 'ใช้งาน', items: [
           'เลือกช่วง 4 สัปดาห์ / เดือนนี้ / 12 สัปดาห์',
@@ -187,7 +214,7 @@
     },
     {
       key: 'timesheet', title: 'Timesheet', icon: 'clock', route: '#/timesheet',
-      intro: 'บันทึกชั่วโมงทำงานรายสัปดาห์ต่อคน — ข้อมูลนี้ใช้คำนวณ Utilization ชั่วโมงโครงการ และชั่วโมง Bidding',
+      intro: 'บันทึกชั่วโมงทำงานรายสัปดาห์ต่อคน — ข้อมูลนี้ใช้คำนวณ Utilization ชั่วโมงโครงการ และชั่วโมง Bidding · เปิดได้เฉพาะ Admin, Department Manager และ Project Manager',
       blocks: [
         { h: 'กรอก Timesheet (เฉพาะ Project Manager)', steps: [
           'เลือกพนักงานและสัปดาห์',
@@ -196,7 +223,7 @@
           'กรอกชั่วโมงในแต่ละวัน — <b>บันทึกอัตโนมัติ</b>ขณะพิมพ์',
         ] },
         { h: 'ดูข้อมูล', items: [
-          'Role อื่นเปิดดูได้อย่างเดียว (ตัวเลขชั่วโมงไม่มีช่องกรอก)',
+          'Admin และ Department Manager เปิดดูได้อย่างเดียว (ตัวเลขชั่วโมงไม่มีช่องกรอก) · Engineer, Sales, Technician ไม่เห็นหัวข้อ Resources',
           'ป้าย <b>OT</b> ใต้วัน = ชั่วโมงรวมของวันนั้นเกินปกติ',
           '<b>ชั่วโมง Bidding แยกตามขั้นตอน — ทั้งทีม</b>: ทุก Bid ที่มีชั่วโมงในสัปดาห์ แยกตามขั้น พร้อมรายชื่อผู้ลงชั่วโมง',
           '<b>Timesheet status — ทั้งทีม</b>: ใครกรอกครบ / ยังขาด — กด <b>เปิด</b> เพื่อดูของคนนั้น',
@@ -247,7 +274,7 @@
     },
   ];
 
-  const ROUTE_TOPIC = { dashboard: 'dashboard', bidding: 'bidding', bidstage: 'bidstage', projects: 'projects', project: 'projects', pos: 'pos', prices: 'prices', weekly: 'weekly', resources: 'resources', timesheet: 'timesheet', settings: 'settings', about: 'start' };
+  const ROUTE_TOPIC = { present: 'present', dashboard: 'dashboard', bidding: 'bidding', bidstage: 'bidstage', projects: 'projects', project: 'projects', pos: 'pos', prices: 'prices', weekly: 'weekly', resources: 'resources', timesheet: 'timesheet', settings: 'settings', about: 'start' };
   H.topicFor = (route) => ROUTE_TOPIC[route] || null;
 
   function rolesTable() {

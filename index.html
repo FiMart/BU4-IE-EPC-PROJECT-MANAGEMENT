@@ -18,6 +18,17 @@
   </script>
 </head>
 <body>
+  <!-- loading screen: visible from the first paint until the login screen or the Dashboard is ready (PM.splash in app.js) -->
+  <div id="boot-splash" class="boot-splash" role="status" aria-live="polite">
+    <div class="boot-card">
+      <div class="brand-mark boot-mark">BU4</div>
+      <b>BU4 IE/EPC Project Management</b>
+      <span class="boot-text" id="boot-text">กำลังเปิดระบบ…</span>
+      <div class="boot-bar" aria-hidden="true"><i></i></div>
+    </div>
+  </div>
+  <!-- thin bar at the top while data is being loaded from / saved to the cloud -->
+  <div class="top-progress" aria-hidden="true"><i></i></div>
   <div id="auth-root"></div>
   <div class="app">
     <aside class="sidebar" id="sidebar">
@@ -33,6 +44,9 @@
         <a href="#/dashboard" data-route="dashboard">
           <svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="9" rx="1.5"/><rect x="14" y="3" width="7" height="5" rx="1.5"/><rect x="14" y="12" width="7" height="9" rx="1.5"/><rect x="3" y="16" width="7" height="5" rx="1.5"/></svg>
           <span>Dashboard</span></a>
+        <a href="#/present" data-route="present">
+          <svg viewBox="0 0 24 24"><rect x="2.5" y="4" width="19" height="13" rx="2"/><path d="M8 21h8M12 17v4M10 8.5v5l4.5-2.5z"/></svg>
+          <span>โหมดนำเสนอ</span></a>
         <div class="nav-group">Before Award</div>
         <a href="#/bidding" data-route="bidding">
           <svg viewBox="0 0 24 24"><path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><path d="M14 3v6h6M8 13h8M8 17h5"/></svg>
@@ -97,6 +111,8 @@
         <span class="spacer"></span>
         <span class="sync" id="sync-status" role="status" aria-live="polite" hidden></span>
         <span class="muted" id="asof"></span>
+        <a class="icon-btn present-btn" href="#/present" title="โหมดนำเสนอขึ้นจอ (TV / โปรเจกเตอร์)" aria-label="โหมดนำเสนอ">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="2.5" y="4" width="19" height="13" rx="2"/><path d="M8 21h8M12 17v4M10 8.5v5l4.5-2.5z"/></svg></a>
         <button class="icon-btn" id="theme-toggle" title="สลับธีม สว่าง/มืด" aria-label="Toggle theme">◐</button>
       </header>
       <section class="page-hero" id="page-hero" hidden></section>
@@ -149,6 +165,7 @@
   <script src="assets/js/views/settings.js"></script>
   <script src="assets/js/views/about.js"></script>
   <script src="assets/js/views/help.js"></script>
+  <script src="assets/js/views/present.js"></script>
   <script src="assets/js/app.js"></script>
   <script src="assets/js/pull.js"></script>
   <script src="assets/js/config.js"></script>
