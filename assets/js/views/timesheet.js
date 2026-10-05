@@ -292,7 +292,7 @@
     box.querySelectorAll('[data-person]').forEach((a) => a.addEventListener('click', (e) => {
       e.preventDefault();
       commit();
-      state.resourceId = a.dataset.person; state.rows = null; PM.views.timesheet(el); window.scrollTo(0, 0);
+      state.resourceId = a.dataset.person; state.rows = null; PM.views.timesheet(el); U.scrollToY(0);
     }));
   }
 })();

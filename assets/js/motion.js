@@ -53,17 +53,18 @@
   };
 
   /* Scroll state: .scrolled lifts the topbar, .scroll-down folds the floating "+ New" button */
+  // capture: also hears the content area scrolling on phones / tablets (app shell — PM.ui.scroller)
   let lastY = 0, ticking = false;
-  window.addEventListener('scroll', () => {
+  document.addEventListener('scroll', () => {
     if (ticking) return;
     ticking = true;
     requestAnimationFrame(() => {
-      const y = window.scrollY, b = document.body;
+      const y = PM.ui.scrollY(), b = document.body;
       b.classList.toggle('scrolled', y > 4);
       if (Math.abs(y - lastY) > 8 || y < 40) { b.classList.toggle('scroll-down', y > lastY && y > 120); lastY = y; }
       ticking = false;
     });
-  }, { passive: true });
+  }, { passive: true, capture: true });
 
   /* drawer items slide in one after another (order index for the CSS delay) */
   document.querySelectorAll('#nav > *').forEach((n, i) => n.style.setProperty('--i', i));

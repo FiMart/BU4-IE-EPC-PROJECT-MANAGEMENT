@@ -18,7 +18,7 @@
 
   let startY = null, startX = 0, dist = 0, active = false, busy = false;
   const blocked = () => busy || !document.body.classList.contains('authed') || document.body.classList.contains('nav-open') || document.body.classList.contains('more-open')
-    || !!document.querySelector('.modal-backdrop') || window.scrollY > 0;
+    || !!document.querySelector('.modal-backdrop') || PM.ui.scrollY() > 0; // only at the very top of the page
 
   const place = (d) => { el.style.transform = `translate(-50%, ${Math.round(d - 76)}px)`; };
   const reset = () => {
@@ -38,7 +38,7 @@
     const dy = e.touches[0].clientY - startY, dx = e.touches[0].clientX - startX;
     if (!active) {
       if (dy < 8) { if (dy < -4) startY = null; return; }                 // scrolling down the page
-      if (Math.abs(dx) > dy || window.scrollY > 0) { startY = null; return; } // sideways swipe (board, tabs)
+      if (Math.abs(dx) > dy || PM.ui.scrollY() > 0) { startY = null; return; } // sideways swipe (board, tabs)
       active = true;
       el.classList.add('pulling');
     }

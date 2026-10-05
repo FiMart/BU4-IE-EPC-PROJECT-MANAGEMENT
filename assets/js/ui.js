@@ -38,6 +38,13 @@
       <span style="width:${a}%"></span>${p != null ? `<i style="left:${p}%"></i>` : ''}</div>`;
   };
 
+  /* What scrolls the page: on phones / tablets (≤ 900 px, signed in) the content area .main scrolls and the page
+     itself never does (app shell — see styles.css), so the top bar and bottom tab bar stay locked; elsewhere the window. */
+  const shellMq = matchMedia('(max-width: 900px)');
+  U.scroller = () => (shellMq.matches && document.body.classList.contains('authed') ? document.querySelector('.main') : null);
+  U.scrollY = () => { const s = U.scroller(); return s ? s.scrollTop : window.scrollY; };
+  U.scrollToY = (y) => { const s = U.scroller(); if (s) s.scrollTop = y; else window.scrollTo(0, y); };
+
   U.resourceName = (id) => { const r = PM.find('resources', id); return r ? r.name : '–'; };
   U.phaseLabel = (key) => { const ph = PM.PHASES.find((p) => p.key === key); return ph ? ph.label : key || '–'; };
 

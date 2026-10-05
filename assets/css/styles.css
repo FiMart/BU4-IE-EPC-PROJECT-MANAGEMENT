@@ -1064,6 +1064,18 @@ body.presenting .content { max-width: none; padding: 0; }
   body.more-open #tab-more { color: var(--accent); }
 }
 
+/* ---------- app shell on phones & tablets ----------
+   Only the content area (.main) scrolls; the page itself never does. A scrolling page makes the mobile browser
+   collapse / expand its address bar and rubber-band at the ends — the fixed tab bar used to slide along with that.
+   Now the top bar (sticky in .main) and the bottom tab bar stay locked in place. JS reads the scroll position
+   through PM.ui.scrollY() / scrollToY(). */
+@media (max-width: 900px) {
+  html { height: 100%; }
+  body.authed { height: 100%; overflow: hidden; overscroll-behavior: none; }
+  body.authed .app { height: 100vh; height: 100dvh; min-height: 0; }
+  body.authed .main { height: 100vh; height: 100dvh; overflow-x: hidden; overflow-y: auto; overscroll-behavior-y: contain; -webkit-overflow-scrolling: touch; }
+}
+
 /* ---------- bottom tab bar (phones & tablets) — replaces the ☰ button; "เพิ่มเติม" opens the drawer ---------- */
 .tabbar { display: none; }
 @media (max-width: 900px) {

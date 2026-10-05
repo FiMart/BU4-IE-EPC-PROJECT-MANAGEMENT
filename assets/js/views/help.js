@@ -330,7 +330,7 @@
     // a topic in the address (#/help/prices): bring it into view below the sticky top bar
     if (active) setTimeout(() => {
       const sec = el.querySelector('#help-' + active);
-      if (sec && !sec.hidden) window.scrollTo(0, sec.getBoundingClientRect().top + window.scrollY - 84);
+      if (sec && !sec.hidden) U.scrollToY(sec.getBoundingClientRect().top + U.scrollY() - 84);
     }, 120); // after the page-change animation has laid the sections out
   };
 })();

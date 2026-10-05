@@ -347,7 +347,7 @@
     const go = () => {
       if (done || seq !== navSeq) return; // drawn already, or tapped again meanwhile — only the last page is drawn
       done = true;
-      window.scrollTo(0, 0);
+      PM.ui.scrollToY(0); // new page starts at the top (window, or the content area on phones / tablets)
       render();
       body.classList.remove('is-navigating');
       document.querySelectorAll('.is-loading[data-nav-loading]').forEach((a) => { a.classList.remove('is-loading'); a.removeAttribute('data-nav-loading'); });
