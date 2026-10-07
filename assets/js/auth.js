@@ -54,10 +54,46 @@
   };
 
   /* ---------- screens ---------- */
-  const pw = (name, auto, label) => `
-    <label><span>${label}</span><div class="pw">
-      <input type="password" name="${name}" autocomplete="${auto}" required minlength="6">
-      <button type="button" class="link-btn pw-toggle" data-toggle-pw>แสดง</button></div></label>`;
+  const ICON = {
+    mail: '<path d="M4 6h16v12H4z"/><path d="m4 7 8 6 8-6"/>',
+    lock: '<rect x="5" y="10" width="14" height="10" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/>',
+    user: '<circle cx="12" cy="8" r="4"/><path d="M4 20c1.5-4 4.5-6 8-6s6.5 2 8 6"/>',
+    eye: '<path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/>',
+    eyeOff: '<path d="M3 3l18 18M10.6 5.1A10 10 0 0 1 12 5c6.5 0 10 7 10 7a17 17 0 0 1-3.2 4.1M6.6 6.6C3.8 8.4 2 12 2 12s3.5 7 10 7a9.6 9.6 0 0 0 5.4-1.6"/><path d="M9.9 9.9a3 3 0 0 0 4.2 4.2"/>',
+  };
+  const svg = (k) => `<svg viewBox="0 0 24 24" aria-hidden="true">${ICON[k]}</svg>`;
+
+  // a labelled input with a leading icon; extra = more <input> attributes · hint = small text under it
+  const field = (icon, label, attrs, hint) => `
+    <label class="auth-field"><span>${label}</span>
+      <div class="auth-input">${svg(icon)}<input ${attrs}></div>${hint ? `<small class="muted">${hint}</small>` : ''}</label>`;
+  // password: eye button to show / hide · meter = strength bar (new passwords) · match = must equal the "password" field
+  const pw = (name, auto, label, opt = {}) => `
+    <label class="auth-field"><span>${label}</span>
+      <div class="auth-input pw">${svg('lock')}
+        <input type="password" name="${name}" autocomplete="${auto}" required minlength="6"${opt.match ? ' data-match="password"' : ''}>
+        <button type="button" class="pw-toggle" data-toggle-pw aria-label="แสดงรหัสผ่าน" aria-pressed="false">${svg('eye')}</button></div>
+      ${opt.meter ? '<div class="pw-meter" data-meter aria-live="polite"><i></i><i></i><i></i><i></i><small>อย่างน้อย 6 ตัวอักษร · ผสมตัวพิมพ์ใหญ่ ตัวเลข สัญลักษณ์ จะปลอดภัยขึ้น</small></div>' : ''}
+      ${opt.match ? '<small class="pw-match" data-match-hint aria-live="polite"></small>' : ''}</label>`;
+  // login ⇄ register switch at the top of the card
+  const tabs = (on) => `<div class="auth-tabs" role="tablist">
+      <button type="button" role="tab" data-go="login" aria-selected="${on === 'login'}" class="${on === 'login' ? 'on' : ''}">เข้าสู่ระบบ</button>
+      <button type="button" role="tab" data-go="register" aria-selected="${on === 'register'}" class="${on === 'register' ? 'on' : ''}">สมัครสมาชิก</button></div>`;
+
+  /* 0–4: length 8+ / 12+, mixed case, a digit, a symbol (under 6 = too short) */
+  const STRENGTH = [['สั้นเกินไป', 'critical'], ['อ่อน', 'critical'], ['พอใช้', 'warning'], ['ดี', 'good'], ['แข็งแรง', 'good']];
+  const strength = (v) => {
+    if (v.length < 6) return 0;
+    let s = 1;
+    if (v.length >= 8 && /[a-z]/.test(v) && /[A-Z]/.test(v)) s++;
+    if (/\d/.test(v) && /[^A-Za-z0-9]/.test(v)) s++;
+    if (v.length >= 12 || (v.length >= 8 && /\d/.test(v) && /[A-Za-z]/.test(v))) s++;
+    return Math.min(4, s);
+  };
+
+  // the last e-mail that signed in on this browser — saves typing it again (convenience only)
+  const LAST_EMAIL = 'epc-pm-last-email';
+  const lastEmail = () => { try { return localStorage.getItem(LAST_EMAIL) || ''; } catch (e) { return ''; } };
 
   const VIEWS = {
     loading: () => '<p class="muted">กำลังตรวจสอบการเข้าสู่ระบบ…</p>',
@@ -72,46 +108,45 @@
       </ol>`,
     error: (o) => `<h1>เปิดระบบไม่สำเร็จ</h1><p class="muted">${esc(o.text || '')}</p><button class="btn primary block" type="button" onclick="location.reload()">ลองใหม่</button>`,
     login: () => `
-      <h1>เข้าสู่ระบบ</h1>
-      <p class="muted">ใช้อีเมลและรหัสผ่านที่สมัครไว้</p>
+      ${tabs('login')}
+      <div class="auth-head"><h1>ยินดีต้อนรับกลับ</h1><p class="muted">เข้าสู่ระบบด้วยอีเมลและรหัสผ่านที่สมัครไว้</p></div>
       <form class="auth-form" data-form="login" novalidate>
-        <label><span>อีเมล</span><input type="email" name="email" autocomplete="email" required></label>
+        ${field('mail', 'อีเมล', `type="email" name="email" autocomplete="email" placeholder="name@company.com" required value="${esc(lastEmail())}"`)}
         ${pw('password', 'current-password', 'รหัสผ่าน')}
         <div class="auth-row"><span></span><button type="button" class="link-btn" data-go="forgot">ลืมรหัสผ่าน?</button></div>
         <button class="btn primary block" type="submit">เข้าสู่ระบบ</button>
       </form>
       <p class="auth-switch">ยังไม่มีบัญชี? <button type="button" class="link-btn" data-go="register">สมัครสมาชิก</button></p>`,
     register: () => `
-      <h1>สมัครสมาชิก</h1>
-      <p class="muted">สร้างบัญชีสำหรับใช้งาน ${esc(PM.APP_NAME)}</p>
+      ${tabs('register')}
+      <div class="auth-head"><h1>สร้างบัญชีใหม่</h1><p class="muted">สำหรับใช้งาน ${esc(PM.APP_NAME)} · Admin จะกำหนด Role ให้หลังสมัคร</p></div>
       <form class="auth-form" data-form="register" novalidate>
-        <label><span>ชื่อ-สกุล</span><input name="fullName" autocomplete="name" required></label>
-        <label><span>อีเมล</span><input type="email" name="email" autocomplete="email" placeholder="name@company.com" required>
-          <small class="muted">ใช้อีเมลโดเมนใดก็ได้ ไม่จำกัดเฉพาะ @flowlabservice.co.th</small></label>
-        ${pw('password', 'new-password', 'รหัสผ่าน (อย่างน้อย 6 ตัวอักษร)')}
-        ${pw('confirm', 'new-password', 'ยืนยันรหัสผ่าน')}
+        ${field('user', 'ชื่อ-สกุล', 'name="fullName" autocomplete="name" placeholder="เช่น สมชาย ใจดี" required')}
+        ${field('mail', 'อีเมล', 'type="email" name="email" autocomplete="email" placeholder="name@company.com" required', 'ใช้อีเมลโดเมนใดก็ได้ ไม่จำกัดเฉพาะ @flowlabservice.co.th')}
+        ${pw('password', 'new-password', 'รหัสผ่าน', { meter: true })}
+        ${pw('confirm', 'new-password', 'ยืนยันรหัสผ่าน', { match: true })}
         <button class="btn primary block" type="submit">สมัครสมาชิก</button>
       </form>
       <p class="auth-switch">มีบัญชีอยู่แล้ว? <button type="button" class="link-btn" data-go="login">เข้าสู่ระบบ</button></p>`,
     forgot: () => `
-      <h1>ลืมรหัสผ่าน</h1>
-      <p class="muted">กรอกอีเมลที่ใช้สมัคร ระบบจะส่งลิงก์สำหรับตั้งรหัสผ่านใหม่ไปให้</p>
+      <div class="auth-head"><h1>ลืมรหัสผ่าน</h1>
+      <p class="muted">กรอกอีเมลที่ใช้สมัคร ระบบจะส่งลิงก์สำหรับตั้งรหัสผ่านใหม่ไปให้</p></div>
       <form class="auth-form" data-form="forgot" novalidate>
-        <label><span>อีเมล</span><input type="email" name="email" autocomplete="email" required></label>
+        ${field('mail', 'อีเมล', `type="email" name="email" autocomplete="email" placeholder="name@company.com" required value="${esc(lastEmail())}"`)}
         <button class="btn primary block" type="submit">ส่งลิงก์ตั้งรหัสผ่านใหม่</button>
       </form>
       ${redirectUrl() ? '' : '<p class="muted small">หมายเหตุ: ตอนนี้เปิดไฟล์โดยตรง (file://) ลิงก์ในอีเมลจะพาไปที่ Site URL ที่ตั้งไว้ใน Supabase — ควรเปิดแอปผ่าน http(s) เพื่อให้ลิงก์กลับมาที่หน้านี้</p>'}
       <p class="auth-switch"><button type="button" class="link-btn" data-go="login">← กลับไปเข้าสู่ระบบ</button></p>`,
     recovery: () => `
-      <h1>ตั้งรหัสผ่านใหม่</h1>
-      <p class="muted">กรอกรหัสผ่านใหม่สำหรับบัญชีของคุณ</p>
+      <div class="auth-head"><h1>ตั้งรหัสผ่านใหม่</h1>
+      <p class="muted">กรอกรหัสผ่านใหม่สำหรับบัญชีของคุณ</p></div>
       <form class="auth-form" data-form="recovery" novalidate>
-        ${pw('password', 'new-password', 'รหัสผ่านใหม่')}
-        ${pw('confirm', 'new-password', 'ยืนยันรหัสผ่านใหม่')}
+        ${pw('password', 'new-password', 'รหัสผ่านใหม่', { meter: true })}
+        ${pw('confirm', 'new-password', 'ยืนยันรหัสผ่านใหม่', { match: true })}
         <button class="btn primary block" type="submit">บันทึกรหัสผ่านใหม่</button>
       </form>`,
     sent: (o) => `
-      <h1>ตรวจสอบอีเมลของคุณ</h1>
+      <div class="auth-head"><span class="auth-badge">${svg('mail')}</span><h1>ตรวจสอบอีเมลของคุณ</h1></div>
       <p>${esc(o.text)}</p>
       ${o.forgot ? `<div class="auth-help">
         <b>ไม่ได้รับอีเมลภายใน 5 นาที?</b>
@@ -140,31 +175,38 @@
 
   const SIDE = `
     <span class="orb"></span><span class="gridlines"></span>
+    <div class="brand"><div class="brand-mark">BU4</div><div><b>BU4 IE/EPC Project Management</b><small>${esc(PM.COMPANY)}</small></div></div>
     <div class="auth-side-inner">
-      <div class="brand"><div class="brand-mark">BU4</div><div><b>${esc(PM.COMPANY)}</b><small>Bidding · Execution · Resources</small></div></div>
-      <div class="auth-art">${PM.illus.art('projects')}</div>
-      <h2>ติดตามงานตั้งแต่ประมูลจนส่งมอบ ในที่เดียว</h2>
-      <ol class="auth-pillars">
-        <li><b>Bidding Performance</b><span>Inquiry → Estimate → Proposal → Submit</span></li>
-        <li><b>Execution (EPC)</b><span>Engineering → Procurement → Construction → Closing<br>KPI: Quantity · Time · Cost · Quality (NCR) · Safety</span></li>
-        <li><b>Resource Utilization</b><span>Level · Timesheet</span></li>
-      </ol>
+      <div class="auth-pitch">
+        <span class="auth-eyebrow">Bidding · Execution · Resources</span>
+        <h2>ติดตามงานตั้งแต่ประมูลจนส่งมอบ ในที่เดียว</h2>
+        <p>ภาพรวม KPI ของทุกโครงการ — ประมูล · EPC · ต้นทุน · PO · คน — อัปเดตจากทีมแบบเรียลไทม์</p>
+      </div>
       ${PREVIEW}
-    </div>`;
+      <ol class="auth-pillars">
+        <li><b>Bidding</b><span>Inquiry → Submit</span></li>
+        <li><b>Execution (EPC)</b><span>SPI · CPI · NCR · Safety</span></li>
+        <li><b>Resources</b><span>Utilization · Timesheet</span></li>
+      </ol>
+    </div>
+    <div class="auth-side-foot">© ${new Date().getFullYear()} ${esc(PM.COMPANY)} · v${esc(PM.VERSION || '')}</div>`;
 
   function screen(view, o = {}) {
     // checking the saved session: the loading screen covers it · any real screen (login, register …) takes over
     if (view === 'loading') PM.splash.show('กำลังตรวจสอบการเข้าสู่ระบบ…'); else PM.splash.hide();
     document.body.classList.remove('authed');
     const root = document.getElementById('auth-root');
-    root.innerHTML = `<div class="auth-wrap">
-      <main class="auth-main"><div class="auth-card">
+    const card = `<div class="auth-card auth-${view}">
         <div class="brand auth-brand-sm"><div class="brand-mark">BU4</div><div><b>BU4 IE/EPC Project Management</b><small>${esc(PM.COMPANY)}</small></div></div>
         ${o.notice ? `<div class="auth-msg ${o.notice.type || 'info'}" role="alert">${esc(o.notice.text)}</div>` : ''}
         ${VIEWS[view](o)}
-      </div></main>
-      <aside class="auth-side">${SIDE}</aside></div>`;
-    const first = root.querySelector('input');
+      </div>`;
+    // switching login ⇄ register ⇄ forgot swaps only the card — the brand panel stays put (no re-draw / re-fade)
+    const main = root.querySelector('.auth-main');
+    if (main) main.innerHTML = card;
+    else root.innerHTML = `<div class="auth-wrap"><main class="auth-main">${card}</main><aside class="auth-side">${SIDE}</aside></div>`;
+    // start where the typing is: the first empty field (login with a remembered e-mail → the password)
+    const first = Array.from(root.querySelectorAll('input')).find((i) => !i.value) || root.querySelector('input');
     if (first) first.focus();
   }
 
@@ -177,8 +219,29 @@
       const t = e.target.closest('[data-toggle-pw]');
       if (t) {
         const inp = t.parentElement.querySelector('input');
-        inp.type = inp.type === 'password' ? 'text' : 'password';
-        t.textContent = inp.type === 'password' ? 'แสดง' : 'ซ่อน';
+        const show = inp.type === 'password';
+        inp.type = show ? 'text' : 'password';
+        t.innerHTML = svg(show ? 'eyeOff' : 'eye');
+        t.setAttribute('aria-pressed', String(show));
+        t.setAttribute('aria-label', show ? 'ซ่อนรหัสผ่าน' : 'แสดงรหัสผ่าน');
+      }
+    });
+    // live feedback on new passwords: strength bar + "matches" under the confirm field
+    root.addEventListener('input', (e) => {
+      const form = e.target.closest('form[data-form]');
+      if (!form || !form.password) return;
+      const meter = form.querySelector('[data-meter]');
+      if (meter && e.target.name === 'password') {
+        const v = form.password.value, s = strength(v), [label, level] = STRENGTH[s];
+        meter.className = 'pw-meter' + (v ? ' lv-' + level : '');
+        meter.querySelectorAll('i').forEach((i, n) => i.classList.toggle('on', !!v && n < Math.max(1, s)));
+        meter.querySelector('small').textContent = v ? `ความปลอดภัย: ${label}` : 'อย่างน้อย 6 ตัวอักษร · ผสมตัวพิมพ์ใหญ่ ตัวเลข สัญลักษณ์ จะปลอดภัยขึ้น';
+      }
+      const hint = form.querySelector('[data-match-hint]');
+      if (hint && form.confirm) {
+        const c = form.confirm.value, ok = c && c === form.password.value;
+        hint.className = 'pw-match' + (c ? (ok ? ' ok' : ' bad') : '');
+        hint.textContent = c ? (ok ? '✓ รหัสผ่านตรงกัน' : 'รหัสผ่านยังไม่ตรงกัน') : '';
       }
     });
     root.addEventListener('submit', async (e) => {
@@ -207,7 +270,7 @@
   function showError(form, text) {
     const card = form.closest('.auth-card');
     let box = card.querySelector('.auth-msg');
-    if (!box) { box = document.createElement('div'); box.setAttribute('role', 'alert'); card.insertBefore(box, card.children[1]); }
+    if (!box) { box = document.createElement('div'); box.setAttribute('role', 'alert'); form.parentElement.insertBefore(box, form); }
     box.className = 'auth-msg error';
     box.textContent = text;
     box.style.animation = 'none'; void box.offsetWidth; box.style.animation = ''; // replay the shake
@@ -217,6 +280,7 @@
     async login(f) {
       const { data, error } = await A.client.auth.signInWithPassword({ email: f.email, password: f.password });
       if (error) throw error;
+      try { localStorage.setItem(LAST_EMAIL, f.email); } catch (e) { /* private mode — just not remembered */ }
       await enter(data.user, true);
     },
     async register(f) {
