@@ -1,6 +1,7 @@
 /* dashboard.js — the three whiteboard sections on one page */
 (function () {
   const U = PM.ui, V = PM.common, esc = U.esc;
+  const state = U.keep('dashboard', { overrun: 'active' }, ['overrun']); // Cost overrun filter: active | closed | all
 
   PM.views.dashboard = function (el) {
     const db = PM.db, T = PM.today();
@@ -25,6 +26,8 @@
       .slice(0, 8);
     const over = ut.people.filter((p) => p.util > 1.05).length;
     const under = ut.people.filter((p) => p.util != null && p.util < p.target - 0.25).length;
+
+    const overrun = PM.costOverrunRows(db.projects.map((p) => (p.status === 'closed' ? { p, m: PM.projectMetrics(p) } : rows.find((r) => r.p === p))));
 
     const phaseCount = {};
     PM.PHASES.forEach((ph) => (phaseCount[ph.key] = rows.filter((r) => r.m.current && r.m.current.key === ph.key)));
@@ -72,10 +75,7 @@
         <div class="card-h"><h2>Project status</h2><p>แท่ง = Actual progress, เส้นดำ = Planned progress ณ วันนี้</p></div>
         <div class="card-b flush table-wrap">${projectTable(rows)}</div>
       </div>
-      <div class="card">
-        <div class="card-h"><h2>Cost Project Overrun</h2>${overrunChips(rows)}<p>โครงการ Active · เกินงบแล้ว = Actual cost เกิน Plan cost · คาดว่าจะเกิน = EAC (Plan cost ÷ CPI) เกิน Plan cost เมื่อจบโครงการ</p></div>
-        <div class="card-b flush table-wrap">${overrunTable(rows)}</div>
-      </div>
+      <div class="card" id="d-overrun">${overrunCard(overrun)}</div>
       <div class="grid cols-2">
         <div class="card"><div class="card-h"><h2>ค่าใช้จ่ายรายเดือน</h2><p>Cost — ผลรวมรายการค่าใช้จ่ายทุกโครงการ 12 เดือน แยกตาม phase</p></div><div class="card-b"><div class="chart" id="c-spend"></div></div></div>
         <div class="card"><div class="card-h"><h2>Actual cost เทียบ Plan cost</h2><p>โครงการ Active · เส้นดำ = Plan cost (งบ)</p></div><div class="card-b"><div class="chart" id="c-actual"></div></div></div>
@@ -104,6 +104,8 @@
 
     V.bindFlowLinks(el);
     el.onclick = (e) => {
+      const seg = e.target.closest('[data-seg="overrun"]');
+      if (seg) { state.overrun = seg.dataset.val; el.querySelector('#d-overrun').innerHTML = overrunCard(overrun); return; }
       if (e.target.closest('tr[data-sales]') && !e.target.closest('a')) { location.hash = '#/bidding'; return; }
       const poRow = e.target.closest('tr[data-po]');
       if (poRow) { PM.poForm(PM.find('pos', poRow.dataset.po), null, () => PM.views.dashboard(el)); return; }
@@ -180,41 +182,48 @@
   }
   PM.common.projectTable = projectTable;
 
-  /* Cost overrun — which projects are already over Plan cost, and which are heading there */
-  const OVERRUN = {
-    over: { level: 'critical', label: 'เกินงบแล้ว', rank: 0 },
-    forecast: { level: 'warning', label: 'คาดว่าจะเกิน', rank: 1 },
-    ok: { level: 'good', label: 'อยู่ในงบ', rank: 2 },
-    nobudget: { level: 'neutral', label: 'ไม่มี Plan cost', rank: 3 },
+  /* Cost overrun — which projects are already over Plan cost, and which are heading there (rows from PM.costOverrunRows) */
+  const OVERRUN_VIEW = {
+    active: 'โครงการ Active',
+    closed: 'โครงการ Closed · ใช้ต้นทุนจริงสุดท้าย',
+    all: 'ทุกโครงการ (Active + Closed) · โครงการ Closed ใช้ต้นทุนจริงสุดท้าย',
   };
-  const withOverrun = (rows) => rows.map((r) => Object.assign({ o: PM.costOverrun(r.m) }, r));
-
-  function overrunChips(rows) {
-    const list = withOverrun(rows);
-    const n = (s) => list.filter((r) => r.o.status === s).length;
-    return `${U.badge(n('over') ? 'critical' : 'good', `เกินงบแล้ว ${n('over')}`)} ${U.badge(n('forecast') ? 'warning' : 'good', `คาดว่าจะเกิน ${n('forecast')}`)}`;
+  function overrunCard(all) {
+    if (!OVERRUN_VIEW[state.overrun]) state.overrun = 'active';
+    const nClosed = all.filter((r) => r.o.closed).length;
+    const list = state.overrun === 'all' ? all : all.filter((r) => r.o.closed === (state.overrun === 'closed'));
+    return `<div class="card-h"><h2>Cost Project Overrun</h2>${overrunChips(list)}<span class="spacer"></span>
+        ${V.seg('overrun', [{ key: 'active', label: `Active (${all.length - nClosed})` }, { key: 'closed', label: `Closed (${nClosed})` }, { key: 'all', label: `All (${all.length})` }], state.overrun)}
+        <p>${OVERRUN_VIEW[state.overrun]} · เกินงบแล้ว = Actual cost เกิน Plan cost · คาดว่าจะเกิน = EAC (Plan cost ÷ CPI) เกิน Plan cost เมื่อจบโครงการ</p></div>
+      <div class="card-b flush table-wrap">${overrunTable(list)}</div>`;
   }
 
-  function overrunTable(rows) {
-    if (!rows.length) return '<p class="empty">ยังไม่มีโครงการ</p>';
-    const list = withOverrun(rows).sort((a, b) => (OVERRUN[a.o.status].rank - OVERRUN[b.o.status].rank)
-      || (b.o.amount - a.o.amount) || (b.o.forecast - a.o.forecast));
+  function overrunChips(list) {
+    const n = (s, closed) => list.filter((r) => r.o.status === s && (closed == null || r.o.closed === closed)).length;
+    const closedOver = n('over', true);
+    return `${U.badge(n('over') ? 'critical' : 'good', `เกินงบแล้ว ${n('over')}${closedOver ? ` (Closed ${closedOver})` : ''}`)} ${U.badge(n('forecast') ? 'warning' : 'good', `คาดว่าจะเกิน ${n('forecast')}`)}`;
+  }
+
+  function overrunTable(list) {
+    if (!list.length) return '<p class="empty">ไม่มีโครงการในมุมมองนี้</p>';
     return `<table class="tbl"><thead><tr>
       <th>Project</th><th>สถานะงบ</th><th class="num">Plan cost</th><th class="num">Actual cost</th><th class="num">งานเสร็จ</th>
       <th class="num">CPI</th><th class="num">EAC</th><th class="num">เกินงบแล้ว</th><th class="num">คาดว่าจะเกิน / เหลือ ตอนจบ</th></tr></thead><tbody>
       ${list.map(({ p, m, o }) => {
-        const s = OVERRUN[o.status];
+        const s = PM.COST_OVERRUN[o.status];
         const fc = o.status === 'nobudget' ? '–' : `<span class="${o.forecast > 0 ? 'neg' : ''}">${o.forecast > 0 ? '+' : '−'}${U.money(Math.abs(o.forecast))}</span>`;
+        const tip = o.closed ? `โครงการปิดแล้ว — ต้นทุนสุดท้าย ${U.money(m.ac)} − Plan cost ${U.money(m.bac)}\n+ = ปิดโครงการเกินงบ · − = ปิดโครงการต่ำกว่างบ`
+          : `EAC ${U.money(m.eac)} − Plan cost ${U.money(m.bac)}\n+ = คาดว่าจะเกินงบเมื่อจบโครงการ · − = คาดว่าเหลืองบ`;
         return `<tr class="click" data-id="${esc(p.id)}">
-          <td><span class="title">${esc(p.code)}</span><small>${esc(p.name)}</small></td>
+          <td><span class="title">${esc(p.code)}${o.closed ? ' <span class="chip">Closed</span>' : ''}</span><small>${esc(p.name)}</small></td>
           <td>${U.badge(s.level, s.label)}</td>
           <td class="num">${U.money(m.bac)}</td>
           <td class="num"><span class="${o.status === 'over' ? 'neg' : ''}">${U.money(m.ac)}</span><small>${U.pct(o.used)} ของงบ</small></td>
           <td class="num">${U.pct(m.act)}</td>
           <td class="num"><span class="hm-${U.health(m.cpi)}">${U.ratio(m.cpi)}</span></td>
-          <td class="num">${U.money(m.eac)}</td>
+          <td class="num">${U.money(o.eac)}${o.closed ? '<small>ต้นทุนสุดท้าย</small>' : ''}</td>
           <td class="num">${o.amount > 0 ? `<span class="neg">+${U.money(o.amount)}</span>` : '–'}</td>
-          <td class="num" data-tip="${esc(`EAC ${U.money(m.eac)} − Plan cost ${U.money(m.bac)}\n+ = คาดว่าจะเกินงบเมื่อจบโครงการ · − = คาดว่าเหลืองบ`)}">${fc}</td></tr>`;
+          <td class="num" data-tip="${esc(tip)}">${fc}</td></tr>`;
       }).join('')}</tbody></table>`;
   }
 })();

@@ -59,7 +59,7 @@
           'เลือกความเร็วสลับหน้า (ทุก 10 / 15 / 30 / 60 วินาที) แล้วปล่อยไว้ได้เลย',
         ] },
         { h: 'หน้าที่แสดง', items: [
-          'Bidding · Projects · สุขภาพโครงการ (SPI × CPI) · Purchase Orders · Weekly Plan สัปดาห์นี้ · Resource Utilization · Safety',
+          'Bidding · Projects · สุขภาพโครงการ (SPI × CPI) · Cost Project Overrun (เกินงบ / คาดว่าจะเกิน) · Purchase Orders · Weekly Plan สัปดาห์นี้ · Resource Utilization · Safety',
           'แสดงตามสิทธิ์ของบัญชีที่เปิดอยู่ — หน้า Resource เฉพาะ Admin / Department Manager / Project Manager · มูลค่า Bid เฉพาะผู้ที่เห็นราคาได้ <b>(เปิดบนทีวีส่วนกลาง แนะนำใช้บัญชีที่สิทธิ์เหมาะกับคนที่ดูจอ)</b>',
           'ข้อมูลอัปเดตจาก Cloud ทุก 1 นาที · มีนาฬิกามุมขวาบน · ระบบกันจอดับ (ถ้าเบราว์เซอร์รองรับ)',
         ] },

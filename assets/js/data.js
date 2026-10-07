@@ -339,14 +339,30 @@
   };
 
   /* Cost overrun status from projectMetrics():
-     over = Actual cost already above Plan cost · forecast = EAC (Plan cost ÷ CPI) will end above Plan cost · ok = within budget */
-  PM.costOverrun = function (m) {
-    if (!(m.bac > 0)) return { status: 'nobudget', amount: 0, forecast: 0, used: null };
+     over = Actual cost already above Plan cost · forecast = EAC (Plan cost ÷ CPI) will end above Plan cost · ok = within budget.
+     A closed project has no forecast — its final cost is the Actual cost (eac = ac, forecast = final variance). */
+  PM.COST_OVERRUN = {
+    over: { level: 'critical', label: 'เกินงบแล้ว', rank: 0 },
+    forecast: { level: 'warning', label: 'คาดว่าจะเกิน', rank: 1 },
+    ok: { level: 'good', label: 'อยู่ในงบ', rank: 2 },
+    nobudget: { level: 'neutral', label: 'ไม่มี Plan cost', rank: 3 },
+  };
+  PM.costOverrun = function (m, closed) {
+    const eac = closed ? m.ac : m.eac;
+    if (!(m.bac > 0)) return { status: 'nobudget', amount: 0, forecast: 0, used: null, eac, closed: !!closed };
     const used = m.ac / m.bac;
-    const forecast = m.eac - m.bac; // + = projected overrun at completion
-    if (m.ac > m.bac) return { status: 'over', amount: m.ac - m.bac, forecast: Math.max(forecast, m.ac - m.bac), used };
-    if (m.cpi != null && forecast > 0) return { status: 'forecast', amount: 0, forecast, used };
-    return { status: 'ok', amount: 0, forecast, used };
+    const forecast = eac - m.bac; // + = overrun at completion (projected, or final when closed)
+    const o = { amount: 0, forecast, used, eac, closed: !!closed };
+    if (m.ac > m.bac) return Object.assign(o, { status: 'over', amount: m.ac - m.bac, forecast: Math.max(forecast, m.ac - m.bac) });
+    if (!closed && m.cpi != null && forecast > 0) return Object.assign(o, { status: 'forecast' });
+    return Object.assign(o, { status: 'ok' });
+  };
+  /* [{ p, m }] → same rows with .o, worst first: over → forecast → ok; active before closed; biggest overrun first */
+  PM.costOverrunRows = function (rows) {
+    const R = PM.COST_OVERRUN;
+    return rows.map((r) => Object.assign({ o: PM.costOverrun(r.m, r.p.status === 'closed') }, r))
+      .sort((a, b) => (R[a.o.status].rank - R[b.o.status].rank) || (a.o.closed - b.o.closed)
+        || (b.o.amount - a.o.amount) || (b.o.forecast - a.o.forecast));
   };
 
   PM.bidStats = function (bids, from, to) {

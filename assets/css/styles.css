@@ -956,9 +956,11 @@ body.presenting .content { max-width: none; padding: 0; }
 .pres-list .chip { font-size: 13px; }
 .pres-list .pct { width: 64px; text-align: right; font-size: 20px; font-variant-numeric: tabular-nums; }
 .pres-list .when { font-size: 15px; color: var(--ink-2); }
+.pres-list .amt { min-width: 120px; text-align: right; font-size: 20px; font-variant-numeric: tabular-nums; }
 .pres-list .badge { font-size: 15px; padding: 3px 12px 3px 4px; }
 .pres-bar { position: relative; flex: 0 0 28%; height: 14px; border-radius: 7px; background: var(--surface-2); }
 .pres-bar span { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 7px; background: var(--accent); }
+.pres-bar.over span { background: var(--critical); }
 .pres-bar i { position: absolute; top: -4px; bottom: -4px; width: 3px; margin-left: -1.5px; border-radius: 2px; background: var(--ink); }
 .pres-grid2 { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px; flex: 1; }
 .pres-card { padding: 18px 22px; background: var(--surface); border: 1px solid var(--border); border-radius: 16px; min-width: 0; }

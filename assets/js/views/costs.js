@@ -44,7 +44,7 @@
     const poCommitted = PM.poStats(PM.db.pos.filter((po) => po.projectId === p.id)).value;
     const left = m.bac - m.ac;
     const mismatch = Math.abs(total - m.ac) >= 1;
-    const ov = PM.costOverrun(m);
+    const ov = PM.costOverrun(m, p.status === 'closed');
 
     const q = state.q.toLowerCase();
     const list = all.filter((c) => (!state.phase || c.phase === state.phase) && (!state.cat || c.category === state.cat)
@@ -55,7 +55,7 @@
     el.innerHTML = `
       ${mismatch ? `<div class="callout warn">ยอดรวมรายการ (${U.money(total)}) ไม่ตรงกับ Actual cost ของโครงการ (${U.money(m.ac)}) — มักเกิดเมื่อรายการค่าใช้จ่ายยังไม่ขึ้น Cloud (Admin ต้องรัน supabase/data.sql อีกครั้ง)
         ${canEdit ? ' · <button type="button" class="link-btn" data-action="recalc">คำนวณ Actual cost จากรายการใหม่</button>' : ''}</div>` : ''}
-      ${ov.status === 'over' ? `<div class="callout warn"><b>Cost overrun — เกินงบแล้ว ${U.money(ov.amount)}</b> · Actual cost ${U.money(m.ac)} เกิน Plan cost ${U.money(m.bac)} (${U.pct(ov.used)}) · คาดการณ์เมื่อจบ (EAC) เกิน ${U.money(ov.forecast)}</div>`
+      ${ov.status === 'over' ? `<div class="callout warn"><b>Cost overrun — เกินงบแล้ว ${U.money(ov.amount)}</b> · Actual cost ${U.money(m.ac)} เกิน Plan cost ${U.money(m.bac)} (${U.pct(ov.used)})${ov.closed ? ' · โครงการปิดแล้ว (ต้นทุนสุดท้าย)' : ` · คาดการณ์เมื่อจบ (EAC) เกิน ${U.money(ov.forecast)}`}</div>`
         : ov.status === 'forecast' ? `<div class="callout warn"><b>คาดว่าจะเกินงบ ${U.money(ov.forecast)}</b> เมื่อจบโครงการ · CPI ${U.ratio(m.cpi)} → EAC ${U.money(m.eac)} เทียบ Plan cost ${U.money(m.bac)} (ตอนนี้ใช้ไป ${U.pct(ov.used)})</div>` : ''}
       <div class="grid cols-5">
         ${V.tile({ label: 'Actual cost', tag: 'AC', value: U.money(m.ac), sub: `${U.num(all.length)} รายการ · ${U.pct(m.bac ? m.ac / m.bac : null)} ของ Plan cost` })}

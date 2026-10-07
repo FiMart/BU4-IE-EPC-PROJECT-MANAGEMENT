@@ -77,6 +77,34 @@
       },
     });
 
+    // 3b · Cost overrun (Active + Closed) — worst first; bar = % of Plan cost spent, tick = % work done
+    const ov = PM.costOverrunRows(db.projects.map((p) => (p.status === 'closed' ? { p, m: PM.projectMetrics(p) } : active.find((r) => r.p === p))));
+    if (ov.length) {
+      const of = (s, closed) => ov.filter((r) => r.o.status === s && (closed == null || r.o.closed === closed));
+      const overNow = of('over', false), overClosed = of('over', true), fc = of('forecast');
+      out.push({
+        key: 'overrun', title: 'Cost Project Overrun — โครงการเกินงบ', sub: 'ทุกโครงการ (Active + Closed) · แท่ง = % งบที่ใช้ไป · ขีด = % งานเสร็จ · ตัวเลข = เกินงบ / คาดว่าจะเกินตอนจบ',
+        html: () => `
+          <div class="pres-kpis">
+            ${kpi('เกินงบแล้ว (Active)', overNow.length, overNow.length ? `รวม ${U.money(PM.sum(overNow, (r) => r.o.amount))}` : 'ไม่มี', overNow.length ? 'critical' : 'good')}
+            ${kpi('คาดว่าจะเกินงบ', fc.length, fc.length ? `รวม ${U.money(PM.sum(fc, (r) => r.o.forecast))} ตอนจบ` : 'ไม่มี', fc.length ? 'warning' : 'good')}
+            ${kpi('อยู่ในงบ', of('ok').length, `จาก ${ov.length} โครงการ`)}
+            ${kpi('Closed ที่ปิดเกินงบ', overClosed.length, overClosed.length ? `รวม ${U.money(PM.sum(overClosed, (r) => r.o.amount))}` : 'ไม่มี', overClosed.length ? 'critical' : null)}
+          </div>
+          <div class="pres-list">${ov.slice(0, 8).map(({ p, m, o }) => {
+            const s = PM.COST_OVERRUN[o.status];
+            const v = o.status === 'over' ? o.amount : o.forecast;
+            return `<div class="row">
+              <div class="name"><b>${esc(p.code)}</b><span>${esc(p.name)}</span></div>
+              <span class="chip">${o.closed ? 'Closed' : esc(m.current ? U.phaseLabel(m.current.key) : '–')}</span>
+              <div class="pres-bar${o.status === 'over' ? ' over' : ''}"><span style="width:${Math.max(0, Math.min(100, (o.used || 0) * 100))}%"></span>${o.closed ? '' : `<i style="left:${Math.max(0, Math.min(100, m.act * 100))}%"></i>`}</div>
+              <b class="pct">${U.pct(o.used)}</b>
+              <b class="amt${v > 0 ? ' neg' : ''}">${o.status === 'nobudget' ? '–' : `${v > 0 ? '+' : '−'}${U.money(Math.abs(v))}`}</b>
+              ${U.badge(s.level, s.label)}</div>`;
+          }).join('')}</div>`,
+      });
+    }
+
     // 4 · Purchase Orders
     const po = PM.poStats(db.pos || [], T);
     const watch = po.late.concat(po.soon).sort((a, b) => (PM.poDaysLate(b, T) - PM.poDaysLate(a, T)) || String(a.deliveryDue).localeCompare(String(b.deliveryDue))).slice(0, 6);
