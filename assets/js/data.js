@@ -338,6 +338,72 @@
     };
   };
 
+  /* ---------- Timeline: activities (Gantt bars under each EPC phase) and milestones of a project ----------
+     p.tasks      = [{ id, phase, name, start, end, progress (0–100), owner, note }]
+     p.milestones = [{ id, name, phase, date (plan), actual ('' until reached), note }]
+     Template rows: [name, start, end] as fractions of the phase's plan dates (activities may overlap). */
+  PM.TASK_TEMPLATE = {
+    engineering: [['Basic design', 0, 0.45], ['Detail design', 0.3, 0.85], ['IFC drawings & approval', 0.7, 1]],
+    procurement: [['RFQ & vendor selection', 0, 0.35], ['PO placement', 0.25, 0.55], ['Manufacturing & delivery', 0.45, 1]],
+    construction: [['Site preparation & civil', 0, 0.35], ['Mechanical & electrical installation', 0.25, 0.85], ['Pre-commissioning', 0.8, 1]],
+    closing: [['Testing & commissioning', 0, 0.55], ['Handover & as-built documents', 0.45, 0.9], ['Project close-out', 0.85, 1]],
+  };
+  PM.MILESTONE_TEMPLATE = [
+    ['Kick-off meeting', 'engineering', 'start'],
+    ['Design freeze (IFC)', 'engineering', 'end'],
+    ['Material on site', 'procurement', 'end'],
+    ['Mechanical completion', 'construction', 'end'],
+    ['Handover / COD', 'closing', 'end'],
+  ];
+  /* activities + milestones from the templates, placed on the project's phase plan dates;
+     a phase's progress is shared out in order (earlier activities finish first) */
+  PM.buildTimeline = function (p) {
+    const tasks = [], milestones = [];
+    (p.phases || []).forEach((ph) => {
+      const tpl = PM.TASK_TEMPLATE[ph.key] || [];
+      const dur = Math.max(1, PM.diffDays(ph.planStart, ph.planEnd));
+      const at = (f) => PM.addDays(ph.planStart, Math.round(dur * f));
+      const share = 100 / (tpl.length || 1);
+      tpl.forEach(([name, a, b], i) => {
+        const progress = Math.round(Math.max(0, Math.min(100, (((ph.progress || 0) - share * i) / share) * 100)));
+        tasks.push({ id: PM.uid('T'), phase: ph.key, name, start: at(a), end: at(b), progress, owner: '', note: '' });
+      });
+    });
+    PM.MILESTONE_TEMPLATE.forEach(([name, key, edge]) => {
+      const ph = (p.phases || []).find((x) => x.key === key);
+      if (!ph) return;
+      const reached = edge === 'start' ? ph.actStart : (ph.progress >= 100 ? ph.actEnd : '');
+      milestones.push({ id: PM.uid('M'), name, phase: key, date: edge === 'start' ? ph.planStart : ph.planEnd, actual: reached || '', note: '' });
+    });
+    return { tasks, milestones };
+  };
+
+  /* Timeline numbers for one project (m = projectMetrics(p)):
+     forecast finish = start + plan duration ÷ SPI (closed → the last actual finish) · slip = forecast − plan finish (days, + = late) */
+  PM.taskLate = (t, T) => (t.progress || 0) < 100 && t.end < (T || PM.today());
+  PM.milestoneLate = (ms, T) => !ms.actual && ms.date < (T || PM.today());
+  PM.timelineStats = function (p, m, asOf) {
+    const T = asOf || PM.today();
+    const dur = Math.max(1, PM.diffDays(p.startDate, p.endDate));
+    const closed = p.status === 'closed';
+    const lastAct = (p.phases || []).map((ph) => ph.actEnd).filter(Boolean).sort().pop();
+    let forecast = p.endDate;
+    if (closed) forecast = lastAct || p.endDate;
+    else if (m.spi > 0 && m.act < 1) forecast = PM.max(T, PM.addDays(p.startDate, Math.round(dur / m.spi)));
+    const tasks = p.tasks || [], ms = (p.milestones || []).slice().sort((a, b) => String(a.date).localeCompare(String(b.date)));
+    return {
+      dur, closed, forecast,
+      elapsed: Math.max(0, Math.min(dur, PM.diffDays(p.startDate, T))),
+      remaining: closed ? 0 : PM.diffDays(T, p.endDate), // < 0 = past the plan finish
+      slip: PM.diffDays(p.endDate, forecast),
+      tasks, tasksDone: tasks.filter((t) => (t.progress || 0) >= 100).length,
+      tasksLate: tasks.filter((t) => PM.taskLate(t, T)),
+      milestones: ms, msDone: ms.filter((x) => x.actual).length,
+      msLate: ms.filter((x) => PM.milestoneLate(x, T)),
+      msNext: ms.find((x) => !x.actual && x.date >= T) || null,
+    };
+  };
+
   /* Cost overrun status from projectMetrics():
      over = Actual cost already above Plan cost · forecast = EAC (Plan cost ÷ CPI) will end above Plan cost · ok = within budget.
      A closed project has no forecast — its final cost is the Actual cost (eac = ac, forecast = final variance). */
@@ -562,6 +628,7 @@
       if (d.closed) {
         p.progressLog.forEach((s) => { if (s.date >= PM.addDays(end, -1)) PM.PHASES.forEach((x) => (s.values[x.key] = 100)); });
       }
+      Object.assign(p, PM.buildTimeline(p)); // sample activities + milestones for the Gantt chart
       return p;
     });
 

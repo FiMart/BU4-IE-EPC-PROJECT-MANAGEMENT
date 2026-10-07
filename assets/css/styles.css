@@ -1279,3 +1279,74 @@ body.presenting .content { max-width: none; padding: 0; }
 @media (forced-colors: active) {
   .ic, .empty::before { forced-color-adjust: none; }
 }
+
+/* ---------- Gantt (timeline.js) — label column + a date track; scrolls sideways on narrow screens ---------- */
+.gantt-scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+.gantt { min-width: 820px; font-size: 12.5px; }
+.gantt-head, .gantt-row { display: grid; grid-template-columns: var(--lab) minmax(0, 1fr); }
+.gantt-lab { position: sticky; left: 0; z-index: 3; background: var(--surface); padding: 6px 12px 6px 16px; border-right: 1px solid var(--border); min-width: 0; }
+.gantt-head { position: relative; border-bottom: 1px solid var(--border); }
+.gantt-head .gantt-lab { font-size: 11px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; color: var(--muted); display: flex; align-items: flex-end; }
+.gantt-scale { position: relative; height: 30px; }
+.gantt-scale span { position: absolute; bottom: 6px; padding-left: 5px; font-size: 11px; color: var(--muted); white-space: nowrap; }
+.gantt-scale span.yr { color: var(--ink-2); font-weight: 600; }
+.gantt-today-tag { position: absolute; top: 2px; transform: translateX(-50%); font-size: 10px; font-weight: 700; color: #fff; background: var(--critical); padding: 0 6px; border-radius: 4px; line-height: 15px; white-space: nowrap; z-index: 2; }
+.gantt-body { position: relative; }
+.gantt-grid { position: absolute; top: 0; bottom: 0; left: var(--lab); right: 0; pointer-events: none; }
+.gantt-grid i { position: absolute; top: 0; bottom: 0; width: 1px; background: var(--grid); }
+.gantt-grid i.yr { background: var(--axis); }
+.gantt-today { position: absolute; top: 0; bottom: 0; width: 2px; margin-left: -1px; background: var(--critical); opacity: .75; z-index: 2; }
+.gantt-row { border-bottom: 1px solid var(--border); min-height: 38px; }
+.gantt-row:last-child { border-bottom: 0; }
+.gantt-row:hover .gantt-lab { background-color: color-mix(in srgb, var(--accent) 5%, var(--surface)); }
+.gantt-row:hover .gantt-track { background-color: color-mix(in srgb, var(--accent) 5%, transparent); } /* see-through: keeps the month lines */
+.gantt-lab .gl-t { display: flex; align-items: center; gap: 6px; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.gantt-lab small { display: block; color: var(--muted); font-size: 11px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.gantt-row[class*="task"] .gantt-lab, .gantt-row.ms .gantt-lab { padding-left: 46px; }
+.gantt-row.task .gantt-lab, .gantt-row.ms .gantt-lab, .gantt-row.prj .gantt-lab { cursor: pointer; }
+.gantt-row.grp .gantt-lab { font-weight: 650; color: var(--ink); }
+.gantt-row.grp, .gantt-row.sum { background: var(--surface-2); }
+.gantt-row.grp .gantt-lab, .gantt-row.sum .gantt-lab { background: var(--surface-2); }
+.gantt-row.sum .gantt-lab b { margin-right: 4px; }
+.gantt-track { position: relative; min-height: 38px; }
+.gl-sw { width: 10px; height: 10px; border-radius: 3px; flex: none; }
+.gl-late { font-size: 10.5px; font-weight: 700; color: var(--critical-text); background: var(--critical-bg); border-radius: 4px; padding: 0 5px; }
+.gl-done { color: var(--good-text); font-weight: 700; }
+.gantt-fold { flex: none; width: 20px; height: 20px; margin-left: -4px; border: 0; border-radius: 5px; background: transparent; color: var(--muted); cursor: pointer; display: grid; place-items: center; padding: 0; }
+.gantt-fold::before { content: ''; width: 6px; height: 6px; border-right: 2px solid currentColor; border-bottom: 2px solid currentColor; transform: rotate(45deg) translate(-1px, -1px); transition: transform .15s; }
+.gantt-row.folded .gantt-fold::before { transform: rotate(-45deg); }
+.gantt-fold:hover:not([disabled]) { background: var(--surface); color: var(--ink); }
+.gantt-fold[disabled] { opacity: .3; cursor: default; }
+.gantt-fold:focus-visible { outline: 2px solid var(--accent); }
+
+/* bars: --c = phase colour · light fill = plan span, solid = % done */
+.gb { position: absolute; top: 50%; height: 14px; margin-top: -7px; border-radius: 4px; overflow: hidden; --c: var(--accent);
+  background: color-mix(in srgb, var(--c) 26%, var(--surface)); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--c) 55%, transparent); }
+.gb > span { position: absolute; left: 0; top: 0; bottom: 0; background: var(--c); }
+.gb.click { cursor: pointer; }
+.gb.click:hover { box-shadow: inset 0 0 0 1px var(--c), 0 0 0 2px color-mix(in srgb, var(--c) 30%, transparent); }
+.gb.late { box-shadow: inset 0 0 0 1.5px var(--critical); }
+.gantt-row.grp .gb:not(.act) { height: 12px; margin-top: -9px; }
+.gb.act { height: 3px; margin-top: 6px; border-radius: 2px; background: var(--c); box-shadow: none; opacity: .9; }
+.gb.sum { --c: var(--ink-2); height: 10px; margin-top: -5px; }
+.gb.slip { height: 10px; margin-top: -5px; box-shadow: none; background: repeating-linear-gradient(135deg, var(--critical) 0 4px, transparent 4px 7px); opacity: .7; }
+.gb.lane { top: 0; margin-top: 0; height: 5px; border-radius: 3px; box-shadow: none; }
+.gb.lane.slip { height: 6px; }
+.gantt-row.prj .gantt-track { min-height: 48px; }
+.gantt-row.prj.closed .gantt-track { opacity: .55; }
+/* milestones ◆ — outline = upcoming · filled green = reached · red = overdue */
+.gm { position: absolute; top: 50%; width: 12px; height: 12px; margin: -6px 0 0 -6px; transform: rotate(45deg); border-radius: 2px; z-index: 2; cursor: pointer;
+  background: var(--surface); border: 2px solid var(--ink-2); }
+.gm.done { background: var(--good); border-color: var(--good); }
+.gm.late { background: var(--critical); border-color: var(--critical); }
+.gm.sm { width: 9px; height: 9px; margin: -4.5px 0 0 -4.5px; top: auto; bottom: 4px; border-width: 1.5px; }
+.gl-dia { display: inline-block; flex: none; width: 9px; height: 9px; transform: rotate(45deg); border-radius: 1.5px; border: 2px solid var(--ink-2); background: var(--surface); }
+.gl-dia.done { background: var(--good); border-color: var(--good); }
+.gl-dia.late { background: var(--critical); border-color: var(--critical); }
+.legend .slip-sw { background: repeating-linear-gradient(135deg, var(--critical) 0 3px, transparent 3px 5px) !important; }
+.legend .today-sw { width: 2px !important; height: 12px !important; border-radius: 0 !important; background: var(--critical) !important; }
+.gantt-tools { gap: 6px; flex-wrap: wrap; }
+@media (max-width: 640px) {
+  .gantt { min-width: 640px; --lab: 170px !important; }
+  .gantt-row[class*="task"] .gantt-lab, .gantt-row.ms .gantt-lab { padding-left: 28px; }
+}

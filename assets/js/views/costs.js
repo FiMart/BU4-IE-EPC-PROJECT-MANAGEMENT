@@ -64,7 +64,7 @@
         ${V.tile({ label: 'Cost performance', tag: 'CPI', value: U.ratio(m.cpi), sub: `${U.badge(U.health(m.cpi), U.healthLabel[U.health(m.cpi)])} EAC ${U.money(m.eac)}`, tip: 'CPI = EV ÷ AC\nEAC = Plan cost ÷ CPI' })}
         ${V.tile({ label: 'จ่ายตาม PO', value: U.money(viaPo), sub: `PO ที่สั่งแล้ว ${U.money(poCommitted)}` })}
       </div>
-      <div class="card"><div class="card-h"><h2>ต้นทุนสะสมตามเวลา</h2><p>Planned value (แผน) · Earned value (มูลค่างานที่ทำได้) · Actual cost (จ่ายจริงจากรายการ) — สะสม ณ สิ้นเดือน</p></div>
+      <div class="card"><div class="card-h"><h2>กราฟเปรียบเทียบต้นทุนสะสม (แผน / ผลงาน / จ่ายจริง)</h2><p>Planned value (แผน) · Earned value (มูลค่างานที่ทำได้) · Actual cost (จ่ายจริงจากรายการ) — สะสม ณ สิ้นเดือน</p></div>
         <div class="card-b"><div class="chart" id="c-cum"></div></div></div>
       <div class="grid cols-2">
         <div class="card"><div class="card-h"><h2>ค่าใช้จ่ายรายเดือน</h2><p>12 เดือนล่าสุด แยกตาม phase</p></div><div class="card-b"><div class="chart" id="c-month"></div></div></div>

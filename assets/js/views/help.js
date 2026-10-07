@@ -129,6 +129,7 @@
         ] },
         { h: 'หน้ารายละเอียดโครงการ (แท็บ)', items: [
           '<b>Overview & EPC</b>: กด <b>Update</b> ที่แต่ละ Phase เพื่ออัปเดต % progress, ปริมาณ และวันที่ · กราฟ S-Curve · ปุ่ม <b>Plan cost</b> แก้งบแต่ละ Phase',
+          '<b>Timeline · Gantt</b>: ระยะเวลา · เวลาที่ผ่านไป · วันที่คาดว่าจะเสร็จ (Start + ระยะเวลาตามแผน ÷ SPI) · Gantt Chart ของ Phase → กิจกรรม → Milestone · <b>+ กิจกรรม</b> / <b>+ Milestone</b> (คลิกแท่งหรือ ◆ เพื่อแก้ไข · คลิกแท่ง Phase เพื่ออัปเดต Phase) · โครงการที่ยังว่างกด <b>สร้างจากแม่แบบ</b> ได้ · ตาราง Milestones และกิจกรรมที่ล่าช้า / ครบกำหนดใน 14 วัน',
           '<b>ค่าใช้จ่าย · Cost</b>: <b>+ ค่าใช้จ่าย</b> บันทึกทีละรายการ (วันที่ · รายการ · จำนวนเงิน · Phase · หมวด · ผู้ขาย · อ้างอิง PO) · Export CSV — Actual cost = ผลรวมรายการ',
           '<b>Quality · NCR</b>: + New NCR และกด Close เมื่อแก้ไขแล้ว',
           '<b>Safety</b>: + Monthly record (man-hours, LTI, recordable, first aid, near miss) → คำนวณ LTIFR / TRIR',
@@ -136,6 +137,7 @@
         ] },
         { h: 'ค้นหาและกรอง', items: [
           'ค้นหาด้วย Project No. · ชื่อ · ลูกค้า · PM · Sales · เลข Bid (หลายคำได้) · กรอง Phase / สถานะ / PM / Sales · Active / Closed / All',
+          '<b>Timeline โครงการ — Gantt</b> (ใต้ตาราง): ทุกโครงการตามตัวกรองบนเส้นเวลาเดียว — 4 Phase ต่อโครงการ · ◆ Milestone · ลายเส้นแดง = คาดว่าจะเสร็จช้ากว่าแผน · คลิกเพื่อเปิด Timeline ของโครงการ',
           'สูตร: SPI = EV ÷ PV (เวลา) · CPI = EV ÷ AC (ต้นทุน) · EAC = BAC ÷ CPI',
         ] },
       ],

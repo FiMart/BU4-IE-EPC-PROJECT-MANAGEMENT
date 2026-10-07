@@ -3,6 +3,7 @@
   const U = PM.ui, V = PM.common, esc = U.esc;
   const TABS = [
     { key: 'overview', label: 'Overview & EPC' },
+    { key: 'timeline', label: 'Timeline · Gantt' },
     { key: 'cost', label: 'ค่าใช้จ่าย · Cost' },
     { key: 'quality', label: 'Quality · NCR' },
     { key: 'safety', label: 'Safety' },
@@ -47,7 +48,7 @@
 
     const tabEl = el.querySelector('#tab');
     const rerender = () => PM.views.project(el, params);
-    ({ overview, cost: costTab, quality, safety, team, po: poTab })[tab](tabEl, p, m, rerender);
+    ({ overview, timeline: timelineTab, cost: costTab, quality, safety, team, po: poTab }[tab] || overview)(tabEl, p, m, rerender);
 
     el.onclick = (e) => {
       const a = e.target.closest('[data-action]');
@@ -67,8 +68,9 @@
     };
   };
 
-  /* expense ledger tab lives in costs.js */
+  /* expense ledger tab lives in costs.js · Timeline / Gantt tab in timeline.js */
   const costTab = (...args) => PM.costTab(...args);
+  const timelineTab = (...args) => PM.timelineTab(...args);
 
   /* ---------------- Purchase orders of this project ---------------- */
   function poTab(el, p, m, rerender) {

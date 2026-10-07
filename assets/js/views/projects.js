@@ -58,6 +58,10 @@
         <div class="card-h"><h2>Projects</h2><span class="chip" id="prj-count">${filtered ? `พบ ${rows.length} จาก ${byStatus.length} โครงการ` : `${rows.length} โครงการ`}</span><p>คลิกเพื่อดูรายละเอียด KPI · Quantity · Time · Cost · Quality · Safety</p></div>
         <div class="card-b flush table-wrap">${table(rows, filtered)}</div>
       </div>
+      <div class="card">
+        <div class="card-h"><h2>Timeline โครงการ — Gantt</h2><p>โครงการตามตัวกรองด้านบน · แต่ละโครงการ = 4 phase ตามแผน (สีเข้ม = % เสร็จ) · ◆ Milestone · คลิกเพื่อเปิด Timeline ของโครงการ</p>${PM.portfolioGanttLegend()}</div>
+        <div class="card-b flush">${PM.portfolioGantt(rows)}</div>
+      </div>
       <div class="grid cols-2">
         <div class="card"><div class="card-h"><h2>สุขภาพโครงการ — SPI × CPI</h2><p>แต่ละจุด = 1 โครงการ · แกนนอน SPI (เวลา) · แกนตั้ง CPI (ต้นทุน) · เส้น 1.0 = ตามแผน / ตามงบ · สีจุด = Health</p></div><div class="card-b"><div class="chart" id="c-health"></div></div></div>
         <div class="card"><div class="card-h"><h2>Progress จริง เทียบแผน</h2><p>ส่วนต่าง % งานเสร็จจริง − ตามแผน ณ วันนี้ · ขวา = เร็วกว่าแผน · ซ้าย = ช้ากว่าแผน</p></div><div class="card-b"><div class="chart" id="c-gap"></div></div></div>
@@ -103,6 +107,8 @@
         if (act.startsWith('phase:')) { const k = act.slice(6); state.phase = state.phase === k ? '' : k; rerender(); }
         return;
       }
+      const g = e.target.closest('[data-open-timeline]');
+      if (g) { location.hash = '#/projects/' + g.dataset.openTimeline + '/timeline'; return; }
       const tr = e.target.closest('tr[data-id]');
       if (tr) location.hash = '#/projects/' + tr.dataset.id;
     };

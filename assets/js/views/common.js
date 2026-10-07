@@ -446,7 +446,7 @@
         // names are kept next to the ids so they still show offline
         const names = Object.assign({ pmName: V.personLabel(f.pm, p.pm, p.pmName) }, V.resolveSales(f.salesName, p));
         Object.assign(p, f, names);
-        if (!p.phases) p.phases = PM.buildPhases(p.startDate, p.endDate, p.budget);
+        if (!p.phases) { p.phases = PM.buildPhases(p.startDate, p.endDate, p.budget); Object.assign(p, PM.buildTimeline(p)); }
         else if (planChanged) PM.rescaleBudgets(p, f.budget);
         PM.upsert('projects', p);
         if (fromBid) { fromBid.projectId = p.id; fromBid.result = 'won'; if (!fromBid.resultDate) fromBid.resultDate = T; PM.upsert('bids', fromBid); }

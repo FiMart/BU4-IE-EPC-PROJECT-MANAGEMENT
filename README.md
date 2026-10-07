@@ -166,5 +166,5 @@ assets/js/roles.js           Role + ตารางสิทธิ์ + เร�
 assets/js/cloud.js           ซิงค์ข้อมูลทั้งหมดกับ Supabase (บันทึกอัตโนมัติ / โหลดเมื่อเปิดเว็บ)
 supabase/roles.sql           SQL สร้างตาราง profiles, RLS, trigger (รันใน Supabase ก่อน)
 supabase/data.sql            SQL สร้างตาราง app_records สำหรับเก็บข้อมูลทั้งหมด (รันต่อจาก roles.sql)
-assets/js/views/*.js         แต่ละหน้า (weekly.js = Weekly Plan, costs.js = รายการค่าใช้จ่ายโครงการ, bid-stage.js = หน้าแยกของแต่ละขั้น Bidding, help.js = คู่มือวิธีใช้งาน, present.js = โหมดนำเสนอขึ้นจอ)
+assets/js/views/*.js         แต่ละหน้า (weekly.js = Weekly Plan, costs.js = รายการค่าใช้จ่ายโครงการ, timeline.js = Timeline · Gantt Chart ของโครงการ, bid-stage.js = หน้าแยกของแต่ละขั้น Bidding, help.js = คู่มือวิธีใช้งาน, present.js = โหมดนำเสนอขึ้นจอ)
 ```
