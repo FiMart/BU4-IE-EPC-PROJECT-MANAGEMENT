@@ -338,6 +338,17 @@
     };
   };
 
+  /* Cost overrun status from projectMetrics():
+     over = Actual cost already above Plan cost · forecast = EAC (Plan cost ÷ CPI) will end above Plan cost · ok = within budget */
+  PM.costOverrun = function (m) {
+    if (!(m.bac > 0)) return { status: 'nobudget', amount: 0, forecast: 0, used: null };
+    const used = m.ac / m.bac;
+    const forecast = m.eac - m.bac; // + = projected overrun at completion
+    if (m.ac > m.bac) return { status: 'over', amount: m.ac - m.bac, forecast: Math.max(forecast, m.ac - m.bac), used };
+    if (m.cpi != null && forecast > 0) return { status: 'forecast', amount: 0, forecast, used };
+    return { status: 'ok', amount: 0, forecast, used };
+  };
+
   PM.bidStats = function (bids, from, to) {
     const list = bids.filter((b) => (!from || b.dates.inquiry >= from) && (!to || b.dates.inquiry <= to));
     const reached = {};

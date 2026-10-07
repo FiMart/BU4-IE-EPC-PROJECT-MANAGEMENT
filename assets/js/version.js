@@ -2,9 +2,18 @@
    When the website changes: bump PM.VERSION and add a new entry at the TOP of PM.CHANGELOG.
    type: 'feature' (ฟีเจอร์ใหม่) · 'improve' (ปรับปรุง) · 'fix' (แก้ไข) */
 (function () {
-  PM.VERSION = '1.30.1';
+  PM.VERSION = '1.31.0';
 
   PM.CHANGELOG = [
+    {
+      version: '1.31.0', date: '2026-10-07', type: 'feature', title: 'Cost Project Overrun — โครงการไหนเกินงบแล้ว / คาดว่าจะเกิน',
+      items: [
+        'Dashboard → Execution: ตารางใหม่ "Cost Project Overrun" ของโครงการ Active พร้อมตัวนับ "เกินงบแล้ว" และ "คาดว่าจะเกิน" — เรียงโครงการที่เกินงบมากที่สุดไว้บนสุด คลิกแถวเพื่อเปิดโครงการ',
+        'สถานะงบ: เกินงบแล้ว (Actual cost เกิน Plan cost) · คาดว่าจะเกิน (EAC = Plan cost ÷ CPI เกิน Plan cost เมื่อจบโครงการ) · อยู่ในงบ',
+        'แสดง Plan cost · Actual cost (% ของงบ) · งานเสร็จ · CPI · EAC · ยอดที่เกินงบแล้ว · ยอดที่คาดว่าจะเกิน / เหลือตอนจบโครงการ',
+        'หน้าโครงการ → แท็บ Cost: แถบเตือนเมื่อโครงการเกินงบแล้ว หรือคาดว่าจะเกินงบ',
+      ],
+    },
     {
       version: '1.30.1', date: '2026-10-05', type: 'fix', title: 'มือถือ / แท็บเล็ต: แถบเมนูล็อคอยู่กับที่ขณะเลื่อนหน้า',
       items: [
