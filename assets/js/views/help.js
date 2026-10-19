@@ -19,7 +19,8 @@
         { h: 'เมนู', items: [
           '<b>คอมพิวเตอร์:</b> เมนูอยู่ด้านซ้าย (จอเตี้ยเลื่อนเมนูขึ้นลงได้) กดปุ่ม ‹ ที่ขอบเมนูเพื่อหุบเหลือเฉพาะไอคอน · เมนูย่อยของขั้น Bidding แสดงเมื่ออยู่หน้า Bidding',
           '<b>มือถือ / แท็บเล็ต:</b> เมนูหลักอยู่แถบด้านล่าง — Dashboard · Bidding · Projects · Weekly · Timesheet (เฉพาะ Admin / Dept Manager / PM) · <b>เพิ่มเติม</b> (หน้าที่เหลือ เช่น ขั้น Bidding, PO, Price List, Settings แสดงเป็นปุ่มไอคอน พร้อมบัญชีผู้ใช้และปุ่มออกจากระบบ — แตะนอกกรอบเพื่อปิด)',
-          'แต่ละหน้ามีแถบภาพด้านบน กด <b>วิธีใช้หน้านี้</b> เพื่อเปิดคู่มือของหน้านั้น',
+          '<b>ค้นหาด่วน</b>: กด <b>Ctrl + K</b> (Mac: ⌘ + K) หรือช่องค้นหาด้านบน — พิมพ์เลขโครงการ ชื่อ ลูกค้า เลข Bid / PO แล้วกด Enter · <b>+ สร้างใหม่</b> ด้านบน: เพิ่ม Inquiry · โครงการ · ค่าใช้จ่าย · PO · งาน Weekly Plan · ราคา ได้จากทุกหน้า',
+          'แต่ละหน้ามีแถบภาพด้านบน กด <b>วิธีใช้หน้านี้</b> เพื่อเปิดคู่มือของหน้านั้น หรือ <b>▶ คลิปสอน</b> เพื่อดูการใช้งานทีละขั้นบนหน้าจอจริง (หยุด / ย้อน / ถัดไปได้ · ← → Space Esc)',
         ] },
         { h: 'การบันทึกข้อมูล', items: [
           'ทุกการแก้ไข<b>บันทึกขึ้น Cloud อัตโนมัติ</b>ภายใน ~1 วินาที ไม่ต้องกดบันทึกซ้ำ — ทุกคนในทีมเห็นข้อมูลชุดเดียวกัน',
@@ -44,6 +45,8 @@
         { h: 'อ่านและใช้งาน', items: [
           'กดที่<b>ขั้นตอนใน Flow</b> (Inquiry … Award) เพื่อเปิดหน้าของขั้นนั้น · Flow ของ EPC แสดงจำนวนโครงการที่อยู่ในแต่ละ Phase',
           'ตาราง <b>Project status</b>: แถบ = progress จริง เส้นดำ = progress ตามแผน ณ วันนี้ — กดแถวเพื่อเปิดรายละเอียดโครงการ',
+          '<b>ต้องดำเนินการวันนี้</b> (บนสุด): รวมเรื่องที่ต้องตาม — โครงการเกินงบ / ช้ากว่าแผน · Milestone / กิจกรรมล่าช้า · PO เลยกำหนด · Bid ใกล้ Due date · NCR Critical · Weekly Plan · Timesheet — <b>ด่วน</b> อยู่ก่อน คลิกเพื่อเปิดหน้าที่เกี่ยวข้อง · ปุ่ม 1–4 ด้านล่างพาไปแต่ละส่วนของ Dashboard',
+          '<b>Cash Flow ทั้งแผนก</b>: รวม Cash Flow ที่บันทึกไว้ของทุกโครงการ Active (ยังไม่บันทึก = ค่าเริ่มต้นจาก Phase) → <b>Peak funding</b> เงินทุนหมุนเวียนสูงสุดที่แผนกต้องเตรียม และเดือนที่ตึงสุด · Peak ข้างหน้า · สุทธิ 12 เดือน · สลับ 3 scenario · ตารางบอกว่าโครงการไหนดึงเงินมากที่สุด — กดแถวเพื่อเปิดแท็บ Cash Flow ของโครงการ',
           '<b>PO ที่ต้องติดตาม</b>: PO ที่เลยกำหนดส่งหรือต้องส่งภายใน 14 วัน — กดแถวเพื่อเปิด PO',
           'ลิงก์ <b>เปิด … →</b> ที่หัวแต่ละส่วนพาไปหน้าเต็มของส่วนนั้น',
         ] },
@@ -59,7 +62,7 @@
           'เลือกความเร็วสลับหน้า (ทุก 10 / 15 / 30 / 60 วินาที) แล้วปล่อยไว้ได้เลย',
         ] },
         { h: 'หน้าที่แสดง', items: [
-          'Bidding · Projects · สุขภาพโครงการ (SPI × CPI) · Cost Project Overrun (เกินงบ / คาดว่าจะเกิน) · Purchase Orders · Weekly Plan สัปดาห์นี้ · Resource Utilization · Safety',
+          'Bidding · Projects · สุขภาพโครงการ (SPI × CPI) · Cost Project Overrun (เกินงบ / คาดว่าจะเกิน) · Cash Flow ทั้งแผนก (Peak funding) · Purchase Orders · Weekly Plan สัปดาห์นี้ · Resource Utilization · Safety',
           'แสดงตามสิทธิ์ของบัญชีที่เปิดอยู่ — หน้า Resource เฉพาะ Admin / Department Manager / Project Manager · มูลค่า Bid เฉพาะผู้ที่เห็นราคาได้ <b>(เปิดบนทีวีส่วนกลาง แนะนำใช้บัญชีที่สิทธิ์เหมาะกับคนที่ดูจอ)</b>',
           'ข้อมูลอัปเดตจาก Cloud ทุก 1 นาที · มีนาฬิกามุมขวาบน · ระบบกันจอดับ (ถ้าเบราว์เซอร์รองรับ)',
         ] },
@@ -130,6 +133,9 @@
         { h: 'หน้ารายละเอียดโครงการ (แท็บ)', items: [
           '<b>Overview & EPC</b>: กด <b>Update</b> ที่แต่ละ Phase เพื่ออัปเดต % progress, ปริมาณ และวันที่ · กราฟ S-Curve · ปุ่ม <b>Plan cost</b> แก้งบแต่ละ Phase',
           '<b>Timeline · Gantt</b>: ระยะเวลา · เวลาที่ผ่านไป · วันที่คาดว่าจะเสร็จ (Start + ระยะเวลาตามแผน ÷ SPI) · Gantt Chart ของ Phase → กิจกรรม → Milestone · <b>+ กิจกรรม</b> / <b>+ Milestone</b> (คลิกแท่งหรือ ◆ เพื่อแก้ไข · คลิกแท่ง Phase เพื่ออัปเดต Phase) · โครงการที่ยังว่างกด <b>สร้างจากแม่แบบ</b> ได้ · ตาราง Milestones และกิจกรรมที่ล่าช้า / ครบกำหนดใน 14 วัน',
+          'แท็บของโครงการจัดเป็น 3 กลุ่ม: แผนและความคืบหน้า · ต้นทุนและการเงิน · หน้างานและทีม — แถบแท็บค้างด้านบนขณะเลื่อน และทุกแท็บยกเว้นภาพรวมแสดงข้อมูลโครงการแบบย่อ 1 บรรทัด',
+          '<b>BOQ</b>: <b>เอกสาร BOQ</b> — อัปโหลด PDF (ฉบับลงนาม · ปร.4 / ปร.5 · แบบ) ลากมาวางได้ คลิกเพื่อเปิดดูในหน้าเดียวกัน / ดาวน์โหลด (ต้องเชื่อมต่อ Cloud) · Bill of Quantities แบบ ปร.4 — หมวดงาน → รายการ (หน่วย · ปริมาณ · ค่าวัสดุ / ค่าแรงต่อหน่วย · ปริมาณที่ทำแล้ว) · <b>วางจาก Excel</b> (ลำดับ · รายการ · หน่วย · ปริมาณ · ค่าวัสดุ/หน่วย · ค่าแรง/หน่วย — แถวที่มีแต่ชื่อ = หัวหมวด) · เลือกรายการจาก Price List เพื่อดึงราคา · เทียบ Plan cost / มูลค่าสัญญา · <b>ใช้ยอด BOQ เป็น Plan cost</b> · <b>อัปเดต % Phase</b> จากปริมาณที่ทำแล้ว · Export Excel / PDF · แก้ไขได้: Admin / Dept Manager / PM / Engineer',
+          '<b>Cash Flow</b>: BOQ แยกหมวดงาน (สร้างจาก Phase / <b>วางจาก Excel</b>: หมวดงาน · ต้นทุน · เริ่ม · เสร็จ) + สมมติฐาน (Contingency · เงินล่วงหน้า · Retention · รับ / จ่ายเงินช้ากว่า progress กี่เดือน) → S-Curve · Cash In / Out รายเดือน · เงินสดสะสม · <b>Peak funding</b> และเดือนที่เงินสดตึงสุด · เทียบ 3 scenario (Conservative / Base / Optimistic) · ตรวจยอด BOQ กับ Plan cost และมูลค่าสัญญา · Export CSV — ปรับค่าแล้วเห็นผลทันที กด <b>บันทึก</b> เพื่อเก็บ (Admin / Dept Manager / PM)',
           '<b>ค่าใช้จ่าย · Cost</b>: <b>+ ค่าใช้จ่าย</b> บันทึกทีละรายการ (วันที่ · รายการ · จำนวนเงิน · Phase · หมวด · ผู้ขาย · อ้างอิง PO) · Export CSV — Actual cost = ผลรวมรายการ',
           '<b>Quality · NCR</b>: + New NCR และกด Close เมื่อแก้ไขแล้ว',
           '<b>Safety</b>: + Monthly record (man-hours, LTI, recordable, first aid, near miss) → คำนวณ LTIFR / TRIR',
@@ -304,11 +310,15 @@
         <input type="search" id="help-q" placeholder="ค้นหาในคู่มือ เช่น Export, PO, Timesheet…" value="${esc(query)}" style="width:320px">
         <span class="muted" id="help-count"></span>
       </div>
+      <section class="card tour-card-list">
+        <div class="card-h" data-ic>${PM.illus.icon('chart', 'ch-ic')}<h2>คลิปสอนการใช้งาน</h2><p>กด ▶ แล้วระบบพาไปทีละหน้าบนหน้าจอจริง พร้อมคำอธิบาย — หยุด / ย้อน / ถัดไปได้ (← → Space Esc) · คลิปไม่บันทึกหรือแก้ข้อมูลใด ๆ</p></div>
+        <div class="card-b">${PM.tour.listHtml()}</div>
+      </section>
       <div class="help-layout">
         <nav class="help-toc" aria-label="หัวข้อคู่มือ">${TOPICS.map((t) => `<a href="#/help/${t.key}" data-topic="${t.key}" class="${t.key === active ? 'active' : ''}">${PM.illus.svg(t.icon)}<span>${esc(t.title)}</span></a>`).join('')}</nav>
         <div class="help-body">${TOPICS.map((t) => `
           <section class="card help-sec${t.key === active ? ' on' : ''}" id="help-${t.key}" data-topic="${t.key}">
-            <div class="card-h" data-ic>${PM.illus.icon(t.icon, 'ch-ic')}<h2>${esc(t.title)}</h2>${t.route ? `<span class="spacer"></span><a class="btn sm" href="${t.route}">เปิดหน้านี้ →</a>` : ''}<p>${esc(t.intro)}</p></div>
+            <div class="card-h" data-ic>${PM.illus.icon(t.icon, 'ch-ic')}<h2>${esc(t.title)}</h2><span class="spacer"></span>${PM.tour.forTopic(t.key).map((c) => `<button type="button" class="btn sm" data-tour-start="${c.key}">▶ ${esc(c.title)}</button>`).join('')}${t.route ? `<a class="btn sm" href="${t.route}">เปิดหน้านี้ →</a>` : ''}<p>${esc(t.intro)}</p></div>
             <div class="card-b">${t.blocks.map(block).join('')}</div>
           </section>`).join('')}
           <p class="empty" id="help-none" hidden>ไม่พบหัวข้อที่ตรงกับคำค้นหา</p>

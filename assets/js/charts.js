@@ -90,13 +90,23 @@
     const m = { t: 14, r: 64, b: 26, l: 44 };
     const n = o.labels.length;
     const fmt = o.fmt || ((v) => PM.ui.num(v));
-    const raw = o.yMax || Math.max(1, ...o.series.flatMap((s) => s.values.filter((v) => v != null)));
-    const { max, step } = scaleMax(raw);
+    const all = o.series.flatMap((s) => s.values.filter((v) => v != null));
+    const raw = o.yMax || Math.max(1, ...all);
+    let { max, step } = scaleMax(raw);
+    // values below zero (e.g. cumulative cash flow): a nice scale from the lowest value up, 0 drawn as the axis
+    const lowRaw = Math.min(0, ...all);
+    let min = 0;
+    if (lowRaw < 0) {
+      step = niceStep(Math.max(raw, 0) - lowRaw || 1, 5);
+      min = Math.floor(lowRaw / step) * step;
+      max = Math.max(step, Math.ceil(Math.max(0, ...all) / step) * step);
+    }
     const iw = W - m.l - m.r, ih = H - m.t - m.b;
     const x = (i) => m.l + (n <= 1 ? iw / 2 : (i / (n - 1)) * iw);
-    const y = (v) => m.t + ih - (v / max) * ih;
+    const y = (v) => m.t + ih - ((v - min) / (max - min)) * ih;
     let g = '';
-    for (let v = 0; v <= max + 1e-9; v += step) {
+    for (let v = min; v <= max + 1e-9; v += step) {
+      if (Math.abs(v) < step / 1e6) v = 0;
       g += `<line class="${v === 0 ? 'axis' : 'grid'}" x1="${m.l}" x2="${W - m.r}" y1="${y(v)}" y2="${y(v)}"/>`;
       g += `<text class="tick" x="${m.l - 8}" y="${y(v) + 4}" text-anchor="end">${esc(o.axisFmt ? o.axisFmt(v) : PM.ui.num(v))}</text>`;
     }

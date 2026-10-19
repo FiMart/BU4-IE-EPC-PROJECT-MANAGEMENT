@@ -67,6 +67,7 @@
       PM.motion.reveal(el);
     }
     PM.motion.centerTabs(el);
+    if (PM.measureTopbar) PM.measureTopbar();
   }
   let lastAnimated = null;
   PM.render = render;
@@ -393,5 +394,6 @@
       render();
     }
     PM.splash.hide();
+    if (PM.tour && !location.hash.startsWith('#/present')) setTimeout(PM.tour.welcome, 1200); // first visit: offer the getting-started clip
   };
 })();

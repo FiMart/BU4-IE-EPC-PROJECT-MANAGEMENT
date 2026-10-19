@@ -1,7 +1,8 @@
 /* dashboard.js — the three whiteboard sections on one page */
 (function () {
   const U = PM.ui, V = PM.common, esc = U.esc;
-  const state = U.keep('dashboard', { overrun: 'active' }, ['overrun']); // Cost overrun filter: active | closed | all
+  // Cost overrun filter: active | closed | all · department cash flow scenario: conservative | base | optimistic
+  const state = U.keep('dashboard', { overrun: 'active', cfsc: 'base' }, ['overrun', 'cfsc']);
 
   PM.views.dashboard = function (el) {
     const db = PM.db, T = PM.today();
@@ -33,8 +34,21 @@
     PM.PHASES.forEach((ph) => (phaseCount[ph.key] = rows.filter((r) => r.m.current && r.m.current.key === ph.key)));
 
     const seesResources = PM.can('resource.view'); // section 4: Admin · Department Manager · Project Manager only
+    const att = PM.attention();
+    const nCrit = att.filter((a) => a.level === 'critical').length;
     el.innerHTML = `
-      <div class="section-h"><span class="idx">1</span><h2>Bidding Performance</h2><p>Before Award · 12 เดือนล่าสุด</p><span class="spacer"></span><a href="#/bidding">เปิด Bidding →</a></div>
+      <div class="card att-card">
+        <div class="card-h"><h2>ต้องดำเนินการวันนี้</h2>${att.length ? `${nCrit ? U.badge('critical', `ด่วน ${nCrit}`) : ''} ${att.length - nCrit ? U.badge('warning', `ติดตาม ${att.length - nCrit}`) : ''}` : U.badge('good', 'เรียบร้อย')}
+          <p>รวมเรื่องที่ต้องตามจากทุกส่วน เรียงเรื่องด่วนก่อน — คลิกเพื่อเปิดหน้าที่เกี่ยวข้อง</p></div>
+        <div class="card-b">${PM.attentionHtml(att)}</div>
+      </div>
+      <nav class="sec-nav" aria-label="ไปยังส่วนของ Dashboard">
+        <a href="#/dashboard" data-jump="#sec-bid"><span class="idx">1</span>Bidding</a>
+        <a href="#/dashboard" data-jump="#sec-exec"><span class="idx">2</span>Execution · ต้นทุน · Cash Flow</a>
+        <a href="#/dashboard" data-jump="#sec-po"><span class="idx">3</span>Purchase Orders</a>
+        ${seesResources ? '<a href="#/dashboard" data-jump="#sec-res"><span class="idx">4</span>Resource</a>' : ''}
+      </nav>
+      <div class="section-h" id="sec-bid"><span class="idx">1</span><h2>Bidding Performance</h2><p>Before Award · 12 เดือนล่าสุด</p><span class="spacer"></span><a href="#/bidding">เปิด Bidding →</a></div>
       ${V.flow(PM.BID_STAGES.map((s, i) => {
         const inStage = allPending.filter((b) => b.stage === s.key);
         const sd = bs.stageDays[i];
@@ -58,7 +72,7 @@
       <div class="card"><div class="card-h"><h2>ผลงาน Sales</h2><p>Inquiry ที่หามาได้ 12 เดือน · Win rate · Pipeline · โครงการที่รับผิดชอบ</p></div>
         <div class="card-b flush table-wrap" id="d-sales">${V.salesTable(PM.salesStats(from12, T))}</div></div>
 
-      <div class="section-h"><span class="idx">2</span><h2>Execution (EPC)</h2><p>KPI: Quantity · Time · Cost · Quality (NCR) · Safety</p><span class="spacer"></span><a href="#/projects">เปิด Projects →</a></div>
+      <div class="section-h" id="sec-exec"><span class="idx">2</span><h2>Execution (EPC)</h2><p>KPI: Quantity · Time · Cost · Quality (NCR) · Safety</p><span class="spacer"></span><a href="#/projects">เปิด Projects →</a></div>
       ${V.flow(PM.PHASES.map((ph) => ({
         label: ph.label, th: ph.th, big: `${phaseCount[ph.key].length} <small class="muted" style="font-size:12px">โครงการ</small>`,
         meta: phaseCount[ph.key].map((r) => esc(r.p.code)).join(', ') || '—', href: '#/projects',
@@ -80,8 +94,9 @@
         <div class="card"><div class="card-h"><h2>ค่าใช้จ่ายรายเดือน</h2><p>Cost — ผลรวมรายการค่าใช้จ่ายทุกโครงการ 12 เดือน แยกตาม phase</p></div><div class="card-b"><div class="chart" id="c-spend"></div></div></div>
         <div class="card"><div class="card-h"><h2>Actual cost เทียบ Plan cost</h2><p>โครงการ Active · เส้นดำ = Plan cost (งบ)</p></div><div class="card-b"><div class="chart" id="c-actual"></div></div></div>
       </div>
+      <div class="card" id="d-cash"></div>
 
-      <div class="section-h"><span class="idx">3</span><h2>Purchase Orders</h2><p>ติดตาม PO ทุกโครงการ · ส่งของ · การจ่ายเงิน</p><span class="spacer"></span><a href="#/pos">เปิด Purchase Orders →</a></div>
+      <div class="section-h" id="sec-po"><span class="idx">3</span><h2>Purchase Orders</h2><p>ติดตาม PO ทุกโครงการ · ส่งของ · การจ่ายเงิน</p><span class="spacer"></span><a href="#/pos">เปิด Purchase Orders →</a></div>
       ${PM.poTiles(po)}
       <div class="grid cols-2">
         <div class="card"><div class="card-h"><h2>PO ที่ต้องติดตาม</h2><p>เลยกำหนดส่ง และที่ต้องส่งภายใน 14 วัน</p></div>
@@ -89,7 +104,7 @@
         <div class="card"><div class="card-h"><h2>มูลค่า PO ตามโครงการ</h2><p>สั่งแล้ว (Committed) เทียบ Plan cost</p></div><div class="card-b"><div class="chart" id="c-po-proj"></div></div></div>
       </div>
 
-      ${seesResources ? `<div class="section-h"><span class="idx">4</span><h2>Resource Utilization</h2><p>4 สัปดาห์ล่าสุด · Level & Timesheet</p><span class="spacer"></span><a href="#/resources">เปิด Resources →</a></div>
+      ${seesResources ? `<div class="section-h" id="sec-res"><span class="idx">4</span><h2>Resource Utilization</h2><p>4 สัปดาห์ล่าสุด · Level & Timesheet</p><span class="spacer"></span><a href="#/resources">เปิด Resources →</a></div>
       <div class="grid cols-5">
         ${V.tile({ label: 'Weekly Plan สัปดาห์นี้', tag: 'PPC', value: U.pct(wp.ppc), sub: wp.total ? `${wp.done}/${wp.total} งานเสร็จ · <a href="#/weekly">เปิด Weekly Plan →</a>` : '<a href="#/weekly">ยังไม่มีแผน — วางแผนงาน →</a>' })}
         ${V.tile({ label: 'Utilization', value: U.pct(ut.total.util), sub: 'Billable ÷ Available hours' })}
@@ -106,6 +121,10 @@
     el.onclick = (e) => {
       const seg = e.target.closest('[data-seg="overrun"]');
       if (seg) { state.overrun = seg.dataset.val; el.querySelector('#d-overrun').innerHTML = overrunCard(overrun); return; }
+      const cseg = e.target.closest('[data-seg="cfsc"]');
+      if (cseg) { state.cfsc = cseg.dataset.val; cashCard(el.querySelector('#d-cash'), active); return; }
+      const cashRow = e.target.closest('[data-cash-id]');
+      if (cashRow) { location.hash = '#/projects/' + cashRow.dataset.cashId + '/cashflow'; return; }
       if (e.target.closest('tr[data-sales]') && !e.target.closest('a')) { location.hash = '#/bidding'; return; }
       const poRow = e.target.closest('tr[data-po]');
       if (poRow) { PM.poForm(PM.find('pos', poRow.dataset.po), null, () => PM.views.dashboard(el)); return; }
@@ -146,6 +165,7 @@
           tip: `${r.p.code} ${r.p.name}\nPO committed ${U.money(v)}\nPlan cost ${U.money(r.m.bac)}` };
       }),
     });
+    cashCard(el.querySelector('#d-cash'), active);
     if (!seesResources) return;
     PM.charts.hbars(document.getElementById('c-level'), {
       max: 1.2,
@@ -181,6 +201,52 @@
       }).join('')}</tbody></table>`;
   }
   PM.common.projectTable = projectTable;
+
+  /* Department cash flow — every active project's Cash Flow Model added up: peak funding of the whole department,
+     the next 12 months, the 3 scenarios, and which projects drive the tightest month (cashflow.js) */
+  function cashCard(box, projects) {
+    const SC = PM.CASHFLOW_SCENARIOS;
+    if (!SC.some((s) => s.key === state.cfsc)) state.cfsc = 'base';
+    const sm = PM.signedMoney;
+    const pc = PM.portfolioCashflow(projects, state.cfsc);
+    const head = `<div class="card-h"><h2>Cash Flow ทั้งแผนก — เงินทุนหมุนเวียน</h2>
+        <p>รวม Cash Flow Model ของโครงการ Active${pc && pc.defaults ? ` · ${pc.defaults} โครงการยังไม่ได้บันทึก Cash Flow จึงใช้ค่าเริ่มต้นจาก Phase` : ''} · คลิกโครงการเพื่อเปิดแท็บ Cash Flow</p>
+        <span class="spacer"></span>${V.seg('cfsc', SC.map((s) => ({ key: s.key, label: s.label })), state.cfsc)}</div>`;
+    if (!pc) { box.innerHTML = head + '<div class="card-b"><p class="empty">ยังไม่มีโครงการที่คำนวณ Cash Flow ได้</p></div>'; return; }
+    const now = PM.today().slice(0, 7);
+    const items = pc.items.slice().sort((a, b) => (a.atPeak == null ? 0 : a.atPeak) - (b.atPeak == null ? 0 : b.atPeak) || a.md.cum[0] - b.md.cum[0]);
+    box.innerHTML = `${head}
+      <div class="card-b">
+        <div class="grid cols-4">
+          ${V.tile({ label: 'Peak funding ทั้งแผนก', tag: 'ตามแผน', value: pc.peak ? U.money(-pc.peak.value) : '฿0', sub: pc.peak ? `${U.badge(pc.peak.ym < now ? 'neutral' : 'critical', 'เงินสดตึงสุด ' + U.month(pc.peak.ym))}${pc.peak.ym < now ? ' ผ่านมาแล้ว' : ''}` : U.badge('good', 'เงินสดรวมไม่ติดลบ'), tip: 'ยอดเงินสดสะสมต่ำสุดของทุกโครงการรวมกัน (Cash In − Cash Out) — เงินทุนหมุนเวียนที่แผนกต้องเตรียม', icon: 'coins' })}
+          ${V.tile({ label: 'Peak ข้างหน้า', tag: 'ตั้งแต่เดือนนี้', value: pc.futurePeak ? U.money(-pc.futurePeak.value) : '฿0', sub: pc.futurePeak ? U.badge('warning', U.month(pc.futurePeak.ym)) : U.badge('good', 'ไม่ติดลบอีก') })}
+          ${V.tile({ label: 'Cash In 12 เดือนข้างหน้า', value: U.money(pc.next12In), sub: `Cash Out ${U.money(pc.next12Out)}` })}
+          ${V.tile({ label: 'สุทธิ 12 เดือนข้างหน้า', value: `<span class="${pc.next12In - pc.next12Out < 0 ? 'neg' : ''}">${sm(pc.next12In - pc.next12Out)}</span>`, sub: pc.neg ? `ติดลบ ${pc.neg.count} เดือน (${U.month(pc.neg.from)} – ${U.month(pc.neg.to)})` : 'เงินสดรวมไม่ติดลบตลอดแผน' })}
+        </div>
+        <div class="grid cols-2">
+          <div><h3 class="cf-sub">เงินสดสะสมทั้งแผนก — 3 scenario</h3><div class="chart" id="c-dcash-cum"></div></div>
+          <div><h3 class="cf-sub">Cash In / Cash Out รายเดือน — ${esc(SC.find((s) => s.key === state.cfsc).label)}</h3><div class="chart" id="c-dcash-month"></div></div>
+        </div>
+      </div>
+      <div class="card-b flush table-wrap"><table class="tbl"><thead><tr><th>Project</th><th class="num">Peak funding</th><th>เดือนตึงสุด</th><th class="num">ยอดสะสม ณ ${pc.peak ? U.month(pc.peak.ym) : 'เดือน Peak'}</th><th class="num">Cash In 12 ด.</th><th class="num">Cash Out 12 ด.</th><th>Cash Flow</th></tr></thead><tbody>
+        ${items.map((x) => `<tr class="click" data-cash-id="${esc(x.p.id)}">
+          <td><span class="title">${esc(x.p.code)}</span><small>${esc(x.p.name)}</small></td>
+          <td class="num">${x.md.peak ? `<span class="neg">${U.money(-x.md.peak.value)}</span>` : '฿0'}</td>
+          <td>${x.md.peak ? U.month(x.md.peak.ym) : '–'}</td>
+          <td class="num${x.atPeak < 0 ? ' neg' : ''}">${x.atPeak == null ? '–' : sm(x.atPeak)}</td>
+          <td class="num">${U.money(x.next12In)}</td><td class="num">${U.money(x.next12Out)}</td>
+          <td>${x.saved ? U.badge('good', 'บันทึกแล้ว') : U.badge('neutral', 'ค่าเริ่มต้น')}</td></tr>`).join('')}
+      </tbody></table></div>`;
+
+    const lines = PM.portfolioCashflowLines(projects, state.cfsc);
+    PM.charts.lines(box.querySelector('#c-dcash-cum'), {
+      labels: lines.months.map(U.month), marker: lines.months.indexOf(now), markerLabel: 'วันนี้', fmt: sm, axisFmt: sm, label: 'Department cumulative cash', series: lines.series,
+    });
+    PM.charts.columns(box.querySelector('#c-dcash-month'), {
+      categories: pc.months.map(U.month), stacked: false, fmt: U.money, axisFmt: U.money, label: 'Department monthly cash in and out',
+      series: [{ name: 'Cash In (รับ)', color: 'var(--s3)', values: pc.cashIn }, { name: 'Cash Out (จ่าย)', color: 'var(--s8)', values: pc.cashOut }],
+    });
+  }
 
   /* Cost overrun — which projects are already over Plan cost, and which are heading there (rows from PM.costOverrunRows) */
   const OVERRUN_VIEW = {

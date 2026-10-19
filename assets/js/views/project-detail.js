@@ -1,15 +1,40 @@
 /* project-detail.js — one project: EPC phases + KPI (Quantity, Time, Cost, Quality/NCR, Safety) */
 (function () {
   const U = PM.ui, V = PM.common, esc = U.esc;
+  // tabs in 3 groups: plan & progress · money · people & site
   const TABS = [
-    { key: 'overview', label: 'Overview & EPC' },
-    { key: 'timeline', label: 'Timeline · Gantt' },
-    { key: 'cost', label: 'ค่าใช้จ่าย · Cost' },
-    { key: 'quality', label: 'Quality · NCR' },
-    { key: 'safety', label: 'Safety' },
-    { key: 'team', label: 'Team & Hours' },
-    { key: 'po', label: 'PO' },
+    { key: 'overview', label: 'ภาพรวม & EPC', icon: 'chart', group: 'แผนและความคืบหน้า' },
+    { key: 'timeline', label: 'Timeline · Gantt', icon: 'calendar', group: 'แผนและความคืบหน้า' },
+    { key: 'boq', label: 'BOQ', icon: 'layers', group: 'ต้นทุนและการเงิน' },
+    { key: 'cost', label: 'ค่าใช้จ่าย', icon: 'coins', group: 'ต้นทุนและการเงิน' },
+    { key: 'cashflow', label: 'Cash Flow', icon: 'scurve', group: 'ต้นทุนและการเงิน' },
+    { key: 'po', label: 'PO', icon: 'truck', group: 'ต้นทุนและการเงิน' },
+    { key: 'quality', label: 'Quality · NCR', icon: 'quality', group: 'หน้างานและทีม' },
+    { key: 'safety', label: 'Safety', icon: 'safety', group: 'หน้างานและทีม' },
+    { key: 'team', label: 'ทีม & ชั่วโมง', icon: 'people', group: 'หน้างานและทีม' },
   ];
+  const tabsNav = (p, tab) => {
+    let last = '';
+    return `<nav class="tabs ptabs" aria-label="ส่วนของโครงการ">${TABS.map((t) => {
+      const sep = t.group !== last && last ? '<span class="ptabs-sep" aria-hidden="true"></span>' : '';
+      last = t.group;
+      return `${sep}<a href="#/projects/${p.id}/${t.key}" class="${t.key === tab ? 'active' : ''}" title="${esc(t.group)}"${t.key === tab ? ' aria-current="page"' : ''}>${PM.illus.svg(t.icon)}<span>${esc(t.label)}</span></a>`;
+    }).join('')}</nav>`;
+  };
+  /* every tab except Overview: one compact line instead of the full header, so the tab's own content is in view */
+  function compactHeader(p, m, h) {
+    const T = PM.today();
+    const used = m.bac ? m.ac / m.bac : null;
+    return `<div class="card prj-mini"><div class="prj-mini-row">
+      <div><small>ลูกค้า</small><b>${esc(p.client || '–')}</b></div>
+      <div><small>PM</small><b>${esc(V.pmName(p))}</b></div>
+      <div><small>ระยะเวลา</small><b>${U.date(p.startDate)} – ${U.date(p.endDate)}</b></div>
+      <div class="grow"><small>ความคืบหน้า · จริง ${U.pct(m.act)} / แผน ${U.pct(m.plan)}</small>${U.progress(m.act, p.status === 'closed' ? null : m.plan)}</div>
+      <div><small>Phase ปัจจุบัน</small><b>${m.current ? esc(U.phaseLabel(m.current.key)) : 'ปิดโครงการ'}</b></div>
+      <div><small>ใช้งบไป</small><b class="${m.ac > m.bac ? 'neg' : ''}">${U.pct(used)}</b></div>
+      <div><small>สถานะ</small>${p.status === 'closed' ? U.badge('neutral', 'Closed') : p.status === 'onhold' ? U.badge('warning', 'On hold') : U.badge(h, U.healthLabel[h])}</div>
+    </div></div>`;
+  }
 
   PM.views.project = function (el, params) {
     const p = PM.find('projects', params[0]);
@@ -20,16 +45,17 @@
     document.getElementById('page-title').textContent = `${p.code} · ${p.name}`;
     const h = p.status === 'closed' ? 'neutral' : U.worst(U.health(m.spi), U.health(m.cpi));
 
+    const full = tab === 'overview' || !TABS.some((t) => t.key === tab);
     el.innerHTML = `
       <div class="row">
         <a href="#/projects">← Projects</a>
         <span class="spacer"></span>
-        ${p.status === 'closed' ? U.badge('neutral', 'Closed') : p.status === 'onhold' ? U.badge('warning', 'On hold') : U.badge(h, U.healthLabel[h])}
+        ${full ? (p.status === 'closed' ? U.badge('neutral', 'Closed') : p.status === 'onhold' ? U.badge('warning', 'On hold') : U.badge(h, U.healthLabel[h])) : ''}
         ${PM.can('cost.edit') ? '<button class="btn" data-action="new-cost">+ ค่าใช้จ่าย</button>' : ''}
         <button class="btn" data-action="edit-costs">Plan cost</button>
         <button class="btn" data-action="edit-project">แก้ไขโครงการ</button>
       </div>
-      <div class="card"><div class="card-b">
+      ${full ? `<div class="card"><div class="card-b">
         <dl class="kv kv-4">
           <dt>Client</dt><dd>${esc(p.client)}</dd>
           <dt>Project Manager</dt><dd>${esc(V.pmName(p))}</dd>
@@ -42,13 +68,13 @@
         </dl>
         ${costStrip(m, PM.poStats(PM.db.pos.filter((po) => po.projectId === p.id)), PM.projectCosts(p.id).length)}
       </div></div>
-      ${phaseFlow(p, m)}
-      <nav class="tabs">${TABS.map((t) => `<a href="#/projects/${p.id}/${t.key}" class="${t.key === tab ? 'active' : ''}">${t.label}</a>`).join('')}</nav>
+      ${phaseFlow(p, m)}` : compactHeader(p, m, h)}
+      ${tabsNav(p, tab)}
       <div id="tab"></div>`;
 
     const tabEl = el.querySelector('#tab');
     const rerender = () => PM.views.project(el, params);
-    ({ overview, timeline: timelineTab, cost: costTab, quality, safety, team, po: poTab }[tab] || overview)(tabEl, p, m, rerender);
+    ({ overview, timeline: timelineTab, boq: boqTab, cost: costTab, cashflow: cashflowTab, quality, safety, team, po: poTab }[tab] || overview)(tabEl, p, m, rerender);
 
     el.onclick = (e) => {
       const a = e.target.closest('[data-action]');
@@ -68,8 +94,10 @@
     };
   };
 
-  /* expense ledger tab lives in costs.js · Timeline / Gantt tab in timeline.js */
+  /* expense ledger tab lives in costs.js · Timeline / Gantt tab in timeline.js · Cash Flow tab in cashflow.js */
   const costTab = (...args) => PM.costTab(...args);
+  const cashflowTab = (...args) => PM.cashflowTab(...args);
+  const boqTab = (...args) => PM.boqTab(...args); // boq.js
   const timelineTab = (...args) => PM.timelineTab(...args);
 
   /* ---------------- Purchase orders of this project ---------------- */

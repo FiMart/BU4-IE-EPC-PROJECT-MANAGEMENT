@@ -629,6 +629,7 @@
         p.progressLog.forEach((s) => { if (s.date >= PM.addDays(end, -1)) PM.PHASES.forEach((x) => (s.values[x.key] = 100)); });
       }
       Object.assign(p, PM.buildTimeline(p)); // sample activities + milestones for the Gantt chart
+      if (PM.buildSampleBoq) p.boq = PM.buildSampleBoq(p); // sample BOQ sized to each phase's Plan cost (boq.js)
       return p;
     });
 

@@ -37,6 +37,43 @@
       alert('เปิดไฟล์ไม่ได้: ' + storageError(e));
     }
   };
+  /* a short-lived link to a private file (download = save under the original name instead of showing it) */
+  F.url = async function (path, download) {
+    const { data, error } = await storage().createSignedUrl(path, 600, download ? { download } : undefined);
+    if (error) throw new Error(storageError(error));
+    return data.signedUrl;
+  };
+  /* view a file inside the app: PDF / images full screen, other types → download */
+  F.view = async function (file) {
+    const isPdf = /\.pdf$/i.test(file.name) || file.type === 'application/pdf';
+    const isImg = /\.(png|jpe?g|webp)$/i.test(file.name) || /^image\//.test(file.type || '');
+    const box = document.createElement('div');
+    box.className = 'fv';
+    box.setAttribute('role', 'dialog');
+    box.setAttribute('aria-label', file.name);
+    box.innerHTML = `<div class="fv-bar"><span class="fi">${fileIcon(file.name)}</span><b>${esc(file.name)}</b><small>${fileSize(file.size || 0)}</small><span class="spacer"></span>
+        <a class="btn sm" data-fv="dl" aria-disabled="true">⬇ ดาวน์โหลด</a><a class="btn sm" data-fv="tab" target="_blank" rel="noopener" aria-disabled="true">เปิดแท็บใหม่ ↗</a>
+        <button type="button" class="btn sm" data-fv="close" aria-label="ปิด (Esc)">✕ ปิด</button></div>
+      <div class="fv-body"><p class="fv-wait">กำลังเปิดไฟล์…</p></div>`;
+    document.body.appendChild(box);
+    const close = () => { box.remove(); document.removeEventListener('keydown', onKey, true); };
+    const onKey = (e) => { if (e.key === 'Escape') { e.stopPropagation(); close(); } };
+    document.addEventListener('keydown', onKey, true);
+    box.querySelector('[data-fv="close"]').addEventListener('click', close);
+    try {
+      const [view, dl] = await Promise.all([F.url(file.path), F.url(file.path, file.name)]);
+      if (!box.isConnected) return;
+      const a = box.querySelector('[data-fv="dl"]'), t = box.querySelector('[data-fv="tab"]');
+      a.href = dl; t.href = view; a.removeAttribute('aria-disabled'); t.removeAttribute('aria-disabled');
+      box.querySelector('.fv-body').innerHTML = isPdf ? `<iframe src="${esc(view)}#view=FitH" title="${esc(file.name)}"></iframe>`
+        : isImg ? `<img src="${esc(view)}" alt="${esc(file.name)}">`
+        : `<div class="fv-none"><p>ไฟล์ชนิดนี้ดูตัวอย่างในหน้าเว็บไม่ได้</p><a class="btn primary" href="${esc(dl)}">⬇ ดาวน์โหลด ${esc(file.name)}</a></div>`;
+    } catch (e) {
+      if (box.isConnected) box.querySelector('.fv-body').innerHTML = `<div class="fv-none"><p>เปิดไฟล์ไม่ได้: ${esc(e.message)}</p></div>`;
+    }
+  };
+  F.fileIcon = (name) => fileIcon(name);
+  F.fileSize = (b) => fileSize(b);
   F.remove = async function (paths) {
     if (!paths.length || !storage()) return;
     const { error } = await storage().remove(paths);

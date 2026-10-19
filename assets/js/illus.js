@@ -336,7 +336,8 @@
     el.hidden = false;
     if (el.dataset.route === route) return; // same page (resize / data refresh) — keep it as is
     el.dataset.route = route;
+    const clip = PM.tour && PM.tour.forRoute(route); // the tutorial clip of this page (tour.js)
     el.innerHTML = `<div class="hero-text"><b>${PM.ui.esc(h[0])}</b><p>${PM.ui.esc(h[1])}</p>
-      ${help ? `<a class="hero-help" href="#/help/${help}">${I.svg('book')}วิธีใช้หน้านี้</a>` : ''}</div><div class="hero-art">${I.art(route)}</div>`;
+      <div class="hero-links">${help ? `<a class="hero-help" href="#/help/${help}">${I.svg('book')}วิธีใช้หน้านี้</a>` : ''}${clip ? `<button type="button" class="hero-help hero-clip" data-tour-start="${clip.key}"><span aria-hidden="true">▶</span>คลิปสอน</button>` : ''}</div></div><div class="hero-art">${I.art(route)}</div>`;
   };
 })();
