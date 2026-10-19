@@ -74,7 +74,7 @@
       }
       if (e.target.closest('a')) return;
       const row = e.target.closest('[data-bid]');
-      if (row) V.bidForm(PM.find('bids', row.dataset.bid), rerender);
+      if (row) V.bidForm(PM.find('bids', row.dataset.bid), rerender, { tab: key === 'award' ? 'submit' : key }); // open on this page's part
     };
   };
 

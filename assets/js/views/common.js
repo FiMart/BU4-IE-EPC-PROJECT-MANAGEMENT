@@ -156,7 +156,8 @@
   /* ---------- bid form ---------- */
   /* Bid No. of a new inquiry starts as this fixed text (current year) — the user types the running number after it */
   V.bidNoPrefix = () => `PROP-${PM.today().slice(0, 4)}-IE EPC-00`;
-  V.bidForm = async function (bid, onSaved) {
+  /* opts.tab: the part to open on (inquiry · estimate · price · proposal · submit · files) — default: the bid's current stage */
+  V.bidForm = async function (bid, onSaved, opts = {}) {
     await PM.roles.loadTeam(); // user accounts for the Sales list
     const T = PM.today();
     const isNew = !bid;
@@ -181,20 +182,37 @@
       else if (me && PM.myRole() === 'sales') { b.sales = me.id; b.salesName = PM.auth.displayName(me); }
     }
     const sources = PM.LEAD_SOURCES.includes(b.leadSource) || !b.leadSource ? PM.LEAD_SOURCES : PM.LEAD_SOURCES.concat(b.leadSource);
-    const lockNote = `<p class="full perm-note">🔒 มูลค่า · Margin · ไฟล์ใบเสนอราคา เห็นได้เฉพาะ Sales ผู้รับผิดชอบงานนี้และ Admin${isNew ? ' — Sales ที่เลือกด้านบนเป็นผู้กรอกภายหลัง' : ''}</p>`;
+    const lockNote = `<p class="full perm-note">🔒 มูลค่า · Margin · ไฟล์ใบเสนอราคา เห็นได้เฉพาะ Sales ผู้รับผิดชอบงานนี้และ Admin${isNew ? ' — Sales ที่เลือกในแท็บ Inquiry เป็นผู้กรอกภายหลัง' : ''}</p>`;
+    // one tab per part of the bid — each team fills its own part; all tabs are one form, saved together
+    const TABS = [
+      { key: 'inquiry', label: 'Inquiry', n: 1 },
+      { key: 'estimate', label: 'Estimate', n: 2 },
+      { key: 'price', label: 'ราคาขาย', lock: !canPrice },
+      { key: 'proposal', label: 'Proposal', n: 3 },
+      { key: 'submit', label: 'Submit · ผล', n: 4 },
+      { key: 'files', label: 'ไฟล์ทีม' },
+    ];
+    const tab0 = TABS.some((t) => t.key === opts.tab) ? opts.tab
+      : isNew ? 'inquiry' : b.result && b.result !== 'pending' ? 'submit' : b.stage || 'inquiry';
+    const pane = (key, html) => `<div class="full bf-pane" data-pane="${key}"${key === tab0 ? '' : ' hidden'}>${html}</div>`;
     const body = `
+      <div class="full bf-tabs" role="tablist">${TABS.map((t) => `<button type="button" role="tab" data-tab="${t.key}" class="${t.key === tab0 ? 'on' : ''}" aria-selected="${t.key === tab0}">${t.n ? `<i>${t.n}</i>` : ''}${t.lock ? '🔒 ' : ''}${esc(t.label)}<em data-mark="${t.key}"></em></button>`).join('')}</div>
       ${canEdit ? '' : '<p class="full perm-note">ดูได้อย่างเดียว — เพิ่ม / แก้ไข Inquiry, เลื่อนขั้น และบันทึกผล Won / Lost ได้เฉพาะ Admin · Project Manager · Engineer และ Sales ผู้รับผิดชอบงานนี้</p>'}
+      ${pane('inquiry', `
       <div class="sub-h">ข้อมูลงานประมูล</div>
       ${U.field('Bid No.', 'code', b.code, { required: true })}
       ${U.field('ลูกค้า (Client)', 'client', b.client, { required: true })}
       ${U.field('ชื่องาน / Scope of work', 'name', b.name, { required: true, full: true })}
+      ${U.field('Inquiry received', 'd_inquiry', b.dates.inquiry, { type: 'date', required: true })}
+      ${U.field('กำหนดยื่นใบเสนอราคา (Due date)', 'dueDate', b.dueDate, { type: 'date' })}
       <div class="sub-h">Sales — ผู้หาลูกค้า / งานนี้มาจากไหน</div>
       <label><span>Sales ผู้รับผิดชอบลูกค้า</span>${V.salesInput(b)}<small class="muted">${PM.teamError ? esc(PM.teamError) : 'พิมพ์ชื่อได้เลย หรือเลือกจากรายชื่อที่ขึ้นมา'}</small></label>
       ${U.field('ที่มาของงาน (Lead source)', 'leadSource', b.leadSource || '', { options: sources, placeholder: '— เลือก —' })}
       ${U.field('ผู้ติดต่อฝั่งลูกค้า (Contact)', 'contact', b.contact || '', { placeholder: 'ชื่อ / ตำแหน่ง / เบอร์โทร', full: true })}
-      ${canPrice ? PM.poFiles.boxHtml(canEdit, 'ไฟล์แนบ — ใบเสนอราคา / เอกสาร Inquiry', 'ใบเสนอราคาที่ส่งให้ลูกค้า, TOR, แบบ, BOQ') : ''}
+      ${U.field('Sector', 'sector', b.sector, { options: PM.SECTORS })}`)}
+      ${pane('estimate', `
       <div class="sub-h">การประมาณราคา (Estimate) — ทีม Engineer / PM กรอกได้</div>
-      ${U.field('Sector', 'sector', b.sector, { options: PM.SECTORS })}
+      ${U.field('Estimate started', 'd_estimate', b.dates.estimate, { type: 'date' })}
       ${U.field('สถานะการประมาณราคา', 'est_status', est.status || 'todo', { options: PM.EST_STATUS.map((s) => ({ value: s.key, label: s.label })) })}
       ${U.field('Estimator', 'estimator', b.estimator, { options: people(), placeholder: '— เลือก —' })}
       ${U.field('ผู้ตรวจราคา (Reviewer)', 'est_reviewer', est.reviewer || '', { options: people(), placeholder: '— เลือก —' })}
@@ -206,27 +224,31 @@
       ${U.field('ผู้รับเหมาช่วง (THB)', 'est_subcon', est.subcon || '', { type: 'number', min: 0, step: 'any' })}
       ${U.field('อื่น ๆ / Overhead / Contingency (THB)', 'est_other', est.other || '', { type: 'number', min: 0, step: 'any' })}
       <div class="full est-total"><span>ต้นทุนประมาณการรวม</span><b id="est-total">–</b><span id="est-margin"></span></div>
-      ${U.field('สมมติฐาน / ข้อยกเว้น (Assumptions / Exclusions)', 'est_notes', est.notes || '', { type: 'textarea', full: true, rows: 2 })}
+      ${U.field('สมมติฐาน / ข้อยกเว้น (Assumptions / Exclusions)', 'est_notes', est.notes || '', { type: 'textarea', full: true, rows: 2 })}`)}
+      ${pane('price', `
       <div class="sub-h">ราคาขาย — เฉพาะ Admin / Sales ผู้รับผิดชอบ</div>
       ${canPrice ? `${U.field('มูลค่าประมาณการ / ราคาเสนอ (THB)', 'value', b.value, { type: 'number', min: 0, step: 'any' })}
-      ${U.field('Margin (%)', 'margin', b.margin, { type: 'number', step: 0.1 })}` : lockNote}
+      ${U.field('Margin (%)', 'margin', b.margin, { type: 'number', step: 0.1 })}
+      <div class="full est-total"><span>ต้นทุนประมาณการ (จากแท็บ Estimate)</span><b id="est-total-p">–</b><span id="est-margin-p"></span></div>
+      ${PM.poFiles.boxHtml(canEdit, 'ไฟล์แนบ — ใบเสนอราคา / เอกสาร Inquiry', 'ใบเสนอราคาที่ส่งให้ลูกค้า, TOR, แบบ, BOQ')}` : lockNote}`)}
+      ${pane('proposal', `
       <div class="sub-h">จัดทำข้อเสนอ (Proposal)</div>
+      ${U.field('Proposal started', 'd_proposal', b.dates.proposal, { type: 'date' })}
       ${U.field('ผู้จัดทำข้อเสนอ', 'prop_owner', prop.owner || '', { options: people(), placeholder: '— เลือก —' })}
       ${U.field('สถานะข้อเสนอ', 'prop_status', prop.status || 'todo', { options: PM.PROP_STATUS.map((s) => ({ value: s.key, label: s.label })) })}
+      <span></span>
       <div class="full prop-checks"><span>เอกสารในข้อเสนอ</span><div>${PM.PROP_CHECKS.map((c) => `<label class="prop-check"><input type="checkbox" name="pc_${c.key}"${(prop.checks || {})[c.key] ? ' checked' : ''}> ${esc(c.label)}</label>`).join('')}</div></div>
-      ${U.field('หมายเหตุข้อเสนอ', 'prop_notes', prop.notes || '', { type: 'textarea', full: true, rows: 2 })}
-      ${PM.poFiles.boxHtml(canEdit, 'ไฟล์งานของทีม — ถอดปริมาณ / ประมาณราคา / ข้อเสนอทางเทคนิค', 'ทุกคนในทีมเห็นได้ (ใบเสนอราคาที่ส่งลูกค้าแนบด้านบน)', 'work')}
-      <div class="sub-h">Timeline — Inquiry → Estimate → Proposal → Submit</div>
-      ${U.field('Inquiry received', 'd_inquiry', b.dates.inquiry, { type: 'date', required: true })}
-      ${U.field('Estimate started', 'd_estimate', b.dates.estimate, { type: 'date' })}
-      ${U.field('Proposal started', 'd_proposal', b.dates.proposal, { type: 'date' })}
+      ${U.field('หมายเหตุข้อเสนอ', 'prop_notes', prop.notes || '', { type: 'textarea', full: true, rows: 2 })}`)}
+      ${pane('submit', `
+      <div class="sub-h">ยื่นใบเสนอราคา (Submit)</div>
       ${U.field('Submitted', 'd_submit', b.dates.submit, { type: 'date' })}
-      ${U.field('กำหนดยื่นใบเสนอราคา (Due date)', 'dueDate', b.dueDate, { type: 'date' })}
       <span></span>
       <div class="sub-h">ผลการประมูล (Award)</div>
       ${U.field('Result', 'result', b.result, { options: Object.keys(PM.BID_RESULTS).map((k) => ({ value: k, label: PM.BID_RESULTS[k] })) })}
       ${U.field('Result date', 'resultDate', b.resultDate, { type: 'date' })}
-      ${U.field('หมายเหตุ', 'notes', b.notes, { type: 'textarea', full: true, rows: 2 })}`;
+      ${U.field('หมายเหตุ', 'notes', b.notes, { type: 'textarea', full: true, rows: 2 })}`)}
+      ${pane('files', `
+      ${PM.poFiles.boxHtml(canEdit, 'ไฟล์งานของทีม — ถอดปริมาณ / ประมาณราคา / ข้อเสนอทางเทคนิค', 'ทุกคนในทีมเห็นได้ · ใบเสนอราคาที่ส่งลูกค้าอยู่ในแท็บ "ราคาขาย"', 'work')}`)}`;
     let files = null;
     const form = U.modal({
       title: isNew ? 'New inquiry' : `${b.code} · ${b.name}`, body, wide: true,
@@ -241,7 +263,7 @@
         }
         const dates = { inquiry: f.d_inquiry, estimate: f.d_estimate, proposal: f.d_proposal, submit: f.d_submit };
         const order = PM.BID_STAGES.map((s) => dates[s.key]).filter(Boolean);
-        if (order.some((d, i) => i && d < order[i - 1])) { alert('วันที่แต่ละขั้นต้องเรียงตามลำดับ Inquiry → Estimate → Proposal → Submit'); return false; }
+        if (order.some((d, i) => i && d < order[i - 1])) { alert('วันที่แต่ละขั้นต้องเรียงตามลำดับ Inquiry → Estimate → Proposal → Submit (วันที่อยู่ในแท็บของแต่ละขั้น)'); return false; }
         save(f, dates, frm);
         return false; // closed by save() once the files are uploaded
       },
@@ -252,12 +274,43 @@
     const n = (x) => Number(x && x.value) || 0;
     const drawCost = () => {
       const cost = n(form.est_material) + n(form.est_labour) + n(form.est_subcon) + n(form.est_other);
-      form.querySelector('#est-total').textContent = cost ? U.money(cost) : '–';
-      const v = form.value ? n(form.value) : 0, mg = form.querySelector('#est-margin');
-      mg.innerHTML = cost && v ? `เทียบราคาเสนอ ${U.money(v)} → Margin จากต้นทุน <b class="${v - cost < 0 ? 'neg' : ''}">${U.pct((v - cost) / v, 1)}</b>` : '';
+      const v = form.value ? n(form.value) : 0;
+      const mg = cost && v ? `เทียบราคาเสนอ ${U.money(v)} → Margin จากต้นทุน <b class="${v - cost < 0 ? 'neg' : ''}">${U.pct((v - cost) / v, 1)}</b>` : '';
+      ['', '-p'].forEach((sfx) => {
+        const t = form.querySelector('#est-total' + sfx);
+        if (!t) return;
+        t.textContent = cost ? U.money(cost) : '–';
+        form.querySelector('#est-margin' + sfx).innerHTML = mg;
+      });
     };
-    form.addEventListener('input', (e) => { if (/^est_|^value$/.test(e.target.name || '')) drawCost(); });
+    // tabs: show one part at a time; a ✓ marks a part that is done
+    const showTab = (key) => {
+      form.querySelectorAll('.bf-tabs [data-tab]').forEach((t) => { const on = t.dataset.tab === key; t.classList.toggle('on', on); t.setAttribute('aria-selected', on); });
+      form.querySelectorAll('.bf-pane').forEach((p) => { p.hidden = p.dataset.pane !== key; });
+      form.querySelector('.modal-body').scrollTop = 0;
+    };
+    form.querySelector('.bf-tabs').addEventListener('click', (e) => { const t = e.target.closest('[data-tab]'); if (t) showTab(t.dataset.tab); });
+    const drawMarks = () => {
+      const v = (name) => (form.elements[name] && form.elements[name].value) || '';
+      const done = {
+        inquiry: !!(v('code') && v('client') && v('name') && v('d_inquiry')),
+        estimate: ['done', 'reviewed'].includes(v('est_status')),
+        price: canPrice && n(form.value) > 0,
+        proposal: v('prop_status') === 'ready',
+        submit: !!v('d_submit') || v('result') !== 'pending',
+        files: form.querySelectorAll('[data-files="work"] .po-file-list li:not(.empty-files)').length > 0,
+      };
+      form.querySelectorAll('[data-mark]').forEach((m) => { m.textContent = done[m.dataset.mark] ? '✓' : ''; });
+    };
+    // a required field left empty in another tab: open that tab so the browser can point at it
+    form.addEventListener('invalid', (e) => {
+      const p = e.target.closest('.bf-pane');
+      if (p && p.hidden) { showTab(p.dataset.pane); setTimeout(() => e.target.reportValidity(), 0); }
+    }, true);
+    form.addEventListener('input', (e) => { if (/^est_|^value$/.test(e.target.name || '')) drawCost(); drawMarks(); });
+    form.addEventListener('change', drawMarks);
     drawCost();
+    drawMarks();
     if (!canEdit) { // view only
       form.querySelectorAll('input, select, textarea').forEach((i) => { i.disabled = true; });
       if (document.activeElement) document.activeElement.blur();

@@ -151,6 +151,7 @@ Web app สำหรับบริหารโครงการแบบ EPC (
 index.html
 assets/css/styles.css        theme สว่าง/มืด, responsive
 assets/css/motion.css        animation + visual polish (ปิดอัตโนมัติเมื่อ OS ตั้ง "reduce motion")
+assets/css/theme.css         ดีไซน์ "Modern Light" (โหลดท้ายสุด): สี · ฟอนต์ · เมนูซ้าย · การ์ด · ตาราง · ฟอร์ม · หน้าต่าง
 assets/js/motion.js          page entrance + ตัวเลข KPI นับขึ้น
 assets/js/data.js            ข้อมูล, demo seed, สูตร KPI
 assets/js/ui.js              format, badge, modal, tooltip

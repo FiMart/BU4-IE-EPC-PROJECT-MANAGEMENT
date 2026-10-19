@@ -1660,3 +1660,23 @@ kbd { font: 600 10.5px/1 var(--font); padding: 3px 5px; border-radius: 5px; bord
 .ts-empty p { margin: 0; }
 .ts-oh .row { gap: 8px; align-items: center; }
 .ts-oh select { width: auto; }
+
+/* bid form split into parts: one tab per stage (V.bidForm) — the tab bar stays on top while the part scrolls */
+.bf-tabs { position: sticky; top: -20px; z-index: 2; display: flex; gap: 4px; overflow-x: auto; scrollbar-width: none; margin: -20px -22px 0; padding: 12px 22px 10px; background: var(--surface); border-bottom: 1px solid var(--border); }
+.bf-tabs::-webkit-scrollbar { display: none; }
+.bf-tabs button { flex: none; display: inline-flex; align-items: center; gap: 7px; font: inherit; font-size: 13px; font-weight: 600; padding: 7px 12px; border-radius: 999px; border: 1px solid var(--border); background: var(--surface); color: var(--ink-2); cursor: pointer; white-space: nowrap; transition: background .12s, color .12s, border-color .12s; }
+.bf-tabs button:hover { border-color: var(--border-strong); color: var(--ink); }
+.bf-tabs button.on { background: var(--accent-soft); border-color: color-mix(in srgb, var(--accent) 40%, transparent); color: var(--accent); }
+.bf-tabs button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.bf-tabs i { font-style: normal; font-size: 11px; font-weight: 700; width: 19px; height: 19px; border-radius: 50%; display: grid; place-items: center; background: var(--surface-2); color: var(--muted); }
+.bf-tabs button.on i { background: var(--accent); color: #fff; }
+.bf-tabs em { font-style: normal; font-weight: 800; color: var(--good-text); }
+.bf-tabs em:empty { display: none; }
+.bf-pane { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px 16px; align-content: start; min-height: 300px; }
+.bf-pane[hidden] { display: none; }
+.bf-pane > .po-files { grid-column: 1 / -1; }
+.modal-body .bf-pane > .sub-h:first-child { border-top: 0; padding-top: 4px; }
+@media (max-width: 640px) {
+  .bf-tabs { top: -14px; margin: -14px -16px 0; padding: 10px 16px 8px; }
+  .bf-pane { grid-template-columns: minmax(0, 1fr); min-height: 0; }
+}
