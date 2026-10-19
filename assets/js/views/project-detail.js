@@ -9,6 +9,9 @@
     { key: 'cost', label: 'ค่าใช้จ่าย', icon: 'coins', group: 'ต้นทุนและการเงิน' },
     { key: 'cashflow', label: 'Cash Flow', icon: 'scurve', group: 'ต้นทุนและการเงิน' },
     { key: 'po', label: 'PO', icon: 'truck', group: 'ต้นทุนและการเงิน' },
+    { key: 'changes', label: 'VO งานเพิ่ม-ลด', icon: 'wrench', group: 'ต้นทุนและการเงิน' },
+    { key: 'billing', label: 'งวดเงิน', icon: 'proposal', group: 'ต้นทุนและการเงิน' },
+    { key: 'risks', label: 'ความเสี่ยง', icon: 'alert', group: 'หน้างานและทีม' },
     { key: 'quality', label: 'Quality · NCR', icon: 'quality', group: 'หน้างานและทีม' },
     { key: 'safety', label: 'Safety', icon: 'safety', group: 'หน้างานและทีม' },
     { key: 'team', label: 'ทีม & ชั่วโมง', icon: 'people', group: 'หน้างานและทีม' },
@@ -53,6 +56,7 @@
         ${full ? (p.status === 'closed' ? U.badge('neutral', 'Closed') : p.status === 'onhold' ? U.badge('warning', 'On hold') : U.badge(h, U.healthLabel[h])) : ''}
         ${PM.can('cost.edit') ? '<button class="btn" data-action="new-cost">+ ค่าใช้จ่าย</button>' : ''}
         <button class="btn" data-action="edit-costs">Plan cost</button>
+        <button class="btn" data-action="report" title="รายงานความคืบหน้าประจำเดือน — พิมพ์ / บันทึก PDF">📄 รายงานประจำเดือน</button>
         <button class="btn" data-action="edit-project">แก้ไขโครงการ</button>
       </div>
       ${full ? `<div class="card"><div class="card-b">
@@ -74,13 +78,14 @@
 
     const tabEl = el.querySelector('#tab');
     const rerender = () => PM.views.project(el, params);
-    ({ overview, timeline: timelineTab, boq: boqTab, cost: costTab, cashflow: cashflowTab, quality, safety, team, po: poTab }[tab] || overview)(tabEl, p, m, rerender);
+    ({ overview, timeline: timelineTab, boq: boqTab, changes: (...a) => PM.changesTab(...a), billing: (...a) => PM.billingTab(...a), risks: (...a) => PM.risksTab(...a), cost: costTab, cashflow: cashflowTab, quality, safety, team, po: poTab }[tab] || overview)(tabEl, p, m, rerender);
 
     el.onclick = (e) => {
       const a = e.target.closest('[data-action]');
       if (!a) return;
       const act = a.dataset.action, id = a.dataset.id;
       if (act === 'edit-project') V.projectForm(p, null, rerender);
+      if (act === 'report') PM.projectReport(p); // report.js
       if (act === 'bid-files') { const b = PM.find('bids', id); if (b && PM.canSeeBidPrice(b)) PM.poFiles.showList(`ไฟล์แนบของ ${b.code} (ใบเสนอราคา / Inquiry)`, b.files); }
       if (act === 'edit-costs') costForm(p, rerender);
       if (act === 'new-cost') PM.costEntryForm(p, null, rerender);
@@ -309,7 +314,7 @@
             <td><span class="title">${esc(n.no)}</span></td><td>${U.date(n.date)}</td><td>${esc(U.phaseLabel(n.phase))}</td>
             <td>${esc(n.category)}</td>
             <td>${U.badge(n.severity === 'Critical' ? 'critical' : n.severity === 'Major' ? 'serious' : 'neutral', n.severity)}</td>
-            <td>${esc(n.description)}${n.action ? `<small>CA: ${esc(n.action)}</small>` : ''}</td><td>${esc(n.responsible)}</td>
+            <td>${n.source === 'weekly-plan' ? '<span class="chip" title="เปิดจากงานที่ไม่เสร็จใน Weekly Plan">Weekly Plan</span> ' : ''}${esc(n.description)}${n.action ? `<small>CA: ${esc(n.action)}</small>` : ''}</td><td>${esc(n.responsible)}</td>
             <td class="num">${PM.diffDays(n.date, n.status === 'closed' && n.closedDate ? n.closedDate : T)}</td>
             <td>${n.status === 'closed' ? U.badge('good', 'Closed') : U.badge('warning', 'Open')}</td>
             <td>${n.status === 'open' ? `<button class="btn sm" data-action="close-ncr" data-id="${n.id}">Close</button>` : ''}</td></tr>`).join('')}
@@ -328,7 +333,7 @@
     const isNew = !ncr;
     const n = ncr || {
       id: PM.uid('N'), projectId: p.id,
-      no: `NCR-${p.code.replace(/^PJ-/, '').replace('-PROJ-', '-')}-${String(PM.db.ncrs.filter((x) => x.projectId === p.id).length + 1).padStart(3, '0')}`,
+      no: PM.nextNcrNo(p),
       date: T, phase: 'construction', category: 'Workmanship', severity: 'Minor', description: '', responsible: '', action: '', status: 'open', closedDate: '',
     };
     U.modal({

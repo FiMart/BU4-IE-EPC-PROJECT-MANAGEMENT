@@ -295,7 +295,7 @@
     const now = new Date();
     el.innerHTML = `<div class="pres${state.playing ? '' : ' paused'}">
       <header class="pres-top">
-        <div class="pres-brand"><div class="brand-mark">BU4</div><div><b>${esc(PM.COMPANY)}</b><small>BU4 IE/EPC Project Management</small></div></div>
+        <div class="pres-brand"><span class="logo-plate">${PM.logoImg('pres-logo')}</span><div><b>BU4 IE/EPC</b><small>Project Management</small></div></div>
         <div class="pres-title"><h1>${esc(s.title)}</h1><p>${esc(s.sub)}</p></div>
         <div class="pres-time"><b id="pres-clock">${now.toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' })}</b><small>${esc(U.date(PM.today()))} · ข้อมูล ${PM.cloud && PM.cloud.enabled ? 'Cloud' : 'ในเครื่อง'}</small></div>
       </header>

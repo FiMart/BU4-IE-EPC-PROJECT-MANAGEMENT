@@ -186,6 +186,8 @@ ${sheets.map((_, i) => `<Override PartName="/xl/worksheets/sheet${i + 1}.xml" Co
   header { display: flex; justify-content: space-between; align-items: flex-end; gap: 16px; border-bottom: 2px solid #0b2f6b; padding-bottom: 8px; margin-bottom: 10px; }
   header h1 { margin: 0; font-size: 18px; color: #0b2f6b; }
   header .co { font-weight: 700; font-size: 12px; }
+  header .hl { display: flex; align-items: center; gap: 12px; }
+  header .logo { height: 46px; width: auto; flex: none; }
   header .meta { text-align: right; color: #3f5068; font-size: 10px; }
   h2 { font-size: 13px; margin: 14px 0 6px; color: #0b2f6b; }
   table { width: 100%; border-collapse: collapse; }
@@ -203,7 +205,7 @@ ${sheets.map((_, i) => `<Override PartName="/xl/worksheets/sheet${i + 1}.xml" Co
 </style></head><body>
 <div class="bar"><button type="button" onclick="window.print()">พิมพ์ / บันทึกเป็น PDF</button><span>เลือกเครื่องพิมพ์ "Save as PDF" / "บันทึกเป็น PDF" เพื่อได้ไฟล์ PDF</span></div>
 <main>
-  <header><div><div class="co">${esc(PM.COMPANY)}</div><h1>${esc(rep.title)}</h1></div><div class="meta">${esc(rep.subtitle || '')}</div></header>
+  <header><div class="hl"><img class="logo" src="${esc(PM.logoUrl(true))}" alt="${esc(PM.COMPANY)}"><div><div class="co">${esc(PM.COMPANY)}</div><h1>${esc(rep.title)}</h1></div></div><div class="meta">${esc(rep.subtitle || '')}</div></header>
   ${rep.sheets.map(section).join('')}
   <footer>BU4 IE/EPC Project Management · ${esc(rep.filename)}</footer>
 </main>

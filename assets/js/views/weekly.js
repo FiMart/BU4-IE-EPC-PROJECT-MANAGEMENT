@@ -29,12 +29,25 @@
     return o ? o.label : 'Overhead';
   }
 
+  /* A task can have several people: p.resourceIds (p.resourceId = the first one, kept for older data / other pages).
+     plannedHours are per person — each one carries them in their loading and timesheet. */
+  PM.planPeople = (p) => (Array.isArray(p.resourceIds) && p.resourceIds.length ? p.resourceIds : p.resourceId ? [p.resourceId] : []);
+  PM.planHas = (p, id) => PM.planPeople(p).includes(id);
+  /* people from other departments: typed names (no record in Resources) — shown with the task, not in loading / Timesheet */
+  PM.planGuests = (p) => (Array.isArray(p.guests) ? p.guests.filter(Boolean) : []);
+  const headcount = (p) => PM.planPeople(p).length + PM.planGuests(p).length;
+  const peopleText = (p) => PM.planPeople(p).map((id) => U.resourceName(id)).concat(PM.planGuests(p).map((g) => `${g} (นอกแผนก)`)).join(', ') || '–';
+  const peopleShort = (p) => { const all = PM.planPeople(p).map(firstName).concat(PM.planGuests(p).map((g) => g.split(/\s+/)[0])); return all.slice(0, 2).join(', ') + (all.length > 2 ? ` +${all.length - 2}` : ''); };
+  const peopleChips = (p) => PM.planPeople(p).map((id) => `<span class="who-chip">${esc(U.resourceName(id))}</span>`)
+    .concat(PM.planGuests(p).map((g) => `<span class="who-chip guest" title="ผู้รับผิดชอบนอกแผนก">${esc(g)}<em>นอกแผนก</em></span>`)).join('') || '–';
+  const manHours = (p) => (p.plannedHours || 0) * Math.max(1, headcount(p)); // everyone on the task, other departments included
+
   PM.planStats = function (list) {
     const count = (s) => list.filter((p) => p.status === s).length;
     const done = count('done');
     return {
       total: list.length, done, notDone: count('not_done'), inProgress: count('in_progress'), planned: count('planned'),
-      hours: PM.sum(list, (p) => p.plannedHours || 0),
+      hours: PM.sum(list, manHours), // man-hours: hours × people on each task
       ppc: list.length ? done / list.length : null,
     };
   };
@@ -49,7 +62,7 @@
     const canEdit = PM.can('plan.edit'), canStatus = PM.can('plan.status');
 
     const match = (p) =>
-      (!state.person || p.resourceId === state.person) &&
+      (!state.person || PM.planHas(p, state.person)) &&
       (!state.project ||
         (state.project === '__bids' ? p.kind === 'bid'
           : state.project === '__overhead' ? p.kind === 'overhead'
@@ -66,7 +79,7 @@
     const people = db.resources.filter((r) => r.active !== false);
     const ts = db.timesheets.filter((t) => t.date >= week && t.date <= end);
     const loading = people.filter((r) => !state.person || r.id === state.person).map((r) => {
-      const mine = weekAll.filter((p) => p.resourceId === r.id);
+      const mine = weekAll.filter((p) => PM.planHas(p, r.id));
       const leave = PM.sum(ts.filter((t) => t.resourceId === r.id && t.refId === 'leave'), (t) => t.hours);
       return {
         r, mine,
@@ -148,11 +161,14 @@
       if (t.dataset.planStatus) {
         const p = findPlan(t.dataset.planStatus);
         if (!p || !PM.can('plan.status')) return;
+        // "ไม่เสร็จ" goes straight to the NCR form (reason + NCR in one step) — the status changes only when it is saved
+        if (t.value === 'not_done' && p.status !== 'not_done') { rerender(); notDone(p, rerender); return; }
+        const ncr = p.status === 'not_done' && p.ncrId && PM.find('ncrs', p.ncrId);
         p.status = t.value;
         if (p.status !== 'not_done') p.reason = '';
         if (p.status === 'done' && p.qtyPlan && (p.qtyDone || 0) < p.qtyPlan) p.qtyDone = p.qtyPlan;
         PM.upsert('plans', p);
-        U.toast(p.status === 'not_done' ? 'เลือกสาเหตุที่งานไม่เสร็จด้วย' : `อัปเดตเป็น ${statusInfo(p.status).label}`);
+        U.toast(ncr && ncr.status === 'open' ? `อัปเดตเป็น ${statusInfo(p.status).label} — ${ncr.no} ยังเปิดอยู่ ปิดได้ที่หน้าโครงการ → Quality · NCR` : `อัปเดตเป็น ${statusInfo(p.status).label}`, ncr ? 4500 : 2200);
         rerender();
         return;
       }
@@ -167,7 +183,9 @@
     el.onclick = (e) => {
       const seg = e.target.closest('[data-seg]');
       if (seg) { state[seg.dataset.seg] = seg.dataset.val; rerender(); return; }
-      if (e.target.closest('select, input')) return;
+      if (e.target.closest('select, input, a[href]')) return; // the NCR link opens the project's Quality tab
+      const ncrBtn = e.target.closest('[data-action="ncr"]');
+      if (ncrBtn) { const p = findPlan(ncrBtn.dataset.id); if (p && PM.can('plan.status')) notDone(p, rerender); return; }
       const a = e.target.closest('[data-action]');
       if (a) {
         const act = a.dataset.action;
@@ -177,7 +195,7 @@
         if (act === 'new' && canEdit) planForm(null, rerender);
         if (act === 'edit' && canEdit) planForm(findPlan(a.dataset.id), rerender);
         if (act === 'carry' && canEdit) carryOver(rerender);
-        if (act === 'new-on' && canEdit) planForm(null, rerender, { dueDate: a.dataset.day, resourceId: a.dataset.person || state.person || '' });
+        if (act === 'new-on' && canEdit) { const who = a.dataset.person || state.person || ''; planForm(null, rerender, { dueDate: a.dataset.day, resourceIds: who ? [who] : null }); }
         return;
       }
       const person = e.target.closest('tr[data-person]');
@@ -194,7 +212,9 @@
     el.ondragstart = (e) => {
       const card = e.target.closest && e.target.closest('.cal-card[draggable="true"]');
       if (!card) return;
-      e.dataTransfer.setData('text/plain', card.dataset.plan);
+      // which person's row it was dragged from (calendar by person) — a task with several people moves only that one
+      const from = card.closest('[data-drop-person]');
+      e.dataTransfer.setData('text/plain', card.dataset.plan + '|' + (from ? from.dataset.dropPerson : ''));
       e.dataTransfer.effectAllowed = 'move';
       card.classList.add('dragging');
     };
@@ -215,15 +235,21 @@
       const zone = e.target.closest && e.target.closest('[data-drop-day]');
       if (!zone || !canEdit) return;
       e.preventDefault();
-      const p = findPlan(e.dataTransfer.getData('text/plain'));
+      const [planId, from] = e.dataTransfer.getData('text/plain').split('|');
+      const p = findPlan(planId);
       if (!p) return;
       const day = zone.dataset.dropDay, who = zone.dataset.dropPerson;
-      if (p.dueDate === day && (!who || p.resourceId === who)) { el.ondragend(); return; }
+      const swap = who && from && who !== from; // dropped on another person's row
+      if (p.dueDate === day && !swap) { el.ondragend(); return; }
       p.dueDate = day;
       p.week = PM.monday(day);
-      if (who) p.resourceId = who;
+      if (swap) {
+        const ids = PM.planPeople(p).map((id) => (id === from ? who : id)).filter((id, i, a) => a.indexOf(id) === i);
+        p.resourceIds = ids;
+        p.resourceId = ids[0];
+      }
       PM.upsert('plans', p);
-      U.toast(`ย้าย "${p.title}" ไป ${dayName(day)} ${U.date(day)}${who ? ' · ' + U.resourceName(who) : ''}`);
+      U.toast(`ย้าย "${p.title}" ไป ${dayName(day)} ${U.date(day)}${swap ? ` · ${U.resourceName(from)} → ${U.resourceName(who)}` : ''}`);
       rerender();
     };
   };
@@ -235,20 +261,21 @@
   function calCard(p, T, canEdit, canStatus, mini) {
     const s = statusInfo(p.status);
     const late = p.status !== 'done' && p.status !== 'not_done' && p.dueDate < T;
-    const tip = `${p.title}\n${itemLabel(p)}\n${U.resourceName(p.resourceId)} · ${U.num(p.plannedHours, 1)} h${p.qtyPlan ? `\n${U.num(p.qtyDone || 0)} / ${U.num(p.qtyPlan)} ${p.unit || ''}` : ''}\nสถานะ: ${s.th}${p.reason ? ' — ' + p.reason : ''}\nสร้างโดย: ${creatorText(p)}`;
+    const n = headcount(p);
+    const tip = `${p.title}\n${itemLabel(p)}\nผู้รับผิดชอบ: ${peopleText(p)}\n${U.num(p.plannedHours, 1)} h${n > 1 ? ` / คน × ${n} คน = ${U.num(manHours(p), 1)} h` : ''}${p.qtyPlan ? `\nปริมาณ ${U.num(p.qtyDone || 0)} / ${U.num(p.qtyPlan)}` : ''}\nสถานะ: ${s.th}${p.reason ? ' — ' + p.reason : ''}\nสร้างโดย: ${creatorText(p)}`;
     return `<article class="cal-card st-${esc(p.status)}${mini ? ' mini' : ''}${late ? ' late' : ''}" data-plan="${esc(p.id)}"
         draggable="${canEdit ? 'true' : 'false'}" ${canEdit ? 'tabindex="0" role="button"' : ''} data-tip="${esc(tip)}">
       <div class="cal-title">${esc(p.title)}</div>
       ${mini ? `<div class="cal-meta">${U.num(p.plannedHours, 1)} h · ${esc(s.th)}</div>` : `
       <div class="cal-meta">${esc(itemLabel(p))}</div>
       <div class="cal-foot">
-        <span class="cal-who">${esc(firstName(p.resourceId))}</span>
-        <span>${U.num(p.plannedHours, 1)} h</span>
-        ${p.qtyPlan ? `<span>${U.num(p.qtyDone || 0)}/${U.num(p.qtyPlan)} ${esc(p.unit || '')}</span>` : ''}
+        <span class="cal-who">${n > 1 ? '<i class="cal-team" aria-hidden="true">👥</i>' : ''}${esc(peopleShort(p))}</span>
+        <span>${U.num(p.plannedHours, 1)} h${n > 1 ? ` × ${n}` : ''}</span>
+        ${p.qtyPlan ? `<span>${U.num(p.qtyDone || 0)}/${U.num(p.qtyPlan)}</span>` : ''}
         ${late ? '<span class="cal-late">เลยกำหนด</span>' : ''}
       </div>
       ${canStatus ? `<select class="plan-st st-${esc(p.status)}" data-plan-status="${esc(p.id)}" aria-label="สถานะ">${PM.PLAN_STATUS.map((x) => `<option value="${x.key}"${x.key === p.status ? ' selected' : ''}>${esc(x.th)}</option>`).join('')}</select>` : U.badge(s.level, s.th)}
-      ${p.status === 'not_done' && canStatus ? `<select class="plan-reason" data-plan-reason="${esc(p.id)}" aria-label="สาเหตุ">${U.options(PM.PLAN_REASONS, p.reason, '— เลือกสาเหตุ —')}</select>` : ''}`}
+      ${p.status === 'not_done' ? `<div class="cal-ncr"><span>${esc(p.reason || 'ไม่ระบุสาเหตุ')}</span>${ncrLink(p, canStatus)}</div>` : ''}`}
     </article>`;
   }
 
@@ -263,7 +290,7 @@
       return `<section class="cal-day${d === T ? ' today' : ''}${i > 4 ? ' weekend' : ''}${!items.length ? ' is-empty' : ''}" data-drop-day="${d}">
         <header>
           <div class="cal-dh">${dayHead(d, T)}</div>
-          <small class="cal-sum">${items.length ? `${items.length} งาน · ${U.num(PM.sum(items, (p) => p.plannedHours || 0), 1)} h` : ''}</small>
+          <small class="cal-sum">${items.length ? `${items.length} งาน · ${U.num(PM.sum(items, manHours), 1)} h` : ''}</small>
           ${canEdit ? `<button class="icon-btn cal-add" type="button" data-action="new-on" data-day="${d}" aria-label="เพิ่มงานวันที่ ${U.date(d)}">＋</button>` : ''}
         </header>
         <div class="cal-list">${items.map((p) => calCard(p, T, canEdit, canStatus)).join('') || '<p class="cal-empty">ไม่มีงาน</p>'}</div>
@@ -273,15 +300,19 @@
 
   function calendarByPerson(list, week, T, canEdit) {
     const days = weekDays(week);
-    const withTasks = new Set(list.map((p) => p.resourceId));
+    const withTasks = new Set(list.flatMap(PM.planPeople));
     const people = PM.db.resources.filter((r) => (r.active !== false && (!state.person || r.id === state.person)) || withTasks.has(r.id))
       .filter((r) => canEdit || withTasks.has(r.id));
-    if (!people.length) return '<p class="empty">ยังไม่มีงานในสัปดาห์นี้</p>';
+    // tasks with only other departments' people (no one from the department) get a row of their own
+    const outside = state.person ? [] : list.filter((p) => !PM.planPeople(p).length && PM.planGuests(p).length);
+    if (!people.length && !outside.length) return '<p class="empty">ยังไม่มีงานในสัปดาห์นี้</p>';
+    const outsideRow = outside.length ? `<div class="cp-who guest-row"><b>ผู้ร่วมงานนอกแผนก</b><small>${Array.from(new Set(outside.flatMap(PM.planGuests))).slice(0, 3).map(esc).join(', ')}</small></div>
+      ${days.map((d, i) => `<div class="cp-cell${d === T ? ' today' : ''}${i > 4 ? ' weekend' : ''}" data-drop-day="${d}">${outside.filter((p) => p.dueDate === d).map((p) => calCard(p, T, canEdit, false, true)).join('')}</div>`).join('')}` : '';
     return `<div class="cal-people" style="--days:7">
       <div class="cp-corner">ผู้รับผิดชอบ</div>
       ${days.map((d, i) => `<div class="cp-head${d === T ? ' today' : ''}${i > 4 ? ' weekend' : ''}">${dayHead(d, T)}</div>`).join('')}
       ${people.map((r) => {
-        const mine = list.filter((p) => p.resourceId === r.id);
+        const mine = list.filter((p) => PM.planHas(p, r.id)); // a shared task shows in every assignee's row
         const hours = PM.sum(mine, (p) => p.plannedHours || 0);
         const cap = PM.cap(r);
         return `<div class="cp-who"><b>${esc(r.name)}</b><small>${U.num(hours, 1)} / ${U.num(cap)} h${hours > cap * 1.05 ? ' · <span class="cal-late">เกิน</span>' : ''}</small></div>
@@ -290,47 +321,48 @@
             ${canEdit ? `<button class="cp-add" type="button" data-action="new-on" data-day="${d}" data-person="${esc(r.id)}" aria-label="เพิ่มงานให้ ${esc(r.name)} วันที่ ${U.date(d)}">＋</button>` : ''}
           </div>`).join('')}`;
       }).join('')}
+      ${outsideRow}
     </div>
     ${personList(list, week, T, canEdit)}`;
   }
 
   /* phone version of "by person": one block per person, tasks listed by day (shown via CSS ≤ 640px) */
   function personList(list, week, T, canEdit) {
-    const people = PM.db.resources.filter((r) => list.some((p) => p.resourceId === r.id));
+    const people = PM.db.resources.filter((r) => list.some((p) => PM.planHas(p, r.id)));
     const addDay = T >= week && T <= PM.addDays(week, 6) ? T : PM.addDays(week, 4);
     return `<div class="cal-people-list">${people.map((r) => {
-      const mine = list.filter((p) => p.resourceId === r.id).sort((a, b) => (a.dueDate < b.dueDate ? -1 : 1));
+      const mine = list.filter((p) => PM.planHas(p, r.id)).sort((a, b) => (a.dueDate < b.dueDate ? -1 : 1));
       const hours = PM.sum(mine, (p) => p.plannedHours || 0), cap = PM.cap(r);
       return `<section class="cpl-person">
         <header><b>${esc(r.name)}</b><small>${U.num(hours, 1)} / ${U.num(cap)} h${hours > cap * 1.05 ? ' · <span class="cal-late">เกิน</span>' : ''}</small>
           ${canEdit ? `<button class="icon-btn cal-add" type="button" data-action="new-on" data-day="${addDay}" data-person="${esc(r.id)}" aria-label="เพิ่มงานให้ ${esc(r.name)}">＋</button>` : ''}</header>
         ${mine.map((p) => `<div class="cpl-row"><span class="cpl-day${p.dueDate === T ? ' today' : ''}">${esc(dayName(p.dueDate))}<b>${PM.parse(p.dueDate).getDate()}</b></span>${calCard(p, T, canEdit, false, true)}</div>`).join('')}
       </section>`;
-    }).join('') || '<p class="empty">ยังไม่มีงานในสัปดาห์นี้</p>'}</div>`;
+    }).join('')}${(() => {
+      const outside = state.person ? [] : list.filter((p) => !PM.planPeople(p).length && PM.planGuests(p).length).sort((a, b) => (a.dueDate < b.dueDate ? -1 : 1));
+      return outside.length ? `<section class="cpl-person"><header><b>ผู้ร่วมงานนอกแผนก</b></header>
+        ${outside.map((p) => `<div class="cpl-row"><span class="cpl-day${p.dueDate === T ? ' today' : ''}">${esc(dayName(p.dueDate))}<b>${PM.parse(p.dueDate).getDate()}</b></span>${calCard(p, T, canEdit, false, true)}</div>`).join('')}</section>` : '';
+    })() || (people.length ? '' : '<p class="empty">ยังไม่มีงานในสัปดาห์นี้</p>')}</div>`;
   }
 
   function tasksTable(list, T, canEdit, canStatus) {
     if (!list.length) {
       return `<p class="empty">ยังไม่มีงานในสัปดาห์นี้${canEdit ? ' — กด "+ เพิ่มงาน" หรือ "ยกงานค้างจากสัปดาห์ก่อน"' : ''}</p>`;
     }
-    return `<table class="tbl"><thead><tr><th>งาน</th><th>ผู้รับผิดชอบ</th><th>กำหนดเสร็จ</th><th class="num">ชั่วโมง</th><th class="num">ปริมาณ</th><th>สถานะ</th><th>สาเหตุ (ถ้าไม่เสร็จ)</th>${canEdit ? '<th></th>' : ''}</tr></thead><tbody>
+    return `<table class="tbl"><thead><tr><th>งาน</th><th>ผู้รับผิดชอบ</th><th>กำหนดเสร็จ</th><th class="num">ชั่วโมง</th><th class="num">ปริมาณ</th><th>สถานะ</th><th>ไม่เสร็จ: สาเหตุ · NCR</th>${canEdit ? '<th></th>' : ''}</tr></thead><tbody>
       ${list.map((p) => {
         const s = statusInfo(p.status);
         const late = p.status !== 'done' && p.status !== 'not_done' && p.dueDate < T;
         return `<tr class="${canEdit ? 'click' : ''}" data-plan="${esc(p.id)}">
           <td><span class="title">${esc(p.title)}</span><small>${esc(itemLabel(p))}${p.carriedFrom ? ' · ยกมาจากสัปดาห์ก่อน' : ''}</small></td>
-          <td>${esc(U.resourceName(p.resourceId))}</td>
+          <td>${peopleChips(p)}</td>
           <td>${esc(dayName(p.dueDate))} ${U.date(p.dueDate)} ${late ? U.badge('critical', 'เลยกำหนด') : ''}</td>
-          <td class="num">${U.num(p.plannedHours, p.plannedHours % 1 ? 1 : 0)}</td>
-          <td class="num">${p.qtyPlan ? `${U.num(p.qtyDone || 0)} / ${U.num(p.qtyPlan)} ${esc(p.unit || '')}` : '–'}</td>
+          <td class="num">${U.num(p.plannedHours, p.plannedHours % 1 ? 1 : 0)}${headcount(p) > 1 ? `<small>× ${headcount(p)} คน = ${U.num(manHours(p), 1)}</small>` : ''}</td>
+          <td class="num">${p.qtyPlan ? `${U.num(p.qtyDone || 0)} / ${U.num(p.qtyPlan)}` : '–'}</td>
           <td>${canStatus
             ? `<select class="plan-st st-${esc(p.status)}" data-plan-status="${esc(p.id)}" aria-label="สถานะ">${PM.PLAN_STATUS.map((x) => `<option value="${x.key}"${x.key === p.status ? ' selected' : ''}>${esc(x.th)}</option>`).join('')}</select>`
             : U.badge(s.level, s.th)}</td>
-          <td>${p.status === 'not_done'
-            ? (canStatus
-              ? `<select class="plan-reason" data-plan-reason="${esc(p.id)}" aria-label="สาเหตุ">${U.options(PM.PLAN_REASONS, p.reason, '— เลือกสาเหตุ —')}</select>`
-              : esc(p.reason || '–'))
-            : '–'}</td>
+          <td>${p.status === 'not_done' ? `<span class="nd-reason">${esc(p.reason || 'ไม่ระบุ')}</span> ${ncrLink(p, canStatus)}` : '–'}</td>
           ${canEdit ? `<td><button class="btn sm" data-action="edit" data-id="${esc(p.id)}">แก้ไข</button></td>` : ''}
         </tr>`;
       }).join('')}</tbody></table>`;
@@ -371,9 +403,10 @@
       id: PM.uid('W'), week: state.week, kind: 'project',
       refId: state.project && !state.project.startsWith('__') ? state.project : firstProject ? firstProject.id : '',
       phase: 'construction', title: '', resourceId: state.person || '', plannedHours: 8,
-      dueDate: PM.addDays(state.week, 4), qtyPlan: 0, qtyDone: 0, unit: '', status: 'planned', reason: '', note: '', carriedFrom: null,
+      dueDate: PM.addDays(state.week, 4), qtyPlan: 0, qtyDone: 0, status: 'planned', reason: '', note: '', carriedFrom: null,
     }, creatorStamp(), Object.fromEntries(Object.entries(defaults || {}).filter(([, v]) => v)));
-    const people = PM.db.resources.filter((r) => r.active !== false || r.id === x.resourceId).map((r) => ({ value: r.id, label: `${r.name} · ${PM.levelName(r.level)}` }));
+    const chosen = new Set(isNew && defaults && defaults.resourceIds ? defaults.resourceIds : PM.planPeople(x).length ? PM.planPeople(x) : state.person ? [state.person] : []);
+    const people = PM.db.resources.filter((r) => r.active !== false || chosen.has(r.id));
     const canDelete = !isNew && PM.canDeletePlan(x);
     const form = U.modal({
       title: isNew ? 'เพิ่มงานใน Weekly Plan' : x.title, wide: true,
@@ -386,35 +419,167 @@
         ${U.field('งาน / กิจกรรม', 'title', x.title, { required: true, full: true, placeholder: 'เช่น Install cable tray – Area A' })}
         <label><span>Work item (โครงการ / bid)</span>${workItemSelect(x.kind + '|' + x.refId)}</label>
         ${U.field('Phase', 'phase', x.phase || 'construction', { options: PM.PHASES.map((p) => ({ value: p.key, label: p.label })) })}
-        ${U.field('ผู้รับผิดชอบ', 'resourceId', x.resourceId, { options: people, placeholder: '— เลือก —', required: true })}
-        ${U.field('ชั่วโมงตามแผน', 'plannedHours', x.plannedHours, { type: 'number', min: 0, step: 0.5 })}
+        <div class="full pp" data-pp>
+          <div class="pp-h"><span>ผู้รับผิดชอบ</span><small class="muted">เลือกได้หลายคน · คนแผนกอื่นพิมพ์ชื่อแล้วกด Enter</small></div>
+          <div class="pp-chips" data-pp-chips aria-live="polite"></div>
+          <div class="pp-qrow">
+            <input type="search" class="pp-q" list="dl-plan-guests" placeholder="ค้นหาชื่อในแผนก หรือพิมพ์ชื่อคนแผนกอื่น เช่น สมศรี (จัดซื้อ)" aria-label="ค้นหาหรือเพิ่มผู้รับผิดชอบ">
+            <button type="button" class="btn sm" data-pp-guest hidden></button>
+          </div>
+          <datalist id="dl-plan-guests">${Array.from(new Set(PM.db.plans.flatMap(PM.planGuests))).sort().map((g) => `<option value="${esc(g)}">`).join('')}</datalist>
+          <div class="pp-list" role="group" aria-label="รายชื่อพนักงาน">${people.map((r) => `<label class="pp-opt" data-text="${esc([r.name, PM.levelName(r.level), r.discipline].join(' ').toLowerCase())}">
+            <input type="checkbox" value="${esc(r.id)}"${chosen.has(r.id) ? ' checked' : ''}><span><b>${esc(r.name)}</b><small>${esc(PM.levelName(r.level))}${r.discipline ? ' · ' + esc(r.discipline) : ''}</small></span></label>`).join('')}</div>
+        </div>
+        ${U.field('ชั่วโมงตามแผน (ต่อคน)', 'plannedHours', x.plannedHours, { type: 'number', min: 0, step: 0.5, hint: ' ' })}
         ${U.field('กำหนดเสร็จ', 'dueDate', x.dueDate, { type: 'date', required: true, hint: 'สัปดาห์ของงานคำนวณจากวันนี้' })}
-        ${U.field('หน่วย', 'unit', x.unit, { placeholder: 'm, pcs, m³, sets…' })}
         ${U.field('ปริมาณตามแผน', 'qtyPlan', x.qtyPlan, { type: 'number', min: 0, step: 'any' })}
         ${U.field('ทำได้จริง', 'qtyDone', x.qtyDone, { type: 'number', min: 0, step: 'any' })}
         ${U.field('สถานะ', 'status', x.status, { options: PM.PLAN_STATUS.map((s) => ({ value: s.key, label: `${s.th} (${s.label})` })) })}
         ${U.field('สาเหตุ (ถ้าไม่เสร็จ)', 'reason', x.reason, { options: PM.PLAN_REASONS, placeholder: '—' })}
         ${U.field('หมายเหตุ', 'note', x.note, { type: 'textarea', full: true, rows: 2 })}`,
-      onSubmit: (f) => {
+      onSubmit: (f, frm) => {
         const [kind, refId] = (f.item || '').split('|');
+        const ids = Array.from(frm.querySelectorAll('.pp-list input:checked')).map((i) => i.value);
         if (!refId) { alert('กรุณาเลือก Work item'); return false; }
-        if (f.status === 'not_done' && !f.reason) { alert('งานที่ไม่เสร็จ กรุณาเลือกสาเหตุ'); return false; }
+        if (!ids.length && !guests.length) { alert('กรุณาเลือกผู้รับผิดชอบอย่างน้อย 1 คน (คนในแผนก หรือพิมพ์ชื่อคนแผนกอื่น)'); frm.querySelector('.pp-q').focus(); return false; }
+        // newly "ไม่เสร็จ" → save the rest first, then the NCR form takes the reason and sets the status
+        const toNcr = f.status === 'not_done' && x.status !== 'not_done';
+        if (f.status === 'not_done' && !toNcr && !f.reason) { alert('งานที่ไม่เสร็จ กรุณาเลือกสาเหตุ'); return false; }
         Object.assign(x, {
-          title: f.title, kind, refId, phase: kind === 'project' ? f.phase : '', resourceId: f.resourceId,
+          title: f.title, kind, refId, phase: kind === 'project' ? f.phase : '',
+          resourceIds: ids, resourceId: ids[0] || '', // resourceId = first person, for older data / pages that read one
+          guests: guests.slice(), // other departments (typed names)
           plannedHours: f.plannedHours, dueDate: f.dueDate, week: PM.monday(f.dueDate),
-          unit: f.unit, qtyPlan: f.qtyPlan, qtyDone: f.qtyDone, status: f.status,
-          reason: f.status === 'not_done' ? f.reason : '', note: f.note,
+          qtyPlan: f.qtyPlan, qtyDone: f.qtyDone, status: toNcr ? x.status : f.status,
+          reason: f.status === 'not_done' && !toNcr ? f.reason : '', note: f.note,
         });
+        delete x.unit; // the unit field was removed from Weekly Plan
         PM.upsert('plans', x);
-        U.toast(x.week === state.week ? 'บันทึกแล้ว' : `บันทึกแล้ว — ย้ายไปสัปดาห์ ${U.date(x.week)}`);
         done();
+        if (toNcr) { setTimeout(() => notDone(x, done, { reason: f.reason }), 220); return; } // after this form has closed
+        U.toast(x.week === state.week ? 'บันทึกแล้ว' : `บันทึกแล้ว — ย้ายไปสัปดาห์ ${U.date(x.week)}`);
       },
     });
     const item = form.querySelector('[name=item]'), phase = form.querySelector('[name=phase]');
     const sync = () => { phase.disabled = !item.value.startsWith('project|'); };
     item.addEventListener('change', sync);
     sync();
+
+    /* people picker: ticked names + typed names from other departments show as chips (✕ to remove) ·
+       the box searches the department list; a name that is not in it can be added as "นอกแผนก" (Enter or the button) */
+    const guests = PM.planGuests(x).slice();
+    const pp = form.querySelector('[data-pp]'), chips = pp.querySelector('[data-pp-chips]'), q = pp.querySelector('.pp-q'), addBtn = pp.querySelector('[data-pp-guest]');
+    const hoursHint = form.plannedHours.parentElement.querySelector('small');
+    const drawPeople = () => {
+      const on = Array.from(pp.querySelectorAll('.pp-list input:checked'));
+      chips.innerHTML = on.length || guests.length
+        ? on.map((i) => `<span class="who-chip">${esc(U.resourceName(i.value))}<button type="button" data-pp-drop="${esc(i.value)}" aria-label="เอา ${esc(U.resourceName(i.value))} ออก">✕</button></span>`).join('')
+          + guests.map((g, k) => `<span class="who-chip guest">${esc(g)}<em>นอกแผนก</em><button type="button" data-pp-unguest="${k}" aria-label="เอา ${esc(g)} ออก">✕</button></span>`).join('')
+        : '<span class="muted">ยังไม่ได้เลือก — ติ๊กชื่อด้านล่าง หรือพิมพ์ชื่อคนแผนกอื่น</span>';
+      pp.querySelectorAll('.pp-opt').forEach((l) => l.classList.toggle('on', l.querySelector('input').checked));
+      const n = on.length + guests.length, h = Number(form.plannedHours.value) || 0;
+      if (hoursHint) hoursHint.textContent = n > 1 ? `รวม ${U.num(h * n, 1)} ชั่วโมงคน (${n} คน × ${U.num(h, 1)} h)` : 'ชั่วโมงที่แต่ละคนใช้กับงานนี้';
+    };
+    const filterList = () => {
+      const raw = q.value.trim(), w = raw.toLowerCase();
+      let shown = 0;
+      pp.querySelectorAll('.pp-opt').forEach((l) => { l.hidden = !!w && !l.dataset.text.includes(w); if (!l.hidden) shown++; });
+      // a typed name that is not one of the department → offer it as a person from another department
+      const exact = Array.from(pp.querySelectorAll('.pp-opt')).some((l) => l.querySelector('b').textContent.trim().toLowerCase() === w);
+      addBtn.hidden = !raw || exact || guests.includes(raw);
+      addBtn.textContent = `+ เพิ่ม "${raw}" (นอกแผนก)`;
+      return shown;
+    };
+    const addGuest = () => {
+      const name = q.value.trim().replace(/\s+/g, ' ');
+      if (!name || guests.includes(name)) return;
+      guests.push(name);
+      q.value = '';
+      filterList();
+      drawPeople();
+      q.focus();
+    };
+    pp.addEventListener('change', drawPeople);
+    form.plannedHours.addEventListener('input', drawPeople);
+    chips.addEventListener('click', (e) => {
+      const b = e.target.closest('[data-pp-drop]'), g = e.target.closest('[data-pp-unguest]');
+      if (g) { guests.splice(+g.dataset.ppUnguest, 1); filterList(); drawPeople(); return; }
+      if (!b) return;
+      const box = pp.querySelector(`.pp-list input[value="${CSS.escape(b.dataset.ppDrop)}"]`);
+      if (box) { box.checked = false; drawPeople(); }
+    });
+    q.addEventListener('input', filterList);
+    addBtn.addEventListener('click', addGuest);
+    q.addEventListener('keydown', (e) => {
+      if (e.key !== 'Enter') return;
+      e.preventDefault(); // Enter in this box never submits the form
+      if (!q.value.trim()) return;
+      const visible = Array.from(pp.querySelectorAll('.pp-opt')).filter((l) => !l.hidden);
+      // matches someone in the department → tick them (only when it is clear who); no match → another department's person
+      if (visible.length === 1) { const box = visible[0].querySelector('input'); box.checked = true; q.value = ''; filterList(); drawPeople(); }
+      else if (!visible.length) addGuest();
+    });
+    filterList();
+    drawPeople();
   }
+
+  /* ---------- "ไม่เสร็จ" → reason + NCR in one step ----------
+     project tasks: an NCR is opened on that project (or the task's NCR is updated and reopened) and linked both ways;
+     bid / overhead tasks have no project — pick one to log an NCR, or record only the reason */
+  function notDone(p, done, preset) {
+    const T = PM.today();
+    const proj = p.kind === 'project' ? PM.find('projects', p.refId) : null;
+    const old = p.ncrId ? PM.find('ncrs', p.ncrId) : null;
+    const reason = (preset && preset.reason) || p.reason || '';
+    const desc = old ? old.description
+      : `งานในแผนสัปดาห์ไม่เสร็จตามกำหนด: ${p.title} (กำหนดเสร็จ ${U.date(p.dueDate)})${p.qtyPlan ? ` — ทำได้ ${U.num(p.qtyDone || 0)} / ${U.num(p.qtyPlan)}` : ''}`;
+    const projects = PM.db.projects.filter((x) => x.status !== 'closed');
+    const form = U.modal({
+      title: 'งานไม่เสร็จ → บันทึก NCR', wide: true, submitLabel: old ? `บันทึก และอัปเดต ${old.no}` : proj ? 'บันทึก และเปิด NCR' : 'บันทึก',
+      body: `
+        <div class="full nd-head"><b>${esc(p.title)}</b><small>${esc(itemLabel(p))} · กำหนดเสร็จ ${U.date(p.dueDate)} · ผู้รับผิดชอบ ${esc(peopleText(p))}</small></div>
+        ${U.field('สาเหตุที่ไม่เสร็จ', 'reason', reason, { options: PM.PLAN_REASONS, placeholder: '— เลือกสาเหตุ —', required: true })}
+        ${proj ? `<div class="nd-proj"><span>NCR ของโครงการ</span><b>${esc(proj.code)} · ${esc(proj.name)}</b><small>${old ? `อัปเดต ${esc(old.no)}${old.status === 'closed' ? ' (เปิดใหม่)' : ''}` : `จะสร้าง ${esc(PM.nextNcrNo(proj))} · สถานะ Open`}</small></div>`
+          : U.field('บันทึก NCR ของโครงการ', 'project', old ? old.projectId : '', { options: projects.map((x) => ({ value: x.id, label: `${x.code} · ${x.name}` })), placeholder: '— ไม่บันทึก NCR (งาน Bid / Overhead) —' })}
+        ${U.field('ความรุนแรง', 'severity', old ? old.severity : 'Minor', { options: PM.SEVERITY })}
+        ${U.field('หมวด NCR', 'category', old ? old.category : PM.REASON_NCR_CATEGORY[reason] || 'Method', { options: PM.NCR_CATEGORIES })}
+        ${U.field('ผู้รับผิดชอบแก้ไข', 'responsible', old ? old.responsible : peopleText(p), { full: true })}
+        ${U.field('รายละเอียดปัญหา', 'description', desc, { type: 'textarea', full: true, rows: 3 })}
+        ${U.field('การแก้ไข / แผนรองรับ (Corrective action)', 'action', old ? old.action : '', { type: 'textarea', full: true, rows: 2, placeholder: 'เช่น ยกงานไปสัปดาห์หน้า · เร่งจัดหาวัสดุ · เพิ่มคน' })}
+        <p class="full muted" style="margin:0">ดู / ปิด NCR ได้ที่หน้าโครงการ → Quality · NCR · ถ้ากดยกเลิก สถานะงานจะไม่เปลี่ยน</p>`,
+      onSubmit: (f) => {
+        if (!f.reason) { alert('กรุณาเลือกสาเหตุที่งานไม่เสร็จ'); return false; }
+        const pj = proj || (f.project ? PM.find('projects', f.project) : null);
+        p.status = 'not_done';
+        p.reason = f.reason;
+        let ncr = null;
+        if (pj) {
+          ncr = old && old.projectId === pj.id ? old : {
+            id: PM.uid('N'), projectId: pj.id, no: PM.nextNcrNo(pj), date: T,
+            phase: p.kind === 'project' && p.phase ? p.phase : (PM.projectMetrics(pj).current || {}).key || 'construction',
+          };
+          Object.assign(ncr, {
+            category: f.category, severity: f.severity, responsible: f.responsible, description: f.description, action: f.action,
+            status: 'open', closedDate: '', planId: p.id, source: 'weekly-plan',
+          });
+          PM.upsert('ncrs', ncr);
+          p.ncrId = ncr.id;
+        }
+        PM.upsert('plans', p);
+        U.toast(ncr ? `บันทึกงานไม่เสร็จ · ${ncr === old ? 'อัปเดต' : 'เปิด'} ${ncr.no} แล้ว` : 'บันทึกงานไม่เสร็จแล้ว (ไม่ได้บันทึก NCR)', 3500);
+        done();
+      },
+    });
+    // the reason suggests the NCR category (until the category is picked by hand)
+    let picked = !!old;
+    form.category.addEventListener('change', () => { picked = true; });
+    form.reason.addEventListener('change', () => { if (!picked && PM.REASON_NCR_CATEGORY[form.reason.value]) form.category.value = PM.REASON_NCR_CATEGORY[form.reason.value]; });
+  }
+  const ncrLink = (p, canStatus) => {
+    const n = p.ncrId && PM.find('ncrs', p.ncrId);
+    if (n) return `<a class="ncr-link ${n.status === 'open' ? 'open' : ''}" href="#/projects/${esc(n.projectId)}/quality" title="เปิด ${esc(n.no)} (${n.status === 'open' ? 'Open' : 'Closed'})">${esc(n.no)}</a>`;
+    return canStatus ? `<button type="button" class="link-btn ncr-add" data-action="ncr" data-id="${esc(p.id)}">+ บันทึก NCR</button>` : '';
+  };
 
   function carryOver(done) {
     const prev = PM.addDays(state.week, -7);
@@ -426,7 +591,7 @@
       PM.db.plans.push(Object.assign({}, p, {
         id: PM.uid('W'), week: state.week, dueDate: PM.addDays(p.dueDate, 7),
         qtyPlan: Math.max(0, (p.qtyPlan || 0) - (p.qtyDone || 0)), qtyDone: 0,
-        status: 'planned', reason: '', carriedFrom: p.id,
+        status: 'planned', reason: '', carriedFrom: p.id, resourceIds: PM.planPeople(p).slice(), guests: PM.planGuests(p).slice(), ncrId: null,
       }, creatorStamp())); // the person who carries a task over creates (and may delete) the copy
     });
     PM.save();

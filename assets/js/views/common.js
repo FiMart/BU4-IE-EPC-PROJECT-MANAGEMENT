@@ -104,7 +104,7 @@
     if (!b) return false;
     const T = PM.today();
     // same rules as the buttons (and the database for the price): Sales who owns the bid, or Admin
-    if (['next', 'won', 'lost', 'nobid'].includes(a) && !PM.canEditBid(b)) { U.toast('เฉพาะ Sales ผู้รับผิดชอบงานนี้ หรือ Admin'); return true; }
+    if (['next', 'won', 'lost', 'nobid'].includes(a) && !PM.canEditBid(b)) { U.toast('เฉพาะ Admin · Project Manager · Engineer หรือ Sales ผู้รับผิดชอบงานนี้'); return true; }
     if (a === 'bid-files' && !PM.canSeeBidPrice(b)) return true;
     if (a === 'bid-files') { // 📎 on a card / row: open the attachments list (one file → open it directly)
       if ((b.files || []).length === 1) PM.poFiles.open(b.files[0].path);
@@ -160,15 +160,19 @@
     await PM.roles.loadTeam(); // user accounts for the Sales list
     const T = PM.today();
     const isNew = !bid;
-    const canEdit = PM.canEditBid(bid || null); // Admin · Sales (their own bids; any new inquiry)
-    if (isNew && !canEdit) { alert('เพิ่ม Inquiry ได้เฉพาะ Sales และ Admin'); return; }
-    const canPrice = isNew || PM.canSeeBidPrice(bid); // value · margin · quotation files
+    const canEdit = PM.canEditBid(bid || null); // Admin · PM · Engineer (every bid) · Sales (their own bids; any new inquiry)
+    if (isNew && !canEdit) { alert('เพิ่ม Inquiry ได้เฉพาะ Admin · Project Manager · Engineer · Sales'); return; }
+    // value · margin · quotation files: Admin and the owning Sales only (the database enforces it) —
+    // a PM / Engineer adding an inquiry leaves the price to the Sales chosen for it
+    const canPrice = isNew ? PM.seesBidPrices() : PM.canSeeBidPrice(bid);
     const b = bid || {
       id: PM.uid('B'), code: V.bidNoPrefix(),
       name: '', client: '', sector: 'Industrial', value: 0, margin: 10, estimator: '', boqItems: 0,
       dueDate: PM.addDays(T, 30), dates: { inquiry: T, estimate: '', proposal: '', submit: '' }, stage: 'inquiry',
       result: 'pending', resultDate: '', projectId: null, notes: '', sales: '', salesName: '', leadSource: 'Sales visit', contact: '',
     };
+    if (isNew && !canPrice) { b.value = null; b.margin = null; } // no price on the shared bid record (cloud.js sends price only via bidprices)
+    const est = b.estimate || {}, prop = b.proposal || {};
     // a salesperson opening "New inquiry" is adding their own lead: they are the Sales (their employee record, else their account)
     if (isNew) {
       const me = PM.auth && PM.auth.user;
@@ -177,9 +181,9 @@
       else if (me && PM.myRole() === 'sales') { b.sales = me.id; b.salesName = PM.auth.displayName(me); }
     }
     const sources = PM.LEAD_SOURCES.includes(b.leadSource) || !b.leadSource ? PM.LEAD_SOURCES : PM.LEAD_SOURCES.concat(b.leadSource);
-    const lockNote = '<p class="full perm-note">🔒 มูลค่า · Margin · ไฟล์ใบเสนอราคา เห็นได้เฉพาะ Sales ผู้รับผิดชอบงานนี้และ Admin</p>';
+    const lockNote = `<p class="full perm-note">🔒 มูลค่า · Margin · ไฟล์ใบเสนอราคา เห็นได้เฉพาะ Sales ผู้รับผิดชอบงานนี้และ Admin${isNew ? ' — Sales ที่เลือกด้านบนเป็นผู้กรอกภายหลัง' : ''}</p>`;
     const body = `
-      ${canEdit ? '' : '<p class="full perm-note">ดูได้อย่างเดียว — เพิ่ม / แก้ไข Inquiry, เลื่อนขั้น และบันทึกผล Won / Lost ได้เฉพาะ Sales ผู้รับผิดชอบงานนี้และ Admin</p>'}
+      ${canEdit ? '' : '<p class="full perm-note">ดูได้อย่างเดียว — เพิ่ม / แก้ไข Inquiry, เลื่อนขั้น และบันทึกผล Won / Lost ได้เฉพาะ Admin · Project Manager · Engineer และ Sales ผู้รับผิดชอบงานนี้</p>'}
       <div class="sub-h">ข้อมูลงานประมูล</div>
       ${U.field('Bid No.', 'code', b.code, { required: true })}
       ${U.field('ลูกค้า (Client)', 'client', b.client, { required: true })}
@@ -189,12 +193,29 @@
       ${U.field('ที่มาของงาน (Lead source)', 'leadSource', b.leadSource || '', { options: sources, placeholder: '— เลือก —' })}
       ${U.field('ผู้ติดต่อฝั่งลูกค้า (Contact)', 'contact', b.contact || '', { placeholder: 'ชื่อ / ตำแหน่ง / เบอร์โทร', full: true })}
       ${canPrice ? PM.poFiles.boxHtml(canEdit, 'ไฟล์แนบ — ใบเสนอราคา / เอกสาร Inquiry', 'ใบเสนอราคาที่ส่งให้ลูกค้า, TOR, แบบ, BOQ') : ''}
-      <div class="sub-h">ประมาณราคา</div>
-      ${U.field('Sector', 'sector', b.sector, { options: PM.SECTORS, full: true })}
-      ${canPrice ? `${U.field('มูลค่าประมาณการ (THB)', 'value', b.value, { type: 'number', min: 0, step: 'any' })}
-      ${U.field('Margin (%)', 'margin', b.margin, { type: 'number', step: 0.1 })}` : lockNote}
+      <div class="sub-h">การประมาณราคา (Estimate) — ทีม Engineer / PM กรอกได้</div>
+      ${U.field('Sector', 'sector', b.sector, { options: PM.SECTORS })}
+      ${U.field('สถานะการประมาณราคา', 'est_status', est.status || 'todo', { options: PM.EST_STATUS.map((s) => ({ value: s.key, label: s.label })) })}
       ${U.field('Estimator', 'estimator', b.estimator, { options: people(), placeholder: '— เลือก —' })}
+      ${U.field('ผู้ตรวจราคา (Reviewer)', 'est_reviewer', est.reviewer || '', { options: people(), placeholder: '— เลือก —' })}
       ${U.field('จำนวนรายการ BOQ (Quantity)', 'boqItems', b.boqItems, { type: 'number', min: 0 })}
+      <span></span>
+      <p class="full muted est-note">ต้นทุนประมาณการ (Cost estimate) — ต้นทุนของเรา ไม่ใช่ราคาขาย · ทุก Role ที่ดู Bidding เห็นได้</p>
+      ${U.field('ค่าวัสดุ / อุปกรณ์ (THB)', 'est_material', est.material || '', { type: 'number', min: 0, step: 'any' })}
+      ${U.field('ค่าแรง / ติดตั้ง (THB)', 'est_labour', est.labour || '', { type: 'number', min: 0, step: 'any' })}
+      ${U.field('ผู้รับเหมาช่วง (THB)', 'est_subcon', est.subcon || '', { type: 'number', min: 0, step: 'any' })}
+      ${U.field('อื่น ๆ / Overhead / Contingency (THB)', 'est_other', est.other || '', { type: 'number', min: 0, step: 'any' })}
+      <div class="full est-total"><span>ต้นทุนประมาณการรวม</span><b id="est-total">–</b><span id="est-margin"></span></div>
+      ${U.field('สมมติฐาน / ข้อยกเว้น (Assumptions / Exclusions)', 'est_notes', est.notes || '', { type: 'textarea', full: true, rows: 2 })}
+      <div class="sub-h">ราคาขาย — เฉพาะ Admin / Sales ผู้รับผิดชอบ</div>
+      ${canPrice ? `${U.field('มูลค่าประมาณการ / ราคาเสนอ (THB)', 'value', b.value, { type: 'number', min: 0, step: 'any' })}
+      ${U.field('Margin (%)', 'margin', b.margin, { type: 'number', step: 0.1 })}` : lockNote}
+      <div class="sub-h">จัดทำข้อเสนอ (Proposal)</div>
+      ${U.field('ผู้จัดทำข้อเสนอ', 'prop_owner', prop.owner || '', { options: people(), placeholder: '— เลือก —' })}
+      ${U.field('สถานะข้อเสนอ', 'prop_status', prop.status || 'todo', { options: PM.PROP_STATUS.map((s) => ({ value: s.key, label: s.label })) })}
+      <div class="full prop-checks"><span>เอกสารในข้อเสนอ</span><div>${PM.PROP_CHECKS.map((c) => `<label class="prop-check"><input type="checkbox" name="pc_${c.key}"${(prop.checks || {})[c.key] ? ' checked' : ''}> ${esc(c.label)}</label>`).join('')}</div></div>
+      ${U.field('หมายเหตุข้อเสนอ', 'prop_notes', prop.notes || '', { type: 'textarea', full: true, rows: 2 })}
+      ${PM.poFiles.boxHtml(canEdit, 'ไฟล์งานของทีม — ถอดปริมาณ / ประมาณราคา / ข้อเสนอทางเทคนิค', 'ทุกคนในทีมเห็นได้ (ใบเสนอราคาที่ส่งลูกค้าแนบด้านบน)', 'work')}
       <div class="sub-h">Timeline — Inquiry → Estimate → Proposal → Submit</div>
       ${U.field('Inquiry received', 'd_inquiry', b.dates.inquiry, { type: 'date', required: true })}
       ${U.field('Estimate started', 'd_estimate', b.dates.estimate, { type: 'date' })}
@@ -210,7 +231,7 @@
     const form = U.modal({
       title: isNew ? 'New inquiry' : `${b.code} · ${b.name}`, body, wide: true,
       onDelete: isNew || !canEdit ? null : () => {
-        PM.poFiles.remove((b.files || []).map((f) => f.path)).catch(() => { /* files may already be gone */ });
+        PM.poFiles.remove((b.files || []).concat(b.workFiles || []).map((f) => f.path)).catch(() => { /* files may already be gone */ });
         PM.remove('bids', b.id); U.toast('ลบแล้ว'); onSaved && onSaved();
       },
       onSubmit: !canEdit ? null : (f, frm) => {
@@ -226,6 +247,17 @@
       },
     });
     files = canPrice ? PM.poFiles.box(form, b.files, canEdit) : null;
+    const work = PM.poFiles.box(form, b.workFiles, canEdit, 'work'); // the team's working files (bidwork/…)
+    // total estimated cost — and, for those who see the price, the margin it leaves
+    const n = (x) => Number(x && x.value) || 0;
+    const drawCost = () => {
+      const cost = n(form.est_material) + n(form.est_labour) + n(form.est_subcon) + n(form.est_other);
+      form.querySelector('#est-total').textContent = cost ? U.money(cost) : '–';
+      const v = form.value ? n(form.value) : 0, mg = form.querySelector('#est-margin');
+      mg.innerHTML = cost && v ? `เทียบราคาเสนอ ${U.money(v)} → Margin จากต้นทุน <b class="${v - cost < 0 ? 'neg' : ''}">${U.pct((v - cost) / v, 1)}</b>` : '';
+    };
+    form.addEventListener('input', (e) => { if (/^est_|^value$/.test(e.target.name || '')) drawCost(); });
+    drawCost();
     if (!canEdit) { // view only
       form.querySelectorAll('input, select, textarea').forEach((i) => { i.disabled = true; });
       if (document.activeElement) document.activeElement.blur();
@@ -238,6 +270,11 @@
       const btn = frm.querySelector('[type=submit]');
       btn.disabled = true; btn.classList.add('loading');
       const { files: kept, problems } = files ? await files.commit(`bids/${b.id}`, btn) : { files: b.files, problems: [] };
+      const w = await work.commit(`bidwork/${b.id}`, btn); // working files: open to every role (not under bids/)
+      problems.push(...w.problems);
+      b.workFiles = w.files;
+      b.estimate = { status: f.est_status, reviewer: f.est_reviewer, material: f.est_material, labour: f.est_labour, subcon: f.est_subcon, other: f.est_other, notes: f.est_notes };
+      b.proposal = { status: f.prop_status, owner: f.prop_owner, notes: f.prop_notes, checks: Object.fromEntries(PM.PROP_CHECKS.map((c) => [c.key, !!f['pc_' + c.key]])) };
       Object.assign(b, {
         code: f.code, name: f.name, client: f.client, sector: f.sector,
         estimator: f.estimator, boqItems: f.boqItems, dueDate: f.dueDate, dates, result: f.result,

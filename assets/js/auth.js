@@ -175,7 +175,7 @@
 
   const SIDE = `
     <span class="orb"></span><span class="gridlines"></span>
-    <div class="brand"><div class="brand-mark">BU4</div><div><b>BU4 IE/EPC Project Management</b><small>${esc(PM.COMPANY)}</small></div></div>
+    <div class="auth-co"><span class="logo-plate">${PM.logoImg('auth-co-logo')}</span><div><b>BU4 IE/EPC Project Management</b><small>${esc(PM.COMPANY)}</small></div></div>
     <div class="auth-side-inner">
       <div class="auth-pitch">
         <span class="auth-eyebrow">Bidding · Execution · Resources</span>
@@ -197,7 +197,7 @@
     document.body.classList.remove('authed');
     const root = document.getElementById('auth-root');
     const card = `<div class="auth-card auth-${view}">
-        <div class="brand auth-brand-sm"><div class="brand-mark">BU4</div><div><b>BU4 IE/EPC Project Management</b><small>${esc(PM.COMPANY)}</small></div></div>
+        <div class="auth-brand-sm"><span class="logo-plate">${PM.logoImg('auth-sm-logo')}</span><div><b>BU4 IE/EPC Project Management</b><small>${esc(PM.COMPANY)}</small></div></div>
         ${o.notice ? `<div class="auth-msg ${o.notice.type || 'info'}" role="alert">${esc(o.notice.text)}</div>` : ''}
         ${VIEWS[view](o)}
       </div>`;

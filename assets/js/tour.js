@@ -116,6 +116,17 @@
       ],
     },
     {
+      key: 'commercial', topic: 'projects', route: 'project', title: 'VO · งวดเงิน · ความเสี่ยง · รายงานประจำเดือน', desc: 'งานเพิ่ม-ลด · วางบิลและรับเงิน · Risk matrix · รายงาน PDF', steps: [
+        { route: prj('changes'), sel: '#tab .grid', title: 'VO — งานเพิ่ม-ลด', text: 'บันทึกงานเพิ่ม / ลดจากสัญญา: มูลค่า · ต้นทุน · วันที่ขยาย · สถานะ — VO <b>อนุมัติแล้ว</b> รวมเป็น <b>มูลค่าสัญญาปรับปรุง</b> ใช้ต่อในงวดเงิน Cash Flow และรายงาน' },
+        { route: prj('billing'), sel: '#tab .grid', title: 'งวดเงิน — วางบิลและรับเงิน', text: 'วางบิลแล้ว · รับเงินแล้ว · <b>ค้างรับ</b> (เกินกำหนดขึ้นแดง) · <b>ผลงานที่ยังไม่ได้วางบิล</b> · Retention ที่ถูกหัก' },
+        { sel: card('#c-bill'), title: 'รับเงินจริง เทียบแผน', text: 'เส้นประ = แผนรับเงินจาก Cash Flow · เส้นทึบ = เงินที่รับจริง — ต่ำกว่าแผนมาก = ต้องตามเก็บเงิน' },
+        { sel: '[data-inv="new"]', need: 'billing.edit', title: 'วางบิลงวดใหม่', text: 'ระบบตั้งยอดตาม % งานเสร็จที่ยังไม่ได้เบิก และหักเงินล่วงหน้า / Retention ตามเงื่อนไขใน Cash Flow ให้ — เมื่อลูกค้าจ่ายเปลี่ยนสถานะเป็น "รับเงินแล้ว"' },
+        { route: prj('risks'), sel: '.rm', title: 'Risk Matrix', text: 'ความเสี่ยงและปัญหาของโครงการ วางตามโอกาส × ผลกระทบ — มุมขวาบนเสี่ยงที่สุด · คะแนน ≥ 15 ขึ้น "ต้องดำเนินการวันนี้"' },
+        { sel: '.risk-watch, #tab .card:last-child', title: 'ต้องติดตาม', text: 'ความเสี่ยงระดับสูงมาก · เลยกำหนดดำเนินการ · ปัญหาที่ยังไม่ปิด — แต่ละเรื่องมีผู้รับผิดชอบและแผนรับมือ' },
+        { sel: '[data-action="report"]', title: 'รายงานประจำเดือน (PDF)', text: 'กดครั้งเดียวได้รายงาน A4 พร้อมนำเสนอ: สรุปผู้บริหาร · S-Curve · ต้นทุน · VO · งวดเงิน · Cash Flow · Milestone · PO · NCR · Safety · ความเสี่ยง · ช่องลงนาม → กด "พิมพ์ / บันทึก PDF"' },
+      ],
+    },
+    {
       key: 'pos', topic: 'pos', route: 'pos', title: 'Purchase Orders', desc: 'สร้าง PO · ติดตามส่งของ · การจ่ายเงิน · ไฟล์แนบ', steps: [
         { route: '#/pos', sel: '#po-q', title: 'กรองและค้นหา PO', text: 'เลือกโครงการ · กรองสถานะ (ทั้งหมด / ยังไม่ส่งครบ / เลยกำหนด …) · ค้นหาเลข PO ผู้ขาย รายการ' },
         { sel: '#view .grid', title: 'สรุป PO', text: 'PO ที่ยังไม่ส่งครบ · เลยกำหนดส่ง · ต้องส่งใน 14 วัน · จ่ายเงินแล้วกี่ %' },
@@ -129,7 +140,7 @@
         { route: '#/weekly', sel: () => { const b = q('[data-action="this"]'); return b && b.parentElement; }, title: 'เลือกสัปดาห์', text: 'เลื่อนไปสัปดาห์ก่อน / ถัดไป หรือกลับมาสัปดาห์นี้' },
         { sel: '[data-action="new"]', need: 'plan.edit', title: 'เพิ่มงาน', text: 'กด <b>+ เพิ่มงาน</b> — หรือ "ยกงานค้างจากสัปดาห์ก่อน" มาต่อในสัปดาห์นี้' },
         { sel: '.modal', open: click('[data-action="new"]'), need: 'plan.edit', title: 'รายละเอียดงาน', text: 'ชื่องาน · โครงการ / Bid / Overhead · ผู้รับผิดชอบ · วัน · ชั่วโมง' },
-        { sel: ['.cal-wrap', '#view .card .tbl'], title: 'ปฏิทินงาน', text: 'ลากการ์ดไปวันอื่นเพื่อเลื่อนกำหนด · อัปเดตสถานะจากการ์ด · ถ้าไม่เสร็จให้เลือกสาเหตุ' },
+        { sel: ['.cal-wrap', '#view .card .tbl'], title: 'ปฏิทินงาน', text: 'ลากการ์ดไปวันอื่นเพื่อเลื่อนกำหนด · อัปเดตสถานะจากการ์ด · เลือก <b>ไม่เสร็จ</b> → ระบบเปิดฟอร์มสาเหตุ + <b>NCR</b> ของโครงการให้ทันที' },
         { sel: '#view .grid.cols-5', title: 'PPC', text: 'PPC = งานที่เสร็จ ÷ งานในแผน (เป้า ≥ 80%) · ชั่วโมงตามแผนเทียบ capacity ของทีม' },
         { sel: card('#c-reasons'), title: 'สาเหตุที่งานไม่เสร็จ', text: 'สาเหตุที่พบบ่อยใน 8 สัปดาห์ — ใช้แก้ปัญหาในการวางแผนสัปดาห์ถัดไป' },
       ],
@@ -137,8 +148,8 @@
     {
       key: 'timesheet', topic: 'timesheet', route: 'timesheet', need: 'resource.view', title: 'Timesheet และ Resource Utilization', desc: 'กรอกชั่วโมง · ทีมกรอกครบไหม · Utilization', steps: [
         { route: '#/timesheet', sel: '#ts-person', title: 'เลือกคนและสัปดาห์', text: 'เลือกพนักงาน แล้วเลื่อนสัปดาห์ที่ต้องการ' },
-        { sel: '#ts-grid', title: 'ตารางชั่วโมง', text: 'แต่ละแถว = งาน (โครงการ + Phase / Bid + ขั้น / Overhead) · กรอกชั่วโมงรายวัน แล้วกด <b>บันทึก Timesheet</b>' },
-        { sel: '[data-action="from-plan"]', need: 'timesheet.edit', title: 'เติมจาก Weekly Plan', text: 'ดึงงานในแผนสัปดาห์มาเป็นแถวให้อัตโนมัติ หรือ Copy rows จากสัปดาห์ก่อน (เฉพาะ Project Manager)' },
+        { sel: '#ts-grid', title: 'งานมาจาก Weekly Plan', text: 'แถวงานดึงจาก <b>Weekly Plan</b> ของคนนี้อย่างเดียว (ใต้ชื่อแถวคืองานในแผน · คอลัมน์ "แผน" = ชั่วโมงตามแผน) — กรอกชั่วโมงที่ทำจริงรายวัน บันทึกอัตโนมัติ · งานนอกแผนให้เพิ่มที่ Weekly Plan ก่อน' },
+        { sel: '#ts-oh', need: 'timesheet.edit', title: 'ลา / ประชุม / อบรม', text: 'สิ่งเดียวที่เพิ่มนอกแผนได้ — เลือกแล้วกด + เพิ่ม (เฉพาะ Project Manager)' },
         { sel: card('#ts-team'), title: 'สถานะการกรอกของทีม', text: 'ใครกรอกครบ / ขาดกี่ชั่วโมงเทียบ capacity' },
         { route: '#/resources', sel: card('#c-level'), title: 'Resource Utilization', text: 'Utilization = ชั่วโมง Billable ÷ ชั่วโมงที่มี เทียบเป้าของแต่ละ Level · ใครงานล้น / งานน้อย' },
       ],

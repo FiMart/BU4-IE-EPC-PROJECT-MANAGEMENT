@@ -44,6 +44,22 @@
     // quality
     const ncr = (db.ncrs || []).filter((n) => n.status === 'open' && n.severity === 'Critical' && active.some((p) => p.id === n.projectId));
     add({ level: 'critical', icon: 'quality', count: ncr.length, title: 'NCR ระดับ Critical ที่ยังเปิดอยู่', sub: codes(ncr, (n) => n.no, 3), href: ncr.length === 1 ? `#/projects/${ncr[0].projectId}/quality` : '#/projects' });
+    // billing: invoices issued and past their due date (billing.js)
+    const invLate = [];
+    active.forEach((p) => (p.invoices || []).forEach((i) => { if (PM.invOverdue && PM.invOverdue(i, T)) invLate.push({ p, i }); }));
+    add({ level: 'critical', icon: 'coins', count: invLate.length, title: 'ลูกค้าค้างชำระเกินกำหนด', sub: codes(invLate, (y) => `${y.p.code} ${y.i.no} ${U.money(PM.invNet(y.i))}`, 3), href: byProject(invLate).length === 1 ? `#/projects/${invLate[0].p.id}/billing` : '#/projects' });
+    // risks (risks.js): very high scores, and actions past their date
+    const riskHigh = [], riskLate = [];
+    if (PM.riskOpen) active.forEach((p) => (p.risks || []).forEach((r) => {
+      if (!PM.riskOpen(r)) return;
+      if (PM.riskScore(r) >= 15) riskHigh.push({ p, r }); else if (PM.riskOverdue(r, T)) riskLate.push({ p, r });
+    }));
+    add({ level: 'critical', icon: 'alert', count: riskHigh.length, title: 'ความเสี่ยง / ปัญหาระดับสูงมาก', sub: codes(riskHigh, (y) => `${y.p.code} ${y.r.title}`, 2), href: byProject(riskHigh).length === 1 ? `#/projects/${riskHigh[0].p.id}/risks` : '#/projects' });
+    add({ level: 'warning', icon: 'alert', count: riskLate.length, title: 'ความเสี่ยงเลยกำหนดดำเนินการ', sub: codes(riskLate, (y) => `${y.p.code} ${y.r.no}`, 3), href: byProject(riskLate).length === 1 ? `#/projects/${riskLate[0].p.id}/risks` : '#/projects' });
+    // VOs waiting for the client's approval for more than 30 days (changes.js)
+    const voWait = [];
+    active.forEach((p) => (p.changes || []).forEach((c) => { if (c.status === 'submitted' && c.date && PM.diffDays(c.date, T) > 30) voWait.push({ p, c }); }));
+    add({ level: 'info', icon: 'wrench', count: voWait.length, title: 'VO รออนุมัติเกิน 30 วัน', sub: codes(voWait, (y) => `${y.p.code} ${y.c.no}`, 3), href: byProject(voWait).length === 1 ? `#/projects/${voWait[0].p.id}/changes` : '#/projects' });
     // bidding: proposals due soon / overdue, not submitted yet
     const bids = (db.bids || []).filter((b) => b.result === 'pending' && !(b.dates && b.dates.submit) && b.dueDate);
     const bidLate = bids.filter((b) => b.dueDate < T), bidSoon = bids.filter((b) => b.dueDate >= T && PM.diffDays(T, b.dueDate) <= 3);

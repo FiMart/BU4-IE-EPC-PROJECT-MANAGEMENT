@@ -85,19 +85,20 @@
   /* ---------- attachment box (PO form, bid / inquiry form) ----------
      F.boxHtml() goes into the form body; F.box() wires it up. Files picked are uploaded when the
      form is saved (commit), files removed are deleted from Storage then. */
-  F.boxHtml = (canEdit, title, hint) => `
-    <div class="full po-files" data-files>
+  /* key: name of the box when a form has more than one (e.g. bid form: quotation files + the team's working files) */
+  F.boxHtml = (canEdit, title, hint, key) => `
+    <div class="full po-files" data-files="${esc(key || '')}">
       <div class="po-files-h"><b>${esc(title || 'ไฟล์แนบ')}</b><small class="muted">${esc(hint ? hint + ' · ' : '')}PDF, รูปภาพ, Excel, Word, CSV, ZIP · ไม่เกิน ${MAX_MB} MB ต่อไฟล์</small></div>
-      <ul class="po-file-list" id="po-file-list"></ul>
+      <ul class="po-file-list"${key ? '' : ' id="po-file-list"'}></ul>
       ${canEdit ? (F.available()
-        ? `<label class="btn sm po-attach"><input type="file" id="po-file-input" multiple accept="${ACCEPT}" hidden>📎 แนบไฟล์</label>`
+        ? `<label class="btn sm po-attach"><input type="file"${key ? '' : ' id="po-file-input"'} multiple accept="${ACCEPT}" hidden>📎 แนบไฟล์</label>`
         : '<p class="perm-note">แนบไฟล์ได้เมื่อเชื่อมต่อ Cloud (Supabase)</p>') : ''}
     </div>`;
-  F.box = function (form, files, canEdit) {
+  F.box = function (form, files, canEdit, key) {
     const keep = (files || []).slice(); // files that stay
     const removed = [];                 // files marked for deletion
     const pending = [];                 // new File objects to upload on save
-    const root = form.querySelector('[data-files]');
+    const root = form.querySelector(`[data-files="${key || ''}"]`);
     const listEl = root.querySelector('.po-file-list');
     const draw = () => {
       listEl.innerHTML = keep.map((f, i) => `<li>

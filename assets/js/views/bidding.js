@@ -51,7 +51,7 @@
       </div>
       <div class="card">
         <div class="card-h"><h2>${state.mode === 'kanban' ? 'Bid board' : 'Bid register'}</h2><p>${state.mode === 'kanban'
-          ? (PM.can('bid.edit') ? 'คลิกการ์ดเพื่อแก้ไข · ปุ่ม → เลื่อนไปขั้นถัดไป (บันทึกวันที่ = วันนี้) · เลื่อนขั้น / Won / Lost ได้เฉพาะงานของคุณ' : 'คลิกการ์ดเพื่อดูรายละเอียด · เลื่อนขั้นและบันทึกผล Won / Lost ทำได้เฉพาะ Sales ผู้รับผิดชอบงานและ Admin')
+          ? (PM.can('bid.edit') ? `คลิกการ์ดเพื่อแก้ไข · ปุ่ม → เลื่อนไปขั้นถัดไป (บันทึกวันที่ = วันนี้)${PM.myRole() === 'sales' ? ' · เลื่อนขั้น / Won / Lost ได้เฉพาะงานของคุณ' : ''}` : 'คลิกการ์ดเพื่อดูรายละเอียด · เลื่อนขั้นและบันทึกผล Won / Lost ทำได้เฉพาะ Admin · Project Manager · Engineer และ Sales ผู้รับผิดชอบงาน')
           : 'รายการ Bid ทั้งหมดในช่วงเวลาที่เลือก + งานที่ยังดำเนินการ'}</p></div>
         <div class="card-b">${state.mode === 'kanban' ? kanban(cols, hoursBy) : table(bids.filter((b) => match(b) && (b.result === 'pending' || inPeriod(b.dates.inquiry))), hoursBy)}</div>
       </div>

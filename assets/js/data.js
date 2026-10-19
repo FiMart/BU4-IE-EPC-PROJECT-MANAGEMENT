@@ -6,6 +6,11 @@
   /* Fixed branding — the company name is locked and not editable in the app */
   PM.APP_NAME = 'BU4 IE/EPC Project Management';
   PM.COMPANY = 'Flowlab & Service Co.,LTD';
+  /* company logo: web = 480 px (pages), full = 1001 px (printed documents / PDF) — transparent PNG, navy text,
+     so on dark backgrounds it sits on a white plate (.logo-plate) */
+  PM.LOGO = { web: 'assets/img/flowlab-logo.png', full: 'assets/img/flowlab-logo-full.png' };
+  PM.logoUrl = (full) => new URL(full ? PM.LOGO.full : PM.LOGO.web, document.baseURI).href; // absolute — works inside report windows
+  PM.logoImg = (cls, full) => `<img class="${cls || ''}" src="${full ? PM.logoUrl(true) : PM.LOGO.web}" alt="${PM.COMPANY}" decoding="async">`;
 
   /* ---------- constants ---------- */
   PM.BID_STAGES = [
@@ -22,6 +27,31 @@
      price row only to Admin and to the Sales who owns the bid (data.sql) — everyone else sees the bid without them.
      bid.owner = user id (auth) of the Sales account responsible for the bid. */
   PM.BID_SECRET = ['value', 'margin', 'files'];
+  /* Estimate & Proposal work on a bid — public fields (not the price): Engineers / PMs fill them in.
+     b.estimate = { status, reviewer, material, labour, subcon, other, notes } · b.proposal = { status, owner, checks: {key: bool}, notes }
+     b.workFiles = the team's working files (Storage bidwork/<bidId>/… — open to every role, unlike the quotation files) */
+  PM.EST_STATUS = [
+    { key: 'todo', label: 'ยังไม่เริ่ม', level: 'neutral' },
+    { key: 'takeoff', label: 'กำลังถอดปริมาณ / ประมาณราคา', level: 'info' },
+    { key: 'done', label: 'ประมาณราคาเสร็จ', level: 'warning' },
+    { key: 'reviewed', label: 'ตรวจแล้ว', level: 'good' },
+  ];
+  PM.PROP_STATUS = [
+    { key: 'todo', label: 'ยังไม่เริ่ม', level: 'neutral' },
+    { key: 'drafting', label: 'กำลังจัดทำ', level: 'info' },
+    { key: 'review', label: 'รอตรวจ', level: 'warning' },
+    { key: 'ready', label: 'พร้อมยื่น', level: 'good' },
+  ];
+  PM.PROP_CHECKS = [
+    { key: 'technical', label: 'Technical proposal / ขอบเขตงาน' },
+    { key: 'method', label: 'Method statement / วิธีการทำงาน' },
+    { key: 'schedule', label: 'แผนงาน (Schedule)' },
+    { key: 'org', label: 'ผังองค์กร / ทีมงาน' },
+    { key: 'compliance', label: 'Compliance / Deviation list' },
+    { key: 'docs', label: 'เอกสารบริษัท / ผลงานอ้างอิง' },
+  ];
+  PM.bidCost = (b) => { const e = (b && b.estimate) || {}; return ['material', 'labour', 'subcon', 'other'].reduce((s, k) => s + (Number(e[k]) || 0), 0); };
+  PM.bidChecks = (b) => { const c = ((b && b.proposal) || {}).checks || {}; return PM.PROP_CHECKS.filter((x) => c[x.key]).length; };
   PM.myUid = () => (PM.auth && PM.auth.user ? PM.auth.user.id : '');
   PM.myRole = () => (PM.auth && PM.auth.role) || '';
   /* the Sales account behind the chosen Sales person (an account id, or an employee whose name matches an account) */
@@ -37,8 +67,14 @@
   const isMine = (b) => PM.myRole() === 'sales' && !!PM.myUid() && PM.bidOwner(b) === PM.myUid();
   /* price / margin / quotation files of this bid: Admin all · Sales their own */
   PM.canSeeBidPrice = (b) => PM.myRole() === 'admin' || isMine(b);
-  /* add / edit / move a bid and record Won · Lost: Admin all · Sales their own (no bid = a new inquiry) */
-  PM.canEditBid = (b) => PM.myRole() === 'admin' || (PM.myRole() === 'sales' && (!b || isMine(b)));
+  /* add / edit / move a bid and record Won · Lost (roles in roles.js → 'bid.edit'):
+     Admin · Project Manager · Engineer — every bid · Sales — their own (no bid = a new inquiry).
+     The price stays with canSeeBidPrice (Admin / the owning Sales — enforced by the database). */
+  PM.canEditBid = (b) => {
+    const r = PM.myRole();
+    if (!PM.can || !PM.can('bid.edit')) return false;
+    return r === 'sales' ? !b || isMine(b) : true;
+  };
   /* does this role see any bid price at all (Sales: their own)? — decides whether money columns are shown */
   PM.seesBidPrices = () => PM.myRole() === 'admin' || PM.myRole() === 'sales';
   PM.BID_RESULTS = { pending: 'Pending', won: 'Won', lost: 'Lost', nobid: 'No-bid' };
@@ -132,6 +168,21 @@
   };
 
   PM.NCR_CATEGORIES = ['Material', 'Workmanship', 'Design', 'Documentation', 'Supplier', 'Method'];
+  /* Weekly Plan "not done" reason → the NCR category it starts with (can be changed in the form) */
+  PM.REASON_NCR_CATEGORY = {
+    'Material not ready': 'Material', 'Drawing / design not ready': 'Design', 'Manpower shortage': 'Workmanship',
+    'Equipment breakdown': 'Method', Weather: 'Method', 'Waiting client approval': 'Documentation', 'Previous work not finished': 'Workmanship', Other: 'Method',
+  };
+  /* next NCR number of a project: NCR-<project>-001, 002 … (highest number + 1, so a deleted NCR never repeats a number) */
+  PM.nextNcrNo = function (p) {
+    const short = String(p.code || 'X').replace(/^PJ-/, '').replace('-PROJ-', '-');
+    const pre = `NCR-${short}-`;
+    const max = (PM.db.ncrs || []).filter((n) => n.projectId === p.id).reduce((m, n) => {
+      const hit = String(n.no || '').startsWith(pre) ? parseInt(String(n.no).slice(pre.length), 10) : NaN;
+      return isNaN(hit) ? m : Math.max(m, hit);
+    }, 0);
+    return pre + String(Math.max(max, (PM.db.ncrs || []).filter((n) => n.projectId === p.id).length) + 1).padStart(3, '0');
+  };
   PM.SEVERITY = ['Minor', 'Major', 'Critical'];
   PM.OVERHEAD = [
     { id: 'admin', label: 'Admin / Meeting' },
@@ -630,6 +681,9 @@
       }
       Object.assign(p, PM.buildTimeline(p)); // sample activities + milestones for the Gantt chart
       if (PM.buildSampleBoq) p.boq = PM.buildSampleBoq(p); // sample BOQ sized to each phase's Plan cost (boq.js)
+      if (PM.buildSampleChanges) p.changes = PM.buildSampleChanges(p); // VO (changes.js)
+      if (PM.buildSampleBilling) p.invoices = PM.buildSampleBilling(p); // progress billing (billing.js)
+      if (PM.buildSampleRisks) p.risks = PM.buildSampleRisks(p); // risk register (risks.js)
       return p;
     });
 

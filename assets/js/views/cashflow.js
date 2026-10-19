@@ -98,7 +98,7 @@
       return PM.sum(lines, (l) => l.cost * (F(l, to) - F(l, from)));
     });
     const factor = (1 + (Number(A.contingency) || 0) / 100) * (1 + (Number(S.cost) || 0) / 100);
-    const contract = Number(p.contractValue) || 0;
+    const contract = PM.revisedContract ? PM.revisedContract(p) : Number(p.contractValue) || 0; // + approved VOs (changes.js)
     const cashIn = new Array(n).fill(0), cashOut = new Array(n).fill(0);
     work.forEach((w, i) => {
       cashOut[Math.min(n - 1, i + payLag)] += w * factor;
@@ -172,6 +172,7 @@
     };
   };
   PM.signedMoney = sm;
+  PM.cashflowSaved = savedCf; // the project's saved model (or defaults) — Billing compares received money with its plan
 
   /* ---------------- the tab ---------------- */
   PM.cashflowTab = function (el, p, m, rerender) {
@@ -357,7 +358,10 @@
       else warn(`ต่างจากยอดในแท็บ BOQ ของโครงการ ${U.money(projBoq)} อยู่ ${U.money(Math.abs(boqTotal - projBoq))} — กด "สร้างจาก BOQ" เพื่อใช้ยอดล่าสุด`);
     }
     if (!(p.contractValue > 0)) warn('ยังไม่มีมูลค่าสัญญา — Cash In = 0 (แก้ได้ที่ "แก้ไขโครงการ")', 'critical');
-    else ok(`มูลค่าสัญญา ${U.money(p.contractValue)} = Cash In รวม${md && Math.abs(md.totalIn - p.contractValue) < 1 ? ' ✓' : ''}`);
+    else {
+      const rc = PM.revisedContract ? PM.revisedContract(p) : p.contractValue;
+      ok(`มูลค่าสัญญา${rc !== p.contractValue ? 'ปรับปรุง (รวม VO อนุมัติ)' : ''} ${U.money(rc)} = Cash In รวม${md && Math.abs(md.totalIn - rc) < 1 ? ' ✓' : ''}`);
+    }
     if (md) {
       if (md.margin < 0) warn(`ต้นทุนรวม (รวม Contingency) ${U.money(md.totalOut)} เกินมูลค่าสัญญา — ขาดทุน ${U.money(-md.margin)}`, 'critical');
       else ok(`กำไรขั้นต้น ${U.money(md.margin)} (${U.pct(md.marginPct, 1)})`);

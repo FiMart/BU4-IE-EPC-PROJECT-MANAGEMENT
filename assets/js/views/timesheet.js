@@ -30,16 +30,30 @@
   window.addEventListener('pagehide', commit);
   document.addEventListener('visibilitychange', () => { if (document.hidden) commit(); });
 
+  /* Rows come from the Weekly Plan only: every task this person is on this week (shared tasks too), one row per
+     work item (project + phase / bid + stage) with the plan's task names and planned hours. Besides the plan:
+     leave / meeting / training (Overhead). Hours already logged on something outside the plan stay visible ("ไม่อยู่ในแผน"). */
+  const rowFromPlan = (p) => {
+    const b = p.kind === 'bid' && PM.find('bids', p.refId);
+    return { kind: p.kind, refId: p.refId, phase: p.kind === 'overhead' ? '' : p.phase || (b ? PM.bidStageAt(b, PM.addDays(state.week, 6)) : '') };
+  };
   function loadRows() {
     const end = PM.addDays(state.week, 6);
     const map = {};
+    const row = (r) => map[keyOf(r)] || (map[keyOf(r)] = Object.assign({ hours: [0, 0, 0, 0, 0, 0, 0], tasks: [], planned: 0 }, r));
+    (PM.db.plans || []).filter((p) => p.week === state.week && PM.planHas && PM.planHas(p, state.resourceId)).forEach((p) => {
+      const r = row(rowFromPlan(p));
+      r.tasks.push(p);
+      r.planned += p.plannedHours || 0;
+      r.fromPlan = true;
+    });
     PM.db.timesheets.filter((t) => t.resourceId === state.resourceId && t.date >= state.week && t.date <= end).forEach((t) => {
-      const k = keyOf(t);
-      if (!map[k]) map[k] = { kind: t.kind, refId: t.refId, phase: t.phase || '', hours: [0, 0, 0, 0, 0, 0, 0] };
-      map[k].hours[PM.diffDays(state.week, t.date)] += t.hours;
+      const r = row({ kind: t.kind, refId: t.refId, phase: t.phase || '' });
+      r.hours[PM.diffDays(state.week, t.date)] += t.hours;
     });
     const order = { project: 0, bid: 1, overhead: 2 };
-    state.rows = Object.values(map).sort((a, b) => order[a.kind] - order[b.kind] || rowLabel(a).localeCompare(rowLabel(b)));
+    state.rows = Object.values(map).map((r) => Object.assign(r, { off: !r.fromPlan && r.kind !== 'overhead' }))
+      .sort((a, b) => (a.off - b.off) || order[a.kind] - order[b.kind] || rowLabel(a).localeCompare(rowLabel(b)));
     state.dirty = false;
   }
 
@@ -58,16 +72,6 @@
     const now = b.result === 'pending' ? `ตอนนี้: ${PM.bidStageLabel(b.stage)}` : `ผล: ${PM.BID_RESULTS[b.result] || b.result}`;
     return [b.name, b.client, now, b.dueDate ? `Due ${U.date(b.dueDate)}` : '', b.value && PM.canSeeBidPrice(b) ? U.money(b.value) : ''].filter(Boolean).join(' · ');
   }
-  /* "sub item" choices for the selected work item: EPC phases for a project, bidding stages for a bid */
-  function subOptions(item) {
-    const [kind, refId] = item.split('|');
-    if (kind === 'project') return { list: PM.PHASES.map((p) => ({ value: p.key, label: p.label })), selected: 'construction' };
-    if (kind === 'bid') {
-      const b = PM.find('bids', refId);
-      return { list: PM.BID_STAGES.map((s) => ({ value: s.key, label: `${s.label} — ${s.th}` })), selected: b ? PM.bidStageAt(b, PM.addDays(state.week, 6)) : 'inquiry' };
-    }
-    return { list: [], selected: '' };
-  }
 
   PM.views.timesheet = function (el, fromRouter) {
     const db = PM.db, T = PM.today();
@@ -81,37 +85,27 @@
     const dates = DAYS.map((_, i) => PM.addDays(state.week, i));
 
     const canEdit = PM.can('timesheet.edit');
-    const projects = db.projects.filter((p) => p.status !== 'closed');
-    // every bid can be booked: the ones still running first, then the ones that already have a result
-    const openBids = db.bids.filter((b) => b.result === 'pending');
-    const doneBids = db.bids.filter((b) => b.result !== 'pending').sort((a, b) => String(b.resultDate || b.dates.inquiry).localeCompare(String(a.resultDate || a.dates.inquiry)));
-    const bidOpt = (b) => `<option value="bid|${esc(b.id)}">${esc(b.code)} · ${esc(b.name)} — ${esc(b.result === 'pending' ? PM.bidStageLabel(b.stage) : PM.BID_RESULTS[b.result])}</option>`;
+    const nPlan = state.rows.filter((r) => r.fromPlan).length;
 
     el.innerHTML = `
       <div class="row">
         <select id="ts-person" aria-label="Person">${U.options(people.map((r) => ({ value: r.id, label: `${r.name} · ${PM.levelName(r.level)}` })), state.resourceId)}</select>
         ${PM.common.weekNav(state.week)}
         <span class="spacer"></span>
-        ${canEdit ? `<button class="btn" data-action="from-plan">+ แถวจาก Weekly Plan</button>
-        <button class="btn" data-action="copy">Copy rows จากสัปดาห์ก่อน</button>
-        <button class="btn primary" data-action="save">บันทึก Timesheet</button>` : ''}
+        <a class="btn" href="#/weekly">เปิด Weekly Plan →</a>
+        ${canEdit ? '<button class="btn primary" data-action="save">บันทึก Timesheet</button>' : ''}
       </div>
       ${canEdit ? '' : `<div class="callout">ดูได้อย่างเดียว — Timesheet กรอกและแก้ไขได้เฉพาะ <b>Project Manager</b> (Role ของคุณ: ${esc(PM.roleLabel(PM.auth && PM.auth.role))})</div>`}
       <div class="card">
-        <div class="card-h"><h2>${esc(res.name)}</h2><span class="chip">${esc(PM.levelName(res.level))}</span><span class="chip">${esc(res.discipline)}</span><span class="spacer"></span><span class="muted" id="ts-summary"></span></div>
+        <div class="card-h"><h2>${esc(res.name)}</h2><span class="chip">${esc(PM.levelName(res.level))}</span><span class="chip">${esc(res.discipline)}</span><span class="spacer"></span><span class="muted" id="ts-summary"></span>
+          <p>งานมาจาก <b>Weekly Plan</b> ของสัปดาห์นี้อย่างเดียว (${nPlan} รายการ) — กรอกชั่วโมงที่ทำจริงรายวัน · คอลัมน์ "แผน" = ชั่วโมงตามแผนของคนนี้ · งานที่ไม่อยู่ในแผนให้เพิ่มที่ Weekly Plan ก่อน</p></div>
         <div class="card-b table-wrap" id="ts-grid"></div>
-        ${canEdit ? `<div class="card-b" style="border-top:1px solid var(--border)">
+        ${canEdit ? `<div class="card-b ts-oh" style="border-top:1px solid var(--border)">
           <div class="row">
-            <select id="ts-item" aria-label="Work item">
-              <optgroup label="Projects (EPC)">${projects.map((p) => `<option value="project|${esc(p.id)}">${esc(p.code)} · ${esc(p.name)}</option>`).join('')}</optgroup>
-              ${openBids.length ? `<optgroup label="Bidding — กำลังดำเนินการ">${openBids.map(bidOpt).join('')}</optgroup>` : ''}
-              ${doneBids.length ? `<optgroup label="Bidding — ประกาศผลแล้ว">${doneBids.map(bidOpt).join('')}</optgroup>` : ''}
-              <optgroup label="Overhead">${PM.OVERHEAD.map((o) => `<option value="overhead|${o.id}">${esc(o.label)}</option>`).join('')}</optgroup>
-            </select>
-            <select id="ts-phase" aria-label="Phase / ขั้นตอน Bidding"></select>
-            <button class="btn" data-action="add">+ Add row</button>
+            <span class="muted">นอกแผน (ไม่ใช่งานโครงการ / Bid):</span>
+            <select id="ts-oh" aria-label="ลา / ประชุม / อบรม">${PM.OVERHEAD.map((o) => `<option value="${o.id}">${esc(o.label)}</option>`).join('')}</select>
+            <button class="btn" data-action="add-oh">+ เพิ่ม</button>
           </div>
-          <small class="muted" id="ts-item-info"></small>
         </div>` : ''}
       </div>
       <div class="card">
@@ -122,18 +116,6 @@
         <div class="card-h"><h2>Timesheet status — ทั้งทีม</h2><p>ชั่วโมงที่บันทึกในสัปดาห์นี้เทียบกับ capacity (นับถึงวันนี้)</p></div>
         <div class="card-b flush table-wrap" id="ts-team"></div>
       </div>`;
-
-    const phaseSel = el.querySelector('#ts-phase');
-    const itemSel = el.querySelector('#ts-item');
-    const syncPhase = () => {
-      const o = subOptions(itemSel.value);
-      phaseSel.innerHTML = U.options(o.list, o.selected);
-      phaseSel.disabled = !o.list.length;
-      const [kind, refId] = itemSel.value.split('|');
-      const b = kind === 'bid' && PM.find('bids', refId);
-      el.querySelector('#ts-item-info').textContent = b ? bidInfo(b) : '';
-    };
-    if (canEdit) { itemSel.addEventListener('change', syncPhase); syncPhase(); }
 
     drawGrid(el, dates, res);
     drawBids(el, dates);
@@ -161,35 +143,19 @@
       if (act === 'next') go(PM.addDays(state.week, 7));
       if (act === 'this' && state.week !== PM.monday(T)) go(PM.monday(T));
       if (!canEdit) return; // everything below changes the timesheet
-      if (act === 'add') {
-        const [kind, refId] = itemSel.value.split('|');
-        const row = { kind, refId, phase: kind === 'overhead' ? '' : phaseSel.value, hours: [0, 0, 0, 0, 0, 0, 0] };
+      // only leave / meeting / training can be added here — project and bid work comes from the Weekly Plan
+      if (act === 'add-oh') {
+        const id = el.querySelector('#ts-oh').value;
+        const row = { kind: 'overhead', refId: id, phase: '', hours: [0, 0, 0, 0, 0, 0, 0], tasks: [], planned: 0 };
         if (state.rows.some((r) => keyOf(r) === keyOf(row))) { U.toast('มีแถวนี้อยู่แล้ว'); return; }
         state.rows.push(row); drawGrid(el, dates, res);
       }
-      if (act === 'remove') { state.rows.splice(+a.dataset.r, 1); state.dirty = true; commit(); drawGrid(el, dates, res); drawBids(el, dates); drawTeam(el, dates); }
-      if (act === 'from-plan') {
-        let n = 0;
-        (PM.db.plans || []).filter((p) => p.week === state.week && p.resourceId === state.resourceId).forEach((p) => {
-          // plan tasks on a bid have no stage → the stage the bid is in that week
-          const b = p.kind === 'bid' && PM.find('bids', p.refId);
-          const row = { kind: p.kind, refId: p.refId, phase: p.phase || (b ? PM.bidStageAt(b, PM.addDays(state.week, 6)) : ''), hours: [0, 0, 0, 0, 0, 0, 0] };
-          if (state.rows.some((r) => keyOf(r) === keyOf(row))) return;
-          state.rows.push(row); n++;
-        });
-        U.toast(n ? `เพิ่ม ${n} แถวจาก Weekly Plan` : 'ไม่มีงานใน Weekly Plan สัปดาห์นี้ที่ยังไม่มีแถว');
-        drawGrid(el, dates, res);
-      }
-      if (act === 'copy') {
-        const prev = PM.addDays(state.week, -7), prevEnd = PM.addDays(state.week, -1);
-        let n = 0;
-        PM.db.timesheets.filter((t) => t.resourceId === state.resourceId && t.date >= prev && t.date <= prevEnd).forEach((t) => {
-          const row = { kind: t.kind, refId: t.refId, phase: t.phase || '', hours: [0, 0, 0, 0, 0, 0, 0] };
-          if (t.refId === 'leave' || state.rows.some((r) => keyOf(r) === keyOf(row))) return;
-          state.rows.push(row); n++;
-        });
-        U.toast(n ? `เพิ่ม ${n} แถวจากสัปดาห์ก่อน` : 'ไม่มีแถวใหม่ให้คัดลอก');
-        drawGrid(el, dates, res);
+      // a plan row can't be removed (it comes from the plan); overhead and "not in the plan" rows can
+      if (act === 'remove') {
+        const r = state.rows[+a.dataset.r];
+        if (!r || r.fromPlan) return;
+        if (PM.sum(r.hours) && !confirm(`ลบแถว "${rowLabel(r)}" และชั่วโมงที่บันทึกไว้ ${U.num(PM.sum(r.hours), 1)} h?`)) return;
+        state.rows.splice(+a.dataset.r, 1); state.dirty = true; commit(); drawGrid(el, dates, res); drawBids(el, dates); drawTeam(el, dates);
       }
       if (act === 'save') {
         state.dirty = true; // write now even if autosave already did
@@ -208,22 +174,28 @@
     const box = el.querySelector('#ts-grid');
     const canEdit = PM.can('timesheet.edit');
     if (!state.rows.length) {
-      box.innerHTML = `<p class="empty">${canEdit ? 'ยังไม่มีรายการในสัปดาห์นี้ — เพิ่มแถวด้านล่าง หรือ Copy rows จากสัปดาห์ก่อน' : 'ยังไม่มีชั่วโมงที่บันทึกในสัปดาห์นี้'}</p>`;
+      box.innerHTML = `<div class="empty ts-empty"><p>ยังไม่มีงานใน <b>Weekly Plan</b> ของ ${esc(res.name)} สัปดาห์นี้ — Timesheet ดึงงานจากแผนอย่างเดียว</p>
+        <a class="btn primary" href="#/weekly">วางแผนงานที่ Weekly Plan →</a>${canEdit ? '<small class="muted">ลา / ประชุม / อบรม เพิ่มได้ด้านล่าง</small>' : ''}</div>`;
       updateTotals(el, dates, res);
       return;
     }
     const dayCls = (i) => `${i > 4 ? 'weekend' : ''}${dates[i] === T ? ' today' : ''}`;
-    box.innerHTML = `<table class="tbl ts-grid"><thead><tr><th>Work item</th>
+    // under each row: the plan's tasks (name · due day · status) — or why the row is there
+    const taskLine = (r) => (r.tasks.length
+      ? r.tasks.map((p) => { const s = PM.PLAN_STATUS.find((x) => x.key === p.status) || {}; return `<span class="ts-task st-${esc(p.status)}" title="${esc(`${p.title}\nกำหนดเสร็จ ${U.date(p.dueDate)} · ${s.th || ''}\nแผน ${U.num(p.plannedHours || 0, 1)} h`)}">${esc(p.title)}</span>`; }).join('')
+      : r.off ? '<span class="ts-off">ไม่อยู่ในแผน — ชั่วโมงที่บันทึกไว้ก่อน</span>' : `<small>${esc(rowSub(r))}</small>`);
+    box.innerHTML = `<table class="tbl ts-grid"><thead><tr><th>งานจาก Weekly Plan</th>
       ${DAYS.map((d, i) => `<th class="num ${dayCls(i)}">${d}<small>${U.date(dates[i]).slice(0, 6)}</small></th>`).join('')}
-      <th class="num">Total</th><th></th></tr></thead><tbody>
-      ${state.rows.map((r, ri) => `<tr>
-        <td><span class="title">${esc(rowLabel(r))}</span><small>${esc(rowSub(r))}</small></td>
+      <th class="num">รวม</th><th class="num" title="ชั่วโมงตามแผนของคนนี้ (Weekly Plan)">แผน</th><th></th></tr></thead><tbody>
+      ${state.rows.map((r, ri) => `<tr class="${r.off ? 'ts-row-off' : r.kind === 'overhead' && !r.fromPlan ? 'ts-row-oh' : ''}">
+        <td><span class="title">${esc(rowLabel(r))}</span>${r.kind !== 'overhead' && rowSub(r) && r.tasks.length ? `<small>${esc(rowSub(r))}</small>` : ''}<div class="ts-tasks">${taskLine(r)}</div></td>
         ${r.hours.map((h, di) => `<td class="num ${dayCls(di)}">${canEdit
           ? `<input type="number" min="0" max="24" step="0.5" value="${h || ''}" data-r="${ri}" data-d="${di}" aria-label="${esc(rowLabel(r))} ${DAYS[di]}">`
           : h ? U.num(h, 1) : '<span class="muted">–</span>'}</td>`).join('')}
         <td class="num" data-rowtotal="${ri}"></td>
-        <td>${canEdit ? `<button class="icon-btn" data-action="remove" data-r="${ri}" aria-label="Remove row">✕</button>` : ''}</td></tr>`).join('')}
-      </tbody><tfoot><tr><td>Total / day</td>${DAYS.map((_, i) => `<td class="num ${dayCls(i)}" data-daytotal="${i}"></td>`).join('')}<td class="num" data-grand></td><td></td></tr></tfoot></table>`;
+        <td class="num ts-plan">${r.fromPlan ? U.num(r.planned, 1) : '–'}</td>
+        <td>${canEdit && !r.fromPlan ? `<button class="icon-btn" data-action="remove" data-r="${ri}" aria-label="ลบแถว ${esc(rowLabel(r))}">✕</button>` : ''}</td></tr>`).join('')}
+      </tbody><tfoot><tr><td>รวมต่อวัน</td>${DAYS.map((_, i) => `<td class="num ${dayCls(i)}" data-daytotal="${i}"></td>`).join('')}<td class="num" data-grand></td><td class="num ts-plan">${U.num(PM.sum(state.rows, (r) => r.planned || 0), 1)}</td><td></td></tr></tfoot></table>`;
     updateTotals(el, dates, res);
   }
 
@@ -244,7 +216,8 @@
     });
     const g = el.querySelector('[data-grand]'); if (g) g.textContent = U.num(grand, 1);
     const cap = PM.cap(res) - leave;
-    el.querySelector('#ts-summary').textContent = `Total ${U.num(grand, 1)} h · Billable ${U.num(billable, 1)} h · Utilization ${U.pct(cap > 0 ? billable / cap : null)} · ${state.dirty ? 'กำลังบันทึก…' : 'บันทึกอัตโนมัติแล้ว'}`;
+    const planned = PM.sum(state.rows, (r) => r.planned || 0);
+    el.querySelector('#ts-summary').textContent = `จริง ${U.num(grand, 1)} h / แผน ${U.num(planned, 1)} h · Billable ${U.num(billable, 1)} h · Utilization ${U.pct(cap > 0 ? billable / cap : null)} · ${state.dirty ? 'กำลังบันทึก…' : 'บันทึกอัตโนมัติแล้ว'}`;
   }
 
   /* every bid with hours this week (whole team), split by bidding stage */

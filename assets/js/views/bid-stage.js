@@ -11,10 +11,14 @@
     ],
     estimate: [
       ['Estimator', (b) => esc(U.resourceName(b.estimator))],
+      ['สถานะประมาณราคา', (b) => { const s = PM.EST_STATUS.find((x) => x.key === ((b.estimate || {}).status || 'todo')); return U.badge(s.level, s.label); }],
       ['BOQ items', (b) => U.num(b.boqItems), 'num'],
+      ['ต้นทุนประมาณการ', (b) => (PM.bidCost(b) ? U.money(PM.bidCost(b)) : '–'), 'num'],
     ],
     proposal: [
-      ['Estimator', (b) => esc(U.resourceName(b.estimator))],
+      ['ผู้จัดทำ', (b) => esc(U.resourceName((b.proposal || {}).owner) || '–')],
+      ['สถานะข้อเสนอ', (b) => { const s = PM.PROP_STATUS.find((x) => x.key === ((b.proposal || {}).status || 'todo')); return U.badge(s.level, s.label); }],
+      ['เอกสาร', (b) => `<span title="${esc(PM.PROP_CHECKS.map((c) => `${((b.proposal || {}).checks || {})[c.key] ? '✓' : '○'} ${c.label}`).join('\n'))}">${PM.bidChecks(b)} / ${PM.PROP_CHECKS.length}</span>`, 'num'],
       ['Margin', (b) => (!PM.canSeeBidPrice(b) ? V.LOCK_PRICE : b.margin != null ? U.num(b.margin, 1) + '%' : '–'), 'num'],
     ],
     submit: [
@@ -94,9 +98,9 @@
 
     const special = {
       inquiry: () => { const n = now.filter((b) => !PM.salesKey(b)).length; return V.tile({ label: 'ยังไม่ระบุ Sales', value: n, sub: n ? U.badge('warning', 'ควรระบุผู้รับผิดชอบ') : U.badge('good', 'ครบทุกงาน'), icon: 'people' }); },
-      estimate: () => V.tile({ label: 'BOQ items ที่กำลังถอด', value: U.num(PM.sum(now, (b) => b.boqItems)), sub: `ไม่มี Estimator ${now.filter((b) => !b.estimator).length} งาน`, icon: 'layers' }),
+      estimate: () => V.tile({ label: 'ประมาณราคาเสร็จ / ตรวจแล้ว', value: `${now.filter((b) => ['done', 'reviewed'].includes((b.estimate || {}).status)).length} <small>/ ${now.length}</small>`, sub: `BOQ ${U.num(PM.sum(now, (b) => b.boqItems))} รายการ · ไม่มี Estimator ${now.filter((b) => !b.estimator).length} งาน`, icon: 'layers' }),
       proposal: () => {
-        if (!PM.seesBidPrices()) return V.tile({ label: 'Margin เฉลี่ย', value: V.LOCK_PRICE, sub: 'เห็นได้เฉพาะ Sales / Admin', icon: 'coins' });
+        if (!PM.seesBidPrices()) return V.tile({ label: 'ข้อเสนอพร้อมยื่น', value: `${now.filter((b) => (b.proposal || {}).status === 'ready').length} <small>/ ${now.length}</small>`, sub: `เอกสารครบ ${now.filter((b) => PM.bidChecks(b) === PM.PROP_CHECKS.length).length} งาน`, icon: 'proposal' });
         const m = now.filter((b) => PM.canSeeBidPrice(b) && b.margin != null);
         return V.tile({ label: 'Margin เฉลี่ย', value: m.length ? U.num(PM.sum(m, (b) => b.margin) / m.length, 1) + '%' : '–', sub: `มูลค่ารวม ${V.bidSum(now)}${PM.myRole() === 'sales' ? ' · เฉพาะงานของคุณ' : ''}`, icon: 'coins' });
       },
@@ -196,7 +200,7 @@
         <div class="card-h"><h2>รอผลการประมูล</h2><p>ยื่นใบเสนอราคาแล้ว ยังไม่ประกาศผล · บันทึกผลได้จากปุ่มในแถว</p></div>
         <div class="card-b flush table-wrap">${waiting.length ? rows(waiting, [bidCol, clientCol, ['Sales', (b) => esc(V.salesName(b))], valueCol,
           ['ยื่นเมื่อ', (b) => U.date(b.dates.submit)], ['รอมา (วัน)', (b) => PM.diffDays(b.dates.submit, T), 'num'], EXTRA.submit[1],
-          ['', (b) => (PM.canEditBid(b) ? `${V.bidButtons(b)}<button class="btn sm" data-action="nobid" data-id="${esc(b.id)}">No-bid</button>` : '<span class="muted">รอ Sales บันทึกผล</span>'), 'row-actions']]) : '<p class="empty">ไม่มีงานที่รอผล</p>'}</div>
+          ['', (b) => (PM.canEditBid(b) ? `${V.bidButtons(b)}<button class="btn sm" data-action="nobid" data-id="${esc(b.id)}">No-bid</button>` : '<span class="muted">รอผู้รับผิดชอบบันทึกผล</span>'), 'row-actions']]) : '<p class="empty">ไม่มีงานที่รอผล</p>'}</div>
       </div>
       <div class="grid cols-2">
         <div class="card"><div class="card-h"><h2>ได้งาน (Won)</h2><p>ในช่วงเวลาที่เลือก · สร้าง / เปิดโครงการจากงานที่ได้</p></div>

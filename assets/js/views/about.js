@@ -28,6 +28,7 @@
             <span class="muted">อัปเดตล่าสุด ${U.date(cur.date)} · ${esc(cur.title)}</span>
           </div>
         </div>
+        <span class="logo-plate about-logo">${PM.logoImg('')}</span>
       </div></div>
 
       <div class="grid cols-4">
