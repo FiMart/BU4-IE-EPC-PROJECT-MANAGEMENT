@@ -684,6 +684,7 @@
       if (PM.buildSampleChanges) p.changes = PM.buildSampleChanges(p); // VO (changes.js)
       if (PM.buildSampleBilling) p.invoices = PM.buildSampleBilling(p); // progress billing (billing.js)
       if (PM.buildSampleRisks) p.risks = PM.buildSampleRisks(p); // risk register (risks.js)
+      if (PM.buildSamplePhaseItems) p.phaseItems = PM.buildSamplePhaseItems(p); // documents / packages under each phase (phase-items.js)
       return p;
     });
 

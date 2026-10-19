@@ -1661,6 +1661,24 @@ kbd { font: 600 10.5px/1 var(--font); padding: 3px 5px; border-radius: 5px; bord
 .ts-oh .row { gap: 8px; align-items: center; }
 .ts-oh select { width: auto; }
 
+/* phase line items (phase-items.js): status colours shared by the share bar, legend and the status dropdown */
+.pi-card .card-h .badge { margin-left: 2px; }
+.pi-share { display: flex; gap: 2px; height: 12px; border-radius: 999px; overflow: hidden; background: var(--surface-2); }
+.pi-seg, .pi-sw { background: var(--s-neutral); }
+.st-wip.pi-seg, .st-wip.pi-sw { background: var(--s1); }
+.st-review.pi-seg, .st-review.pi-sw { background: var(--s4); }
+.st-done.pi-seg, .st-done.pi-sw { background: var(--s3); }
+.pi-legend { margin: 10px 0 0; }
+select.pi-st { font-size: 12.5px; font-weight: 700; padding: 4px 26px 4px 10px; border-radius: 999px; border-color: transparent; max-width: 230px; }
+select.pi-st.st-todo { background-color: var(--surface-2); color: var(--ink-2); }
+select.pi-st.st-wip { background-color: var(--accent-soft); color: var(--accent); }
+select.pi-st.st-review { background-color: var(--warning-bg); color: var(--warning-text); }
+select.pi-st.st-done { background-color: var(--good-bg); color: var(--good-text); }
+.pi-tbl td small.neg { display: block; font-weight: 600; }
+.pi-empty { display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 18px 0; text-align: center; }
+.pi-empty p { margin: 0; color: var(--ink-2); font-weight: 600; }
+.pi-count { margin-top: 6px; font-size: 12.5px; color: var(--muted); }
+
 /* bid form split into parts: one tab per stage (V.bidForm) — the tab bar stays on top while the part scrolls */
 .bf-tabs { position: sticky; top: -20px; z-index: 2; display: flex; gap: 4px; overflow-x: auto; scrollbar-width: none; margin: -20px -22px 0; padding: 12px 22px 10px; background: var(--surface); border-bottom: 1px solid var(--border); }
 .bf-tabs::-webkit-scrollbar { display: none; }

@@ -49,6 +49,8 @@
     const h = p.status === 'closed' ? 'neutral' : U.worst(U.health(m.spi), U.health(m.cpi));
 
     const full = tab === 'overview' || !TABS.some((t) => t.key === tab);
+    // the phase whose line items are listed under the phase cards: the one clicked, else the current phase
+    const sel = phaseSel[p.id] || (m.current && m.current.key) || 'engineering';
     el.innerHTML = `
       <div class="row">
         <a href="#/projects">← Projects</a>
@@ -72,7 +74,8 @@
         </dl>
         ${costStrip(m, PM.poStats(PM.db.pos.filter((po) => po.projectId === p.id)), PM.projectCosts(p.id).length)}
       </div></div>
-      ${phaseFlow(p, m)}` : compactHeader(p, m, h)}
+      ${phaseFlow(p, m, sel)}
+      ${PM.phaseItemsCard(p, sel)}` : compactHeader(p, m, h)}
       ${tabsNav(p, tab)}
       <div id="tab"></div>`;
 
@@ -80,10 +83,13 @@
     const rerender = () => PM.views.project(el, params);
     ({ overview, timeline: timelineTab, boq: boqTab, changes: (...a) => PM.changesTab(...a), billing: (...a) => PM.billingTab(...a), risks: (...a) => PM.risksTab(...a), cost: costTab, cashflow: cashflowTab, quality, safety, team, po: poTab }[tab] || overview)(tabEl, p, m, rerender);
 
+    el.onchange = (e) => { if (full) PM.phaseItemsHandle(e, p, rerender); };
     el.onclick = (e) => {
+      if (full && PM.phaseItemsHandle(e, p, rerender)) return; // phase line items (phase-items.js)
       const a = e.target.closest('[data-action]');
       if (!a) return;
       const act = a.dataset.action, id = a.dataset.id;
+      if (act === 'pick-phase') { phaseSel[p.id] = a.dataset.key; rerender(); return; }
       if (act === 'edit-project') V.projectForm(p, null, rerender);
       if (act === 'report') PM.projectReport(p); // report.js
       if (act === 'bid-files') { const b = PM.find('bids', id); if (b && PM.canSeeBidPrice(b)) PM.poFiles.showList(`ไฟล์แนบของ ${b.code} (ใบเสนอราคา / Inquiry)`, b.files); }
@@ -168,17 +174,22 @@
     update();
   }
 
-  function phaseFlow(p, m) {
+  const phaseSel = {}; // project id → phase picked on its phase cards (kept while the page is open)
+  function phaseFlow(p, m, sel) {
     return V.flow(m.phases.map((ph) => {
       const def = PM.PHASES.find((x) => x.key === ph.key);
       const behind = ph.plannedPct - ph.actualPct;
       const st = ph.actualPct >= 1 ? U.badge('good', 'Complete') : ph.actualPct === 0 && ph.plannedPct === 0 ? U.badge('neutral', 'Not started')
         : behind > 0.1 ? U.badge('critical', 'Behind') : behind > 0.03 ? U.badge('warning', 'Slightly behind') : U.badge('good', 'On plan');
+      const it = PM.phaseItemStats(p, ph.key);
+      const c = PM.PHASE_ITEMS[ph.key];
       return {
-        label: def.label, th: def.th, action: 'phase', key: ph.key, active: m.current && m.current.key === ph.key,
+        label: def.label, th: def.th, action: 'pick-phase', key: ph.key, active: ph.key === sel,
+        n: `0${PM.PHASES.indexOf(def) + 1}${m.current && m.current.key === ph.key ? ' · ขั้นปัจจุบัน' : ''}`,
         big: U.pct(ph.actualPct),
-        meta: `<div class="pbar-wrap" style="margin:6px 0">${U.progress(ph.actualPct, ph.plannedPct)}</div>Plan ${U.pct(ph.plannedPct)} · ${st}`,
-        tip: `${def.label} (weight ${ph.weight}%)\nPlan ${U.date(ph.planStart)} – ${U.date(ph.planEnd)}\nActual ${U.date(ph.actStart)} – ${U.date(ph.actEnd)}\nClick to update`,
+        meta: `<div class="pbar-wrap" style="margin:6px 0">${U.progress(ph.actualPct, ph.plannedPct)}</div>Plan ${U.pct(ph.plannedPct)} · ${st}
+          <div class="pi-count">${it ? `${esc(c.noun)} ${c.steps.done.split(' (')[0]} ${it.done} / ${it.total}${it.late ? ` · <b class="neg">เลยกำหนด ${it.late}</b>` : ''}` : `ยังไม่มีรายการ${esc(c.noun)}`}</div>`,
+        tip: `${def.label} (weight ${ph.weight}%)\nPlan ${U.date(ph.planStart)} – ${U.date(ph.planEnd)}\nActual ${U.date(ph.actStart)} – ${U.date(ph.actEnd)}\nคลิกเพื่อดูรายการ${c.noun}ของขั้นนี้`,
       };
     }));
   }

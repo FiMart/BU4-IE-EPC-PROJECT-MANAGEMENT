@@ -338,6 +338,16 @@
     el.dataset.route = route;
     const clip = PM.tour && PM.tour.forRoute(route); // the tutorial clip of this page (tour.js)
     el.innerHTML = `<div class="hero-text"><b>${PM.ui.esc(h[0])}</b><p>${PM.ui.esc(h[1])}</p>
-      <div class="hero-links">${help ? `<a class="hero-help" href="#/help/${help}">${I.svg('book')}วิธีใช้หน้านี้</a>` : ''}${clip ? `<button type="button" class="hero-help hero-clip" data-tour-start="${clip.key}"><span aria-hidden="true">▶</span>คลิปสอน</button>` : ''}</div></div><div class="hero-art">${I.art(route)}</div>`;
+      <div class="hero-links">${help ? `<a class="hero-help" href="#/help/${help}">${I.svg('book')}วิธีใช้หน้านี้</a>` : ''}${clip ? `<button type="button" class="hero-help hero-clip" data-tour-start="${clip.key}"><span aria-hidden="true">▶</span>คลิปสอน</button>` : ''}</div></div><div class="hero-art">${I.art(route)}</div>
+      <button type="button" class="hero-close" data-hero-toggle title="ซ่อนแถบแนะนำ (กด ? ด้านบนเพื่อแสดงอีกครั้ง)" aria-label="ซ่อนแถบแนะนำ">✕</button>`;
   };
+
+  /* the page banners can be hidden for every page (people who know the system) — ✕ on the banner, ? in the top bar
+     brings them back; remembered in this browser (index.html applies it before the first paint) */
+  document.addEventListener('click', (e) => {
+    if (!e.target.closest('[data-hero-toggle]')) return;
+    const off = document.documentElement.classList.toggle('hero-off');
+    try { localStorage.setItem('epc-pm-hero', off ? 'off' : 'on'); } catch (err) { /* private mode */ }
+    PM.ui.toast(off ? 'ซ่อนแถบแนะนำแล้ว — กด ? ด้านบนเพื่อแสดงอีกครั้ง' : 'แสดงแถบแนะนำของแต่ละหน้า');
+  });
 })();

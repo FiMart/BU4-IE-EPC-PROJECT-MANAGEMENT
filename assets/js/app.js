@@ -1,22 +1,23 @@
 /* app.js — hash router, theme, boot */
 (function () {
   const routes = [
-    [/^#\/dashboard$/, 'dashboard', 'Dashboard', 'ภาพรวม'],
-    [/^#\/bidding$/, 'bidding', 'Bidding Performance', 'Before Award · Inquiry → Estimate → Proposal → Submit'],
+    [/^#\/dashboard$/, 'dashboard', 'ภาพรวม', 'Dashboard · ทุกส่วนงานในหน้าเดียว'],
+    [/^#\/bidding$/, 'bidding', 'ผลงานประมูล', 'ก่อนได้งาน · Inquiry → Estimate → Proposal → Submit'],
     // one page per bidding step; title / crumb are worked out from the step (see render)
-    [/^#\/bidding\/(inquiry|estimate|proposal|submit|award)$/, 'bidstage', (m) => `Bidding · ${m[1] === 'award' ? 'Award' : PM.bidStageLabel(m[1])}`,
-      (m) => (m[1] === 'award' ? 'Before Award · ผลการประมูล' : `Before Award · ขั้นที่ ${PM.BID_STAGES.findIndex((s) => s.key === m[1]) + 1} — ${PM.BID_STAGES.find((s) => s.key === m[1]).th}`)],
-    [/^#\/projects$/, 'projects', 'Projects (EPC Execution)', 'Engineering → Procurement → Construction → Closing'],
-    [/^#\/projects\/([\w-]+)(?:\/(\w+))?$/, 'project', 'Project', 'Execution'],
-    [/^#\/pos$/, 'pos', 'Purchase Orders', 'ติดตาม PO · ส่งของ · การจ่ายเงิน · ไฟล์แนบ'],
-    [/^#\/prices$/, 'prices', 'Price List / Vendor Cost', 'ราคาผู้ขาย · เปรียบเทียบราคา · Export Excel / PDF'],
-    [/^#\/weekly$/, 'weekly', 'Weekly Plan', 'แผนงานรายสัปดาห์ · PPC · ภาระงาน'],
-    [/^#\/resources$/, 'resources', 'Resource Utilization', 'Level · Utilization · Loading'],
-    [/^#\/timesheet$/, 'timesheet', 'Timesheet', 'Resource Utilization'],
-    [/^#\/settings$/, 'settings', 'Settings', 'System'],
-    [/^#\/help(?:\/(\w+))?$/, 'help', 'Help', 'คู่มือการใช้งานทุกหน้า'],
+    [/^#\/bidding\/(inquiry|estimate|proposal|submit|award)$/, 'bidstage',
+      (m) => `${{ inquiry: 'รับเรื่อง', estimate: 'ประมาณราคา', proposal: 'จัดทำข้อเสนอ', submit: 'ยื่นราคา', award: 'ผลประมูล' }[m[1]]} (${m[1] === 'award' ? 'Award' : PM.bidStageLabel(m[1])})`,
+      (m) => (m[1] === 'award' ? 'งานประมูล · ผลการประมูล' : `งานประมูล · ขั้นที่ ${PM.BID_STAGES.findIndex((s) => s.key === m[1]) + 1} จาก 4`)],
+    [/^#\/projects$/, 'projects', 'โครงการ EPC', 'Engineering → Procurement → Construction → Closing'],
+    [/^#\/projects\/([\w-]+)(?:\/(\w+))?$/, 'project', 'โครงการ', 'งานโครงการ'],
+    [/^#\/pos$/, 'pos', 'ใบสั่งซื้อ (PO)', 'ติดตาม PO · ส่งของ · การจ่ายเงิน · ไฟล์แนบ'],
+    [/^#\/prices$/, 'prices', 'ราคาผู้ขาย', 'ราคาผู้ขาย · เปรียบเทียบราคา · Export Excel / PDF'],
+    [/^#\/weekly$/, 'weekly', 'แผนงานรายสัปดาห์', 'Weekly Plan · PPC · ภาระงาน'],
+    [/^#\/resources$/, 'resources', 'ภาระงานบุคลากร', 'ระดับ · อัตราใช้งาน · ภาระงาน'],
+    [/^#\/timesheet$/, 'timesheet', 'ลงเวลาทำงาน (Timesheet)', 'ชั่วโมงทำงานจริงตามแผน'],
+    [/^#\/settings$/, 'settings', 'ตั้งค่า', 'ระบบ'],
+    [/^#\/help(?:\/(\w+))?$/, 'help', 'คู่มือ / คลิปสอน', 'คู่มือการใช้งานทุกหน้า'],
     [/^#\/present$/, 'present', 'โหมดนำเสนอ', 'นำเสนอขึ้นจอ'],
-    [/^#\/about$/, 'about', 'About', 'เวอร์ชันและประวัติการแก้ไข'],
+    [/^#\/about$/, 'about', 'เกี่ยวกับระบบ', 'เวอร์ชันและประวัติการแก้ไข'],
   ];
 
   function render() {

@@ -160,6 +160,8 @@ assets/js/export.js          Export รายงานเป็น Excel (.xlsx 
 assets/js/illus.js           ภาพประกอบ SVG: แถบภาพของแต่ละหน้า, ไอคอนตามหัวข้อ (ขั้นตอน / KPI / หัวการ์ด), ภาพหน้า login
 assets/js/pull.js            ดึงลงเพื่อรีเฟรช (mobile / tablet) — โหลดข้อมูลล่าสุดจาก Cloud โดยไม่ reload หน้า
 assets/js/app.js             router
+assets/js/i18n.js            แสดงป้าย / หัวตาราง / สถานะเป็นภาษาไทย (พจนานุกรม PM.i18n.dict — เพิ่มคำแปลได้ที่นี่) + ⓘ อธิบายศัพท์ตัวชี้วัด
+assets/js/views/phase-items.js  รายการย่อยของขั้นงาน EPC (เอกสารออกแบบ · แพ็กเกจจัดซื้อ · งานก่อสร้าง · เอกสารส่งมอบ) — แก้รายการมาตรฐานที่ PM.PHASE_ITEMS
 assets/js/version.js         เวอร์ชัน + ประวัติการแก้ไข (หน้า About)
 assets/js/config.js          Supabase URL + anon key (ต้องกรอก)
 assets/js/auth.js            login / register / reset password (Supabase Auth)

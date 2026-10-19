@@ -31,6 +31,7 @@
     'risk.edit': { label: 'เพิ่ม / แก้ไขความเสี่ยงและปัญหา (Risk & Issue)', roles: ['admin', 'dept_manager', 'project_manager', 'engineer'] },
     'boq.edit': { label: 'เพิ่ม / แก้ไข / นำเข้า BOQ ของโครงการ และใช้ BOQ ตั้ง Plan cost / % Phase', roles: ['admin', 'dept_manager', 'project_manager', 'engineer'] },
     'timeline.edit': { label: 'เพิ่ม / แก้ไขกิจกรรมและ Milestone ใน Timeline · Gantt ของโครงการ', roles: ['admin', 'dept_manager', 'project_manager', 'engineer'] },
+    'phaseitem.edit': { label: 'เพิ่ม / แก้ไขรายการย่อยของขั้นงาน EPC (เอกสารออกแบบ · แพ็กเกจจัดซื้อ · งานก่อสร้าง · เอกสารส่งมอบ)', roles: ['admin', 'dept_manager', 'project_manager', 'engineer'] },
     'cost.edit': { label: 'บันทึก / แก้ไขค่าใช้จ่ายโครงการ (Actual cost)', roles: ['admin', 'dept_manager', 'project_manager'] },
     'roles.manage': { label: 'กำหนด Role ให้ผู้ใช้ (ยกเว้น Role ของตัวเอง และ Role ที่สูงกว่า — ดูกติกาด้านล่างตาราง)', roles: ['admin', 'dept_manager', 'project_manager'] },
     'users.delete': { label: 'ลบบัญชีผู้ใช้', roles: ['admin'] },
