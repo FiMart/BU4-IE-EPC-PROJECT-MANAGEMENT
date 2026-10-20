@@ -9,6 +9,7 @@
     { key: 'project_manager', label: 'Project Manager', th: 'ผู้จัดการโครงการ', level: 'good' },
     { key: 'engineer', label: 'Engineer', th: 'วิศวกร', level: 'neutral' },
     { key: 'sales', label: 'Sales', th: 'ฝ่ายขาย', level: 'neutral' },
+    { key: 'doc_control', label: 'Document Control', th: 'ควบคุมเอกสาร', level: 'neutral' },
     { key: 'technician', label: 'Technician', th: 'ช่างเทคนิค', level: 'neutral' },
   ];
 
@@ -16,14 +17,14 @@
   PM.PERMISSIONS = {
     'data.reset': { label: 'Reset ข้อมูล (ล้างทั้งหมด / โหลดข้อมูลตัวอย่าง)', roles: ['admin'] },
     'data.import': { label: 'Import JSON (เขียนทับข้อมูลทั้งหมด)', roles: ['admin', 'dept_manager', 'project_manager'] },
-    'data.export': { label: 'Export JSON / Timesheet CSV', roles: ['admin', 'dept_manager', 'project_manager', 'engineer', 'sales', 'technician'] },
+    'data.export': { label: 'Export JSON / Timesheet CSV', roles: ['admin', 'dept_manager', 'project_manager', 'engineer', 'sales', 'doc_control', 'technician'] },
     'bid.edit': { label: 'เพิ่ม / แก้ไข Inquiry และเลื่อนขั้น Bidding (Sales: เฉพาะงานของตัวเอง · PM / Engineer: ทุกงาน แต่ไม่เห็นมูลค่า)', roles: ['admin', 'project_manager', 'engineer', 'sales'] },
     'bid.result': { label: 'กด Won / Lost / No-bid (Sales: เฉพาะงานของตัวเอง)', roles: ['admin', 'project_manager', 'engineer', 'sales'] },
     'bid.price': { label: 'เห็นมูลค่า · Margin · ไฟล์ใบเสนอราคาของ Bid (Sales: เฉพาะงานของตัวเอง — บังคับในฐานข้อมูล)', roles: ['admin', 'sales'] },
-    'plan.edit': { label: 'สร้าง / แก้ไขงานใน Weekly Plan', roles: ['admin', 'dept_manager', 'project_manager', 'engineer', 'sales'] },
-    'plan.status': { label: 'อัปเดตสถานะงานใน Weekly Plan', roles: ['admin', 'dept_manager', 'project_manager', 'engineer', 'sales', 'technician'] },
+    'plan.edit': { label: 'สร้าง / แก้ไขงานใน Weekly Plan', roles: ['admin', 'dept_manager', 'project_manager', 'engineer', 'sales', 'doc_control'] },
+    'plan.status': { label: 'อัปเดตสถานะงานใน Weekly Plan', roles: ['admin', 'dept_manager', 'project_manager', 'engineer', 'sales', 'doc_control', 'technician'] },
     'resource.view': { label: 'เปิดหัวข้อ Resources (Resource Utilization · Timesheet) และส่วน Resource Utilization บน Dashboard', roles: ['admin', 'dept_manager', 'project_manager'] },
-    'timesheet.edit': { label: 'กรอก / แก้ไข Timesheet (คนอื่นดูได้อย่างเดียว)', roles: ['project_manager'] },
+    'timesheet.edit': { label: 'กรอก / แก้ไข Timesheet และ OT (คนอื่นดูได้อย่างเดียว — บังคับในฐานข้อมูล)', roles: ['admin', 'project_manager'] },
     'po.edit': { label: 'สร้าง / แก้ไข PO และแนบไฟล์', roles: ['admin', 'dept_manager', 'project_manager', 'engineer'] },
     'price.edit': { label: 'เพิ่ม / แก้ไข Price List (ราคาผู้ขาย) — ทุกคนดูและ Export ได้', roles: ['admin', 'dept_manager', 'project_manager', 'engineer'] },
     'vo.edit': { label: 'เพิ่ม / แก้ไข / อนุมัติ VO (งานเพิ่ม-ลด) ของโครงการ', roles: ['admin', 'dept_manager', 'project_manager'] },
@@ -31,7 +32,8 @@
     'risk.edit': { label: 'เพิ่ม / แก้ไขความเสี่ยงและปัญหา (Risk & Issue)', roles: ['admin', 'dept_manager', 'project_manager', 'engineer'] },
     'boq.edit': { label: 'เพิ่ม / แก้ไข / นำเข้า BOQ ของโครงการ และใช้ BOQ ตั้ง Plan cost / % Phase', roles: ['admin', 'dept_manager', 'project_manager', 'engineer'] },
     'timeline.edit': { label: 'เพิ่ม / แก้ไขกิจกรรมและ Milestone ใน Timeline · Gantt ของโครงการ', roles: ['admin', 'dept_manager', 'project_manager', 'engineer'] },
-    'phaseitem.edit': { label: 'เพิ่ม / แก้ไขรายการย่อยของขั้นงาน EPC (เอกสารออกแบบ · แพ็กเกจจัดซื้อ · งานก่อสร้าง · เอกสารส่งมอบ)', roles: ['admin', 'dept_manager', 'project_manager', 'engineer'] },
+    'phaseitem.edit': { label: 'เพิ่ม / แก้ไขรายการย่อยของขั้นงาน EPC (ทะเบียนเอกสารออกแบบ · Revision · Return · แนบไฟล์ · แพ็กเกจจัดซื้อ · งานก่อสร้าง · เอกสารส่งมอบ)', roles: ['admin', 'dept_manager', 'project_manager', 'engineer', 'doc_control'] },
+    'doc.files': { label: 'ลบ / แทนที่ไฟล์เอกสารที่คนอื่นแนบไว้ (เช่น ไฟล์ Revision เก่า) — บังคับในฐานข้อมูล', roles: ['admin', 'dept_manager', 'project_manager', 'doc_control'] },
     'cost.edit': { label: 'บันทึก / แก้ไขค่าใช้จ่ายโครงการ (Actual cost)', roles: ['admin', 'dept_manager', 'project_manager'] },
     'roles.manage': { label: 'กำหนด Role ให้ผู้ใช้ (ยกเว้น Role ของตัวเอง และ Role ที่สูงกว่า — ดูกติกาด้านล่างตาราง)', roles: ['admin', 'dept_manager', 'project_manager'] },
     'users.delete': { label: 'ลบบัญชีผู้ใช้', roles: ['admin'] },
@@ -40,8 +42,8 @@
   /* Which roles the current user may give to `target` ({ id, role }) — same rules as supabase/roles.sql:
      Admin              → any role, for anyone
      Department Manager → any role except Admin, for others who are not Admin
-     Project Manager    → PM / Engineer / Sales / Technician, for others who are not Admin or Department Manager */
-  PM.ROLE_RULES = 'Admin: ตั้งได้ทุก Role ให้ทุกคน · Department Manager: ตั้งได้ทุก Role ยกเว้น Admin ให้คนอื่นที่ไม่ใช่ Admin · Project Manager: ตั้ง Project Manager / Engineer / Sales / Technician ให้คนอื่นที่ไม่ใช่ Admin หรือ Department Manager · เปลี่ยน Role ของตัวเองไม่ได้';
+     Project Manager    → PM / Engineer / Sales / Document Control / Technician, for others who are not Admin or Department Manager */
+  PM.ROLE_RULES = 'Admin: ตั้งได้ทุก Role ให้ทุกคน · Department Manager: ตั้งได้ทุก Role ยกเว้น Admin ให้คนอื่นที่ไม่ใช่ Admin · Project Manager: ตั้ง Project Manager / Engineer / Sales / Document Control / Technician ให้คนอื่นที่ไม่ใช่ Admin หรือ Department Manager · เปลี่ยน Role ของตัวเองไม่ได้';
   PM.assignableRoles = function (target) {
     const me = PM.auth && PM.auth.role, myId = PM.auth && PM.auth.user && PM.auth.user.id;
     const all = PM.ROLES.map((r) => r.key);

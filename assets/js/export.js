@@ -163,6 +163,17 @@ ${sheets.map((_, i) => `<Override PartName="/xl/worksheets/sheet${i + 1}.xml" Co
     if (type === 'date') return PM.ui.date(v);
     return esc(v);
   };
+  /* "← กลับ" for every print page (PDF exports here, reports in report.js): the page is a separate tab opened by the app —
+     close it and bring the app tab forward; where a browser will not close it (some phones), go back to the page the
+     report was opened from */
+  X.backButton = function () {
+    const app = location.href;
+    return `<button type="button" class="back" onclick="(function () {
+      try { if (window.opener && !window.opener.closed) window.opener.focus(); } catch (e) {}
+      window.close();
+      setTimeout(function () { location.href = ${esc(JSON.stringify(app))}; }, 250);
+    })()">← กลับ</button>`;
+  };
   X.pdf = function (rep) {
     const win = window.open('', '_blank');
     if (!win) { alert('เบราว์เซอร์บล็อกหน้าต่างใหม่ — อนุญาต Pop-up ของเว็บนี้แล้วลองอีกครั้ง'); return; }
@@ -182,6 +193,7 @@ ${sheets.map((_, i) => `<Override PartName="/xl/worksheets/sheet${i + 1}.xml" Co
   .bar { position: sticky; top: 0; display: flex; gap: 10px; align-items: center; padding: 10px 16px; background: #0b2f6b; color: #fff; font-size: 13px; }
   .bar button { font: inherit; font-weight: 700; padding: 7px 14px; border: 0; border-radius: 6px; background: #fff; color: #0b2f6b; cursor: pointer; }
   .bar span { opacity: .85; }
+  .bar button.back { background: transparent; color: #fff; border: 1px solid rgba(255, 255, 255, .5); }
   main { padding: 16px; }
   header { display: flex; justify-content: space-between; align-items: flex-end; gap: 16px; border-bottom: 2px solid #0b2f6b; padding-bottom: 8px; margin-bottom: 10px; }
   header h1 { margin: 0; font-size: 18px; color: #0b2f6b; }
@@ -203,7 +215,7 @@ ${sheets.map((_, i) => `<Override PartName="/xl/worksheets/sheet${i + 1}.xml" Co
   footer { margin-top: 12px; color: #6a7a91; font-size: 9px; }
   @media print { .bar { display: none; } main { padding: 0; } * { -webkit-print-color-adjust: exact; print-color-adjust: exact; } }
 </style></head><body>
-<div class="bar"><button type="button" onclick="window.print()">พิมพ์ / บันทึกเป็น PDF</button><span>เลือกเครื่องพิมพ์ "Save as PDF" / "บันทึกเป็น PDF" เพื่อได้ไฟล์ PDF</span></div>
+<div class="bar">${X.backButton()}<button type="button" onclick="window.print()">พิมพ์ / บันทึกเป็น PDF</button><span>เลือกเครื่องพิมพ์ "Save as PDF" / "บันทึกเป็น PDF" เพื่อได้ไฟล์ PDF</span></div>
 <main>
   <header><div class="hl"><img class="logo" src="${esc(PM.logoUrl(true))}" alt="${esc(PM.COMPANY)}"><div><div class="co">${esc(PM.COMPANY)}</div><h1>${esc(rep.title)}</h1></div></div><div class="meta">${esc(rep.subtitle || '')}</div></header>
   ${rep.sheets.map(section).join('')}

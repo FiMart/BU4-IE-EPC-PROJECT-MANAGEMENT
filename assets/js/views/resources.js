@@ -115,7 +115,7 @@
   }
 
   function heatmap(db, weeks, weekUt) {
-    const people = db.resources.filter((r) => r.active !== false);
+    const people = db.resources.filter((r) => r.active !== false && PM.needsTimesheet(r)); // Level Other has no Timesheet to show
     if (!people.length) return '<p class="empty">ยังไม่มีรายชื่อพนักงาน</p>';
     return `<table class="heat"><thead><tr><th class="name">Name</th>${weeks.map((w) => `<th>${esc(U.date(w).slice(0, 6))}</th>`).join('')}</tr></thead><tbody>
       ${people.map((r, ri) => `<tr style="--r:${ri}"><th class="name">${esc(r.name)} <small>${esc(PM.levelName(r.level))}</small></th>${weekUt.map((w, i) => {
@@ -163,7 +163,7 @@
       ${rows.map((x) => {
         const st = U.utilLevel(x.util, x.target);
         return `<tr class="click" data-action="edit-person" data-id="${esc(x.r.id)}">
-          <td><span class="title">${esc(x.r.name)}</span>${PM.cap(x.r) === 0 ? '<small>capacity 0 — ไม่คิด utilization</small>' : ''}</td><td>${esc(x.level ? x.level.name : x.r.level)}</td><td>${esc(x.r.discipline)}</td>
+          <td><span class="title">${esc(x.r.name)}</span>${PM.needsTimesheet(x.r) ? '' : `<small>${x.r.level === 'OTHER' ? 'Level Other' : 'capacity 0'} — ไม่ลง Timesheet · ไม่คิด utilization</small>`}</td><td>${esc(x.level ? x.level.name : x.r.level)}</td><td>${esc(x.r.discipline)}</td>
           <td class="num">${U.num(x.available)}</td><td class="num">${U.num(x.project)}</td><td class="num">${U.num(x.bid)}</td>
           <td class="num">${U.num(x.overhead)}</td><td class="num">${U.num(x.leave)}</td>
           <td><div class="pbar-wrap">${U.progress(Math.min(1, x.util || 0), x.target, `${x.r.name}\nUtilization ${U.pct(x.util)} · target ${U.pct(x.target)}`)}<span class="num">${U.pct(x.util)}</span></div></td>
@@ -184,7 +184,7 @@
         ${U.field('ชื่อ-สกุล', 'name', p.name, { required: true, full: true })}
         ${U.field('Level', 'level', p.level, { options: levelOptions })}
         ${U.field('Discipline', 'discipline', p.discipline, { options: PM.DISCIPLINES })}
-        ${U.field('Capacity (hours/week)', 'capacity', p.capacity, { type: 'number', min: 0, max: 80, hint: 'ใส่ 0 สำหรับคนที่ไม่ลง Timesheet เช่น Sales (ไม่นับใน utilization)' })}`,
+        ${U.field('Capacity (hours/week)', 'capacity', p.capacity, { type: 'number', min: 0, max: 80, hint: 'Level Other ไม่ต้องลง Timesheet อยู่แล้ว (ไม่นับใน utilization) · ใส่ 0 สำหรับคนอื่นที่ไม่ลง Timesheet' })}`,
       onSubmit: (f) => { Object.assign(p, f, { active: true }); PM.upsert('resources', p); U.toast('บันทึกแล้ว'); done(); },
     });
   }

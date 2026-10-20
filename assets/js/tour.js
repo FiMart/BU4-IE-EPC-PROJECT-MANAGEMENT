@@ -149,7 +149,7 @@
       key: 'timesheet', topic: 'timesheet', route: 'timesheet', need: 'resource.view', title: 'Timesheet และ Resource Utilization', desc: 'กรอกชั่วโมง · ทีมกรอกครบไหม · Utilization', steps: [
         { route: '#/timesheet', sel: '#ts-person', title: 'เลือกคนและสัปดาห์', text: 'เลือกพนักงาน แล้วเลื่อนสัปดาห์ที่ต้องการ' },
         { sel: '#ts-grid', title: 'งานมาจาก Weekly Plan', text: 'แถวงานดึงจาก <b>Weekly Plan</b> ของคนนี้อย่างเดียว (ใต้ชื่อแถวคืองานในแผน · คอลัมน์ "แผน" = ชั่วโมงตามแผน) — กรอกชั่วโมงที่ทำจริงรายวัน บันทึกอัตโนมัติ · งานนอกแผนให้เพิ่มที่ Weekly Plan ก่อน' },
-        { sel: '#ts-oh', need: 'timesheet.edit', title: 'ลา / ประชุม / อบรม', text: 'สิ่งเดียวที่เพิ่มนอกแผนได้ — เลือกแล้วกด + เพิ่ม (เฉพาะ Project Manager)' },
+        { sel: '#ts-oh', need: 'timesheet.edit', title: 'ลา / ประชุม / อบรม', text: 'สิ่งเดียวที่เพิ่มนอกแผนได้ — เลือกแล้วกด + เพิ่ม (เฉพาะ Admin / Project Manager)' },
         { sel: card('#ts-team'), title: 'สถานะการกรอกของทีม', text: 'ใครกรอกครบ / ขาดกี่ชั่วโมงเทียบ capacity' },
         { route: '#/resources', sel: card('#c-level'), title: 'Resource Utilization', text: 'Utilization = ชั่วโมง Billable ÷ ชั่วโมงที่มี เทียบเป้าของแต่ละ Level · ใครงานล้น / งานน้อย' },
       ],

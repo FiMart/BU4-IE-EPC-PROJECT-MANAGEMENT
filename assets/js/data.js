@@ -109,6 +109,9 @@
   PM.levelName = (id) => { const l = PM.db && PM.db.levels.find((x) => x.id === id); return l ? l.name : id || '–'; };
   /* weekly capacity in hours (0 is valid, e.g. Sales who do not log project time) */
   PM.cap = (r) => (r && r.capacity != null && r.capacity !== '' ? Number(r.capacity) : 40);
+  /* who logs a Timesheet: not Level Other (e.g. Sales, admin staff), and not anyone with capacity 0.
+     Others are left out of the Timesheet page, completeness / "not logged" and utilization — Weekly Plan can still assign them work */
+  PM.needsTimesheet = (r) => !!r && r.level !== 'OTHER' && PM.cap(r) > 0;
 
   PM.PLAN_STATUS = [
     { key: 'planned', label: 'Planned', th: 'วางแผน', level: 'neutral' },
@@ -561,7 +564,7 @@
       const bid = PM.sum(mine.filter((t) => t.kind === 'bid'), (t) => t.hours);
       const leave = PM.sum(mine.filter((t) => t.kind === 'overhead' && t.refId === 'leave'), (t) => t.hours);
       const overhead = PM.sum(mine.filter((t) => t.kind === 'overhead' && t.refId !== 'leave'), (t) => t.hours);
-      const capacity = (PM.cap(r) / 5) * days;
+      const capacity = PM.needsTimesheet(r) ? (PM.cap(r) / 5) * days : 0; // Level Other: no Timesheet → no capacity to fill
       const available = Math.max(0, capacity - leave);
       const billable = project + bid;
       const level = db.levels.find((l) => l.id === r.level);

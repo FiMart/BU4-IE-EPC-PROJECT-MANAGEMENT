@@ -3,13 +3,13 @@
 -- Run once in Supabase Dashboard → SQL Editor → New query → Run.
 -- Safe to re-run (idempotent).
 --
--- Roles: admin · dept_manager (ผู้จัดการแผนก) · project_manager · engineer · sales · technician
+-- Roles: admin · dept_manager (ผู้จัดการแผนก) · project_manager · engineer · sales · doc_control (Document Control) · technician
 --  - Every new sign-up gets 'technician' (least privilege).
 --  - The FIRST user in the project becomes 'admin' automatically.
 --  - Admins, Department Managers and Project Managers can read the user list and change roles (enforced by RLS):
 --      Admin              → any role, for anyone
 --      Department Manager → any role except Admin, for OTHER users who are not Admin
---      Project Manager    → Project Manager / Engineer / Sales / Technician, for OTHER users who are not
+--      Project Manager    → Project Manager / Engineer / Sales / Document Control / Technician, for OTHER users who are not
 --                           Admin or Department Manager
 --      Nobody (except Admin) changes their own role.
 --  - The last remaining admin cannot be demoted (prevents lock-out).
@@ -17,12 +17,13 @@
 --  Role names are compared as text (role::text) so the values added below can be used in the same run.
 -- =====================================================================
 
--- 1) role type (+ roles added in v1.25: dept_manager, sales — re-running this file adds them to older installs)
+-- 1) role type (+ roles added later: dept_manager, sales (v1.25), doc_control (v1.55) — re-running this file adds them to older installs)
 do $$ begin
   create type public.app_role as enum ('admin', 'project_manager', 'engineer', 'technician');
 exception when duplicate_object then null; end $$;
 alter type public.app_role add value if not exists 'dept_manager';
 alter type public.app_role add value if not exists 'sales';
+alter type public.app_role add value if not exists 'doc_control';
 
 -- 2) profiles table (one row per auth user)
 create table if not exists public.profiles (

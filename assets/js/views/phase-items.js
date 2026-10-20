@@ -117,7 +117,7 @@
       return `<div class="card pi-card">${head}<div class="card-b"><div class="pi-empty">
         <p>ยังไม่มีรายการของขั้นงานนี้</p>
         ${canEdit ? `<button class="btn primary" data-pi="template" data-key="${key}">ใส่รายการมาตรฐาน (${c.template.length} ${esc(c.noun)})</button>
-        <small class="muted">${esc(c.template.slice(0, 4).join(' · '))} …</small>` : '<small class="muted">ผู้ที่มีสิทธิ์ (Admin · Dept Manager · PM · Engineer) เป็นผู้เพิ่มรายการ</small>'}
+        <small class="muted">${esc(c.template.slice(0, 4).join(' · '))} …</small>` : `<small class="muted">ผู้ที่มีสิทธิ์ (${esc(PM.whoCan('phaseitem.edit'))}) เป็นผู้เพิ่มรายการ</small>`}
       </div></div></div>`;
     }
     const steps = stepsOf(key);

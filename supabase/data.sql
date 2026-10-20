@@ -48,11 +48,11 @@ drop policy if exists "records: read"   on public.app_records;
 drop policy if exists "records: insert" on public.app_records;
 drop policy if exists "records: update" on public.app_records;
 drop policy if exists "records: delete" on public.app_records;
--- Timesheet entries can only be written by a Project Manager (everyone with a role can read them;
--- Reset / Import by Admin still works through app_replace_all below)
+-- Timesheet entries (hours and OT) can only be written by Admin or a Project Manager (everyone with a role can read them;
+-- Reset / Import still works through app_replace_all below)
 create or replace function public.can_write_record(coll text)
 returns boolean language sql stable security definer set search_path = public as $$
-  select public.has_app_role() and (coll <> 'timesheets' or public.is_project_manager());
+  select public.has_app_role() and (coll <> 'timesheets' or public.is_admin() or public.is_project_manager());
 $$;
 
 -- Bid prices (collection 'bidprices': value · margin · quotation files of a bid, one row per bid id) are
@@ -175,6 +175,7 @@ grant execute on function public.app_replace_all(jsonb) to authenticated;
 --  - any signed-in user with a role can view / download and upload
 --    (except bids/…: only Admin and the Sales who owns the bid — see can_see_bid_files)
 --  - delete: the person who uploaded the file, or Admin / Department Manager / Project Manager
+--            (Document Control too, except bids/… — they replace superseded document revisions)
 -- =====================================================================
 insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
 values ('po-files', 'po-files', false, 20971520, array[
@@ -199,4 +200,5 @@ create policy "po-files: delete" on storage.objects for delete to authenticated
   using (bucket_id = 'po-files' and (
     owner_id = auth.uid()::text
     or exists (select 1 from public.profiles where id = auth.uid() and role::text in ('admin', 'dept_manager', 'project_manager'))
+    or (name not like 'bids/%' and exists (select 1 from public.profiles where id = auth.uid() and role::text = 'doc_control'))
   ));

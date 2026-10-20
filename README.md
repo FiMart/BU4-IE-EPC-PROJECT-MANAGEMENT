@@ -52,38 +52,42 @@ Web app สำหรับบริหารโครงการแบบ EPC (
 
 ## Role & Permission
 
-มี 6 Role: **Admin · Department Manager (ผู้จัดการแผนก) · Project Manager · Engineer · Sales · Technician** เก็บในตาราง `public.profiles` ของ Supabase
+มี 7 Role: **Admin · Department Manager (ผู้จัดการแผนก) · Project Manager · Engineer · Sales · Document Control (ควบคุมเอกสาร) · Technician** เก็บในตาราง `public.profiles` ของ Supabase
 
 ติดตั้งครั้งเดียว: เปิด **Supabase Dashboard → SQL Editor → New query** วางเนื้อหาไฟล์ [`supabase/roles.sql`](supabase/roles.sql) แล้วกด **Run** (รันซ้ำได้)
 อัปเดตจากเวอร์ชันก่อน v1.25 (เพิ่ม Department Manager / Sales): รัน `roles.sql` แล้วตามด้วย `data.sql` อีกครั้งอย่างละ 1 ครั้ง
 อัปเดตจากเวอร์ชันก่อน v1.26 (ราคา Bid เห็นเฉพาะ Sales เจ้าของงาน / Admin): รัน `data.sql` อีกครั้ง 1 ครั้ง — ย้ายราคาของ Bid เดิมไปเก็บแยก และผูก Bid กับบัญชี Sales ที่ชื่อตรงกับ Sales ของงานนั้น
+อัปเดตจากเวอร์ชันก่อน v1.55 (เพิ่ม Document Control): รัน `roles.sql` แล้วตามด้วย `data.sql` อีกครั้งอย่างละ 1 ครั้ง
+อัปเดตจากเวอร์ชันก่อน v1.56 (Admin กรอก Timesheet ได้): รัน `data.sql` อีกครั้ง 1 ครั้ง
 
 - ผู้ใช้คนแรกของระบบ (สมัครก่อนสุด) จะเป็น **Admin** อัตโนมัติ — คนที่สมัครหลังจากนั้นได้ **Technician**
 - **Admin, Department Manager และ Project Manager** เปลี่ยน Role ได้ที่ Settings → จัดการ Role ผู้ใช้ (บังคับด้วย Row Level Security ในฐานข้อมูล)
   - Admin: ตั้งได้ทุก Role ให้ทุกคน
   - Department Manager: ตั้งได้ทุก Role ยกเว้น Admin ให้คนอื่นที่ไม่ใช่ Admin
-  - Project Manager: ตั้ง Project Manager / Engineer / Sales / Technician ให้คนอื่นที่ไม่ใช่ Admin หรือ Department Manager
+  - Project Manager: ตั้ง Project Manager / Engineer / Sales / Document Control / Technician ให้คนอื่นที่ไม่ใช่ Admin หรือ Department Manager
   - เปลี่ยน Role ของตัวเองไม่ได้ (ยกเว้น Admin)
 - ลด Role ของ Admin คนสุดท้ายไม่ได้ (กันระบบไม่มี Admin)
 
-| สิทธิ์ | Admin | Dept. Manager | Project Manager | Engineer | Sales | Technician |
-| --- | --- | --- | --- | --- | --- | --- |
-| Reset ข้อมูล (ล้างทั้งหมด / โหลด Demo) — หัวข้อนี้แสดงเฉพาะ Admin | ✓ | – | – | – | – | – |
-| Import JSON | ✓ | ✓ | ✓ | – | – | – |
-| Export JSON / CSV | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
-| เพิ่ม / แก้ไข Inquiry · เลื่อนขั้น · กด Won / Lost / No-bid | ✓ | – | – | – | ✓ งานของตัวเอง | – |
-| เห็นมูลค่า · Margin · ไฟล์ใบเสนอราคาของ Bid — บังคับในฐานข้อมูล (collection `bidprices`) | ✓ | – | – | – | ✓ งานของตัวเอง | – |
-| สร้าง / แก้ไขงานใน Weekly Plan | ✓ | ✓ | ✓ | ✓ | ✓ | – |
-| ลบงานใน Weekly Plan | เฉพาะ **คนที่สร้างงานนั้น** (งานเดิมที่ไม่มีข้อมูลผู้สร้าง: Admin) — บังคับในฐานข้อมูลด้วย | | | | | |
-| อัปเดตสถานะงานใน Weekly Plan | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
-| เปิดหัวข้อ Resources (Resource Utilization · Timesheet) และส่วน Resource Utilization บน Dashboard | ✓ | ✓ | ✓ | – | – | – |
-| กรอก / แก้ไข Timesheet — บังคับในฐานข้อมูลด้วย | – | – | ✓ | – | – | – |
-| สร้าง / แก้ไข PO และแนบไฟล์ (ทุกคนดู / ดาวน์โหลดได้) | ✓ | ✓ | ✓ | ✓ | – | – |
-| บันทึก / แก้ไขค่าใช้จ่ายโครงการ (ทุกคนดูได้) | ✓ | ✓ | ✓ | – | – | – |
-| เพิ่ม / แก้ไข Price List (ทุกคนดูและ Export Excel / PDF ได้) | ✓ | ✓ | ✓ | ✓ | – | – |
-| กำหนด Role ให้ผู้ใช้ (ตามกติกาด้านบน) | ✓ | ✓ | ✓ | – | – | – |
-| ลบบัญชีผู้ใช้ (ยกเว้นบัญชีตัวเอง) — Settings → จัดการ Role ผู้ใช้ | ✓ | – | – | – | – | – |
+| สิทธิ์ | Admin | Dept. Mgr | PM | Engineer | Sales | Doc Control | Technician |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| Reset ข้อมูล (ล้างทั้งหมด / โหลด Demo) | ✓ | – | – | – | – | – | – |
+| Import JSON | ✓ | ✓ | ✓ | – | – | – | – |
+| Export JSON / CSV | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| เพิ่ม / แก้ไข Inquiry · เลื่อนขั้น · Won / Lost / No-bid | ✓ | – | ✓ | ✓ | ✓ งานของตัวเอง | – | – |
+| เห็นมูลค่า · Margin · ไฟล์ใบเสนอราคาของ Bid — บังคับในฐานข้อมูล | ✓ | – | – | – | ✓ งานของตัวเอง | – | – |
+| สร้าง / แก้ไขงานใน Weekly Plan (ลบได้เฉพาะคนที่สร้าง — บังคับในฐานข้อมูล) | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | – |
+| อัปเดตสถานะงานใน Weekly Plan | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| เปิดหัวข้อ Resources / Timesheet และส่วน Resource บน Dashboard | ✓ | ✓ | ✓ | – | – | – | – |
+| กรอก / แก้ไข Timesheet (รวม OT) — บังคับในฐานข้อมูลด้วย | ✓ | – | ✓ | – | – | – | – |
+| สร้าง / แก้ไข PO และแนบไฟล์ · Price List | ✓ | ✓ | ✓ | ✓ | – | – | – |
+| VO · งวดเงิน (Billing) · ค่าใช้จ่ายโครงการ | ✓ | ✓ | ✓ | – | – | – | – |
+| ความเสี่ยง · BOQ · Timeline / Gantt | ✓ | ✓ | ✓ | ✓ | – | – | – |
+| รายการย่อยของขั้นงาน EPC / ทะเบียนเอกสาร (Revision · Return · แนบไฟล์) | ✓ | ✓ | ✓ | ✓ | – | ✓ | – |
+| ลบ / แทนที่ไฟล์เอกสารที่คนอื่นแนบไว้ — บังคับในฐานข้อมูล | ✓ | ✓ | ✓ | – | – | ✓ | – |
+| กำหนด Role ให้ผู้ใช้ (ตามกติกาด้านบน) | ✓ | ✓ | ✓ | – | – | – | – |
+| ลบบัญชีผู้ใช้ (ยกเว้นบัญชีตัวเอง) | ✓ | – | – | – | – | – | – |
 
+ตารางที่ตรงกับระบบที่สุดอยู่ในเว็บ: Help → Role และสิทธิ์ (สร้างจาก `PM.PERMISSIONS` อัตโนมัติ)
 ปรับตารางสิทธิ์ได้ที่ `PM.PERMISSIONS` ใน `assets/js/roles.js`
 
 ## บันทึกข้อมูลบน Cloud
@@ -97,7 +101,7 @@ Web app สำหรับบริหารโครงการแบบ EPC (
 - เปิดเว็บใหม่: โหลดข้อมูลล่าสุดจาก Cloud เสมอ · กลับมาที่แท็บหลังจากไปทำอย่างอื่น ระบบดึงข้อมูลที่เพื่อนร่วมทีมแก้ไขให้อัตโนมัติ
 - เน็ตหลุด: ข้อมูลยังเก็บในเครื่อง และส่งขึ้น Cloud ให้เองเมื่อกลับมาออนไลน์ (หรือเปิดเว็บครั้งถัดไป)
 - Mobile / Tablet: ดึงหน้าลงที่ด้านบนสุดแล้วปล่อย เพื่ออัปเดตข้อมูลล่าสุดจาก Cloud · เมนูหลักอยู่ที่แถบด้านล่าง ("เพิ่มเติม" = เมนูทั้งหมด)
-- Timesheet: ตั้งแต่ v1.21 เขียนได้เฉพาะ Project Manager — รัน `data.sql` อีกครั้ง 1 ครั้งเพื่อให้ฐานข้อมูลบังคับสิทธิ์นี้ด้วย
+- Timesheet: เขียนได้เฉพาะ Admin และ Project Manager (Admin เพิ่มใน v1.56) — รัน `data.sql` อีกครั้ง 1 ครั้งเพื่อให้ฐานข้อมูลบังคับสิทธิ์นี้ด้วย
 - เปิดเว็บในเบราว์เซอร์ใหม่แล้วโหลดจาก Cloud ไม่ได้: หน้าเว็บรอและลองใหม่อัตโนมัติ (ไม่แสดงข้อมูลตัวอย่างแทน และไม่ส่งอะไรขึ้น Cloud จนกว่าจะโหลดสำเร็จ)
 - Timesheet บันทึกอัตโนมัติขณะพิมพ์ · ปิดเว็บขณะฟอร์มยังไม่กดบันทึก เบราว์เซอร์จะถามก่อน
 - เปิดเว็บ / เข้าสู่ระบบ / สมัครสมาชิก: เริ่มที่หน้า **Dashboard** เสมอ (กดรีเฟรชอยู่หน้าเดิม) · ระหว่างโหลดมีหน้า Loading และแถบความคืบหน้าด้านบนขณะรับส่งข้อมูลกับ Cloud
@@ -124,7 +128,7 @@ Web app สำหรับบริหารโครงการแบบ EPC (
 | **Price List / Vendor Cost** | ราคาต่อหน่วยของแต่ละผู้ขาย (รหัส · รายการ · Spec · หมวด · หน่วย · ราคา / สกุลเงิน · MOQ · Lead time · ใบเสนอราคา · ใช้ได้ถึง · ไฟล์แนบ), ประวัติราคา, เปรียบเทียบผู้ขายของรายการเดียวกัน, **Export Excel (.xlsx) / PDF** ตามตัวกรอง — เก็บบน Supabase (collection `prices`) | ราคาใกล้หมดอายุ / หมดอายุ · ส่วนต่างราคาระหว่างผู้ขาย |
 | **Weekly Plan** | วางแผนงานรายสัปดาห์ (งาน · โครงการ/bid · phase · ผู้รับผิดชอบ · ชั่วโมง · ปริมาณ · กำหนดเสร็จ), อัปเดตสถานะ Planned → In progress → Done / Not done + สาเหตุ, ยกงานค้างไปสัปดาห์ถัดไป, ดูภาระงานรายคน, ดึงเป็นแถวใน Timesheet | **PPC** = งานเสร็จ ÷ งานในแผน (เป้า ≥ 80%), สาเหตุงานไม่เสร็จ, ชั่วโมงตามแผน vs capacity |
 | **Resource Utilization** | Utilization ตาม **Level**, heatmap loading รายสัปดาห์, รายคน, ตั้งค่า level (rate, target) | Utilization vs target, over/under allocation |
-| **Timesheet** | กรอกชั่วโมงรายสัปดาห์ต่อคน — **เฉพาะ Project Manager** (Role อื่นดูได้อย่างเดียว) · Project+Phase / Bid+ขั้นตอน (Inquiry · Estimate · Proposal · Submit) / Overhead / Leave · ชั่วโมง Bidding แยกตามขั้นตอนของทั้งทีม · สถานะการกรอกของทั้งทีม | Timesheet completeness |
+| **Timesheet** | กรอกชั่วโมงรายสัปดาห์ต่อคน (รวม OT) — **เฉพาะ Admin และ Project Manager** (Role อื่นดูได้อย่างเดียว) · Project+Phase / Bid+ขั้นตอน (Inquiry · Estimate · Proposal · Submit) / Overhead / Leave · ชั่วโมง Bidding แยกตามขั้นตอนของทั้งทีม · สถานะการกรอกของทั้งทีม | Timesheet completeness |
 
 ## สูตรที่ใช้
 

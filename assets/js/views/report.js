@@ -46,7 +46,9 @@
   html, body { background: #fff !important; color: #0b1b33; }
   body { margin: 0; font: 11px/1.5 "Sarabun", "Leelawadee UI", "Tahoma", "Noto Sans Thai", sans-serif; }
   .bar { position: sticky; top: 0; z-index: 5; display: flex; gap: 10px; align-items: center; padding: 10px 16px; background: #0b2f6b; color: #fff; font-size: 13px; }
-  .bar button { font: inherit; font-weight: 700; padding: 7px 14px; border: 0; border-radius: 6px; background: #fff; color: #0b2f6b; cursor: pointer; }
+  .bar button { font: inherit; font-weight: 700; padding: 7px 14px; border: 0; border-radius: 6px; background: #fff; color: #0b2f6b; cursor: pointer; white-space: nowrap; }
+  .bar button.back { background: transparent; color: #fff; border: 1px solid rgba(255, 255, 255, .5); }
+  @media (max-width: 640px) { .bar .hint { display: none; } .bar { flex-wrap: wrap; } }
   main { max-width: 190mm; margin: 0 auto; padding: 14px 4px 40px; }
   header.rh { display: flex; justify-content: space-between; gap: 16px; align-items: center; border-bottom: 3px solid #0b2f6b; padding-bottom: 8px; margin-bottom: 12px; }
   header.rh h1 { margin: 0; font-size: 19px; color: #0b2f6b; }
@@ -89,7 +91,7 @@
   function writePage(win, { title, bar, head, body }) {
     win.document.write(`<!doctype html><html lang="th" data-theme="light"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <title>${esc(title)}</title><style>${CHART_CSS}${PAGE_CSS}</style></head><body>
-<div class="bar"><b>${esc(bar)}</b><span>กด "พิมพ์ / บันทึก PDF" แล้วเลือกเครื่องพิมพ์ "บันทึกเป็น PDF"</span><span style="flex:1"></span><button onclick="window.print()">🖨 พิมพ์ / บันทึก PDF</button></div>
+<div class="bar">${PM.xport.backButton()}<b>${esc(bar)}</b><span class="hint">กด "พิมพ์ / บันทึก PDF" แล้วเลือกเครื่องพิมพ์ "บันทึกเป็น PDF"</span><span style="flex:1"></span><button onclick="window.print()">🖨 พิมพ์ / บันทึก PDF</button></div>
 <main>
   <header class="rh"><img class="rlogo" src="${esc(PM.logoUrl(true))}" alt="${esc(PM.COMPANY)}"><div class="rtitle">${head.title}</div><div class="meta">${head.meta}</div></header>
   ${body}

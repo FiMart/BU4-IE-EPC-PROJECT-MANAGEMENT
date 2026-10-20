@@ -12,7 +12,7 @@
   function commit() {
     clearTimeout(saveTimer); saveTimer = null;
     if (!state.dirty || !state.rows) return;
-    if (!PM.can('timesheet.edit')) { state.dirty = false; return; } // view only (Project Manager fills in)
+    if (!PM.can('timesheet.edit')) { state.dirty = false; return; } // view only (Admin / Project Manager fill in)
     const dates = DAYS.map((_, i) => PM.addDays(state.week, i));
     const who = state.resourceId;
     PM.db.timesheets = PM.db.timesheets.filter((t) => !(t.resourceId === who && t.date >= dates[0] && t.date <= dates[6]));
@@ -83,9 +83,10 @@
   PM.views.timesheet = function (el, fromRouter) {
     const db = PM.db, T = PM.today();
     if (fromRouter && !state.dirty) state.rows = null; // reload from storage when navigating here
-    const people = db.resources.filter((r) => r.active !== false);
-    if (!people.length) { el.innerHTML = '<div class="callout">ยังไม่มีรายชื่อพนักงาน — เพิ่มได้ที่ <a href="#/resources">Resource Utilization</a></div>'; return; }
-    if (!state.resourceId || !people.some((r) => r.id === state.resourceId)) state.resourceId = people[0].id;
+    // only people who log a Timesheet (Level Other / capacity 0 do not — PM.needsTimesheet)
+    const people = db.resources.filter((r) => r.active !== false && PM.needsTimesheet(r));
+    if (!people.length) { el.innerHTML = '<div class="callout">ยังไม่มีพนักงานที่ต้องลง Timesheet — เพิ่มได้ที่ <a href="#/resources">ภาระงานบุคลากร</a> (Level Other ไม่ต้องลง Timesheet)</div>'; return; }
+    if (!state.resourceId || !people.some((r) => r.id === state.resourceId)) { state.resourceId = people[0].id; state.rows = null; }
     if (!state.week) state.week = PM.monday(T);
     if (!state.rows) loadRows();
     const res = PM.find('resources', state.resourceId);
@@ -102,7 +103,7 @@
         <a class="btn" href="#/weekly">เปิด Weekly Plan →</a>
         ${canEdit ? '<button class="btn primary" data-action="save">บันทึก Timesheet</button>' : ''}
       </div>
-      ${canEdit ? '' : `<div class="callout">ดูได้อย่างเดียว — Timesheet กรอกและแก้ไขได้เฉพาะ <b>Project Manager</b> (Role ของคุณ: ${esc(PM.roleLabel(PM.auth && PM.auth.role))})</div>`}
+      ${canEdit ? '' : `<div class="callout">ดูได้อย่างเดียว — Timesheet กรอกและแก้ไขได้เฉพาะ <b>${esc(PM.whoCan('timesheet.edit'))}</b> (Role ของคุณ: ${esc(PM.roleLabel(PM.auth && PM.auth.role))})</div>`}
       <div class="card">
         <div class="card-h"><h2>${esc(res.name)}</h2><span class="chip">${esc(PM.levelName(res.level))}</span><span class="chip">${esc(res.discipline)}</span><span class="spacer"></span><span class="muted" id="ts-summary"></span>
           <p>งานมาจาก <b>Weekly Plan</b> ของสัปดาห์นี้อย่างเดียว (${nPlan} รายการ) — กรอกชั่วโมงที่ทำจริงรายวัน · คอลัมน์ "แผน" = ชั่วโมงตามแผนของคนนี้ · งานที่ไม่อยู่ในแผนให้เพิ่มที่ Weekly Plan ก่อน</p></div>
@@ -303,7 +304,7 @@
     const box = el.querySelector('#ts-team');
     if (dates[0] > T) { box.innerHTML = '<p class="empty">สัปดาห์ในอนาคต</p>'; return; }
     box.innerHTML = `<table class="tbl"><thead><tr><th>Name</th><th>Level</th><th class="num">Expected h</th><th class="num">Logged h</th><th class="num">Billable h</th><th>Completeness</th><th></th></tr></thead><tbody>
-      ${ut.people.map((x) => {
+      ${ut.people.filter((x) => PM.needsTimesheet(x.r)).map((x) => {
         const comp = x.capacity ? x.logged / x.capacity : null;
         const st = comp == null ? 'neutral' : comp >= 0.95 ? 'good' : comp >= 0.6 ? 'warning' : 'critical';
         return `<tr><td><span class="title">${esc(x.r.name)}</span></td><td>${esc(PM.levelName(x.r.level))}</td><td class="num">${U.num(x.capacity)}</td><td class="num">${U.num(x.logged, 1)}</td><td class="num">${U.num(x.billable, 1)}</td>

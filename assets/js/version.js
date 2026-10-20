@@ -2,9 +2,33 @@
    When the website changes: bump PM.VERSION and add a new entry at the TOP of PM.CHANGELOG.
    type: 'feature' (ฟีเจอร์ใหม่) · 'improve' (ปรับปรุง) · 'fix' (แก้ไข) */
 (function () {
-  PM.VERSION = '1.54.0';
+  PM.VERSION = '1.56.1';
 
   PM.CHANGELOG = [
+    {
+      version: '1.56.1', date: '2026-10-20', type: 'improve', title: 'Level Other ไม่ต้องลง Timesheet',
+      items: [
+        'พนักงาน Level Other ไม่อยู่ในรายชื่อหน้า Timesheet และตารางสถานะการกรอกของทีม',
+        'ไม่นับใน Utilization · ชั่วโมงที่ยังไม่ลง · ความครบของ Timesheet · แจ้งเตือน "Timesheet ไม่ครบ" · Heatmap ภาระงานรายสัปดาห์ (ไม่ต้องตั้ง Capacity เป็น 0 เอง)',
+        'ยังมอบหมายงานใน Weekly Plan ให้ได้ตามปกติ · ไม่ต้องรัน SQL',
+      ],
+    },
+    {
+      version: '1.56.0', date: '2026-10-20', type: 'improve', title: 'Admin กรอก Timesheet ได้',
+      items: [
+        'Admin กรอก / แก้ไข Timesheet และ OT (เวลาเลิกงาน · ไม่ได้พักเที่ยง) ได้เหมือน Project Manager',
+        'ต้องรัน SQL: supabase/data.sql อีกครั้ง 1 ครั้ง — ฐานข้อมูลยอมให้ Admin บันทึก Timesheet (ก่อนรัน: Admin กรอกได้บนหน้าจอ แต่จะไม่ถูกบันทึกขึ้น Cloud)',
+      ],
+    },
+    {
+      version: '1.55.0', date: '2026-10-20', type: 'feature', title: 'Role Document Control · ปุ่มกลับในหน้าพิมพ์รายงาน',
+      items: [
+        'Role ใหม่ "Document Control" (ควบคุมเอกสาร): แก้ไขทะเบียนเอกสาร / รายการขั้นงาน EPC (Revision · IFR / Return / IFC · แนบไฟล์) · ลบ / แทนที่ไฟล์เอกสารที่คนอื่นแนบไว้ · สร้างและอัปเดตงานใน Weekly Plan · Export ข้อมูล — ไม่เห็นราคาประมูล',
+        'Admin · Department Manager · Project Manager ตั้ง Role นี้ให้ผู้ใช้ได้ที่ Settings → ผู้ใช้และ Role · ตารางสิทธิ์ใน Help / Settings อัปเดตอัตโนมัติ',
+        'ต้องรัน SQL: supabase/roles.sql (เพิ่ม Role ในฐานข้อมูล) และ supabase/data.sql (สิทธิ์ลบไฟล์เอกสาร)',
+        'หน้าพิมพ์รายงาน (รายงานประจำเดือน · รายงาน Dashboard · Export PDF ทุกหน้า): ปุ่ม "← กลับ" มุมซ้ายบน ปิดหน้ารายงานแล้วกลับไปหน้าเดิมของระบบ',
+      ],
+    },
     {
       version: '1.54.0', date: '2026-10-20', type: 'feature', title: 'กระดิ่งแจ้งเตือน + ปรับหน้าจอมือถือทั้งเว็บ',
       items: [
