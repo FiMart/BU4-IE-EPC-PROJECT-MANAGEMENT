@@ -26,6 +26,25 @@
     const u = PM.auth.user;
     return { path, name: file.name, size: file.size, type: file.type, uploadedAt: new Date().toISOString(), uploadedBy: u ? u.id : '', uploadedByName: u ? PM.auth.displayName(u) : '' };
   };
+  /* attach without a form: open the file picker (call it from a click), upload what was chosen into `prefix`,
+     then onDone({ files, problems }) — onStart(chosen) runs as the upload begins (e.g. to show progress) */
+  F.pickUpload = function (prefix, onDone, onStart) {
+    if (!F.available()) { alert('แนบไฟล์ได้เมื่อเชื่อมต่อ Cloud (Supabase)'); return; }
+    const input = document.createElement('input');
+    input.type = 'file'; input.multiple = true; input.accept = ACCEPT;
+    input.addEventListener('change', async () => {
+      const chosen = Array.from(input.files);
+      if (!chosen.length) return;
+      if (onStart) onStart(chosen);
+      const files = [], problems = [];
+      for (const file of chosen) {
+        if (file.size > MAX_MB * 1048576) { problems.push(`${file.name}: ใหญ่เกิน ${MAX_MB} MB`); continue; }
+        try { files.push(await F.upload(prefix, file)); } catch (e) { problems.push(`${file.name}: ${(e && e.message) || e}`); }
+      }
+      onDone({ files, problems });
+    });
+    input.click();
+  };
   F.open = async function (path) {
     const win = window.open('', '_blank'); // opened now so pop-up blockers allow it
     try {

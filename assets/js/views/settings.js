@@ -191,7 +191,7 @@
         };
         const q = (s) => `"${String(s == null ? '' : s).replace(/"/g, '""')}"`;
         const lines = [['Date', 'Person', 'Level', 'Kind', 'Item', 'Phase', 'Hours'].join(',')].concat(
-          PM.db.timesheets.slice().sort((x, y) => (x.date < y.date ? -1 : 1)).map((t) => {
+          PM.db.timesheets.filter((t) => t.kind !== 'ot').sort( // OT inputs (clock-out time) are not hours(x, y) => (x.date < y.date ? -1 : 1)).map((t) => {
             const r = PM.find('resources', t.resourceId) || {};
             return [t.date, q(r.name), q(PM.levelName(r.level)), t.kind, q(name(t)), t.phase, t.hours].join(',');
           }));

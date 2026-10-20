@@ -592,6 +592,61 @@
     return { from, to, days, people, byLevel, total, entries: ts };
   };
 
+  /* ---------- Overtime (OT) — who may get OT depends on the person's level ----------
+     Engineer:   Saturday – Sunday only (every hour logged that day)
+     Technician: Monday – Friday after 16:30 (from the clock-out time) · working through the 12:00 lunch break = 1 h
+                 · Saturday – Sunday (every hour logged that day)
+     Other:      no OT
+     Weekend hours come from the Timesheet. The weekday clock-out time and "no lunch break" are kept per person per day
+     as a timesheet record of kind 'ot' (hours 0, so it never adds to the logged hours):
+     { id: 'ot-<person>-<date>', resourceId, date, kind: 'ot', refId: 'ot', hours: 0, endTime: 'HH:MM', noLunch } */
+  PM.OT_START = '16:30';
+  PM.OT_LUNCH_HOURS = 1;
+  PM.OT_RULES = {
+    ENG: { weekday: false, lunch: false, weekend: true, text: 'OT เฉพาะเสาร์ – อาทิตย์' },
+    TECH: { weekday: true, lunch: true, weekend: true, text: 'จันทร์ – ศุกร์ หลัง 16:30 · ไม่ได้พักเที่ยง 12:00 (1 ชม.) · เสาร์ – อาทิตย์' },
+    OTHER: { weekday: false, lunch: false, weekend: false, text: 'ไม่มี OT' },
+  };
+  PM.otRule = (r) => PM.OT_RULES[r && r.level] || PM.OT_RULES[PM.mapLegacyLevel(r && r.level)] || PM.OT_RULES.OTHER;
+  const minutes = (hhmm) => { const m = /^(\d{1,2}):(\d{2})$/.exec(hhmm || ''); return m ? +m[1] * 60 + +m[2] : null; };
+  /* OT of one person on one day: { after, lunch, weekend, total } in hours
+     worked = hours logged that day (leave not counted) · rec = that day's 'ot' record (clock-out time / no lunch) */
+  PM.otDay = function (r, date, worked, rec) {
+    const rule = PM.otRule(r);
+    const out = { after: 0, lunch: 0, weekend: 0, total: 0 };
+    if (!PM.isWeekday(date)) out.weekend = rule.weekend ? worked || 0 : 0;
+    else if (rec) {
+      const end = minutes(rec.endTime), start = minutes(PM.OT_START);
+      if (rule.weekday && end != null && end > start) out.after = (end - start) / 60;
+      if (rule.lunch && rec.noLunch) out.lunch = PM.OT_LUNCH_HOURS;
+    }
+    out.total = out.after + out.lunch + out.weekend;
+    return out;
+  };
+  /* everyone's OT between two dates (inclusive) */
+  PM.overtime = function (from, to) {
+    const db = PM.db;
+    to = PM.min(to, PM.today());
+    const ts = db.timesheets.filter((t) => t.date >= from && t.date <= to);
+    const people = db.resources.filter((r) => r.active !== false).map((r) => {
+      const mine = ts.filter((t) => t.resourceId === r.id);
+      const day = {};
+      mine.forEach((t) => {
+        const d = day[t.date] || (day[t.date] = { worked: 0, rec: null });
+        if (t.kind === 'ot') d.rec = t; else if (t.refId !== 'leave') d.worked += Number(t.hours) || 0;
+      });
+      const x = { r, rule: PM.otRule(r), after: 0, lunch: 0, weekend: 0, total: 0, days: 0 };
+      Object.keys(day).forEach((date) => {
+        const o = PM.otDay(r, date, day[date].worked, day[date].rec);
+        x.after += o.after; x.lunch += o.lunch; x.weekend += o.weekend; x.total += o.total;
+        if (o.total > 0) x.days++;
+      });
+      return x;
+    });
+    const sum = (k) => PM.sum(people, (p) => p[k]);
+    return { from, to, people, total: { after: sum('after'), lunch: sum('lunch'), weekend: sum('weekend'), total: sum('total'), people: people.filter((p) => p.total > 0).length } };
+  };
+
   /* ---------- demo seed (relative to today so it always looks current) ---------- */
   function rng(seed) {
     return function () {
@@ -858,6 +913,21 @@
         });
       });
     }
+    /* overtime demo (PM.overtime): some Saturdays on site, technicians staying after 16:30 or working through lunch
+       (picked by date / person index, not by R(), so the rest of the demo data stays the same) */
+    db.resources.forEach((r, ri) => {
+      const site = (alloc[r.id] || []).find((a) => a[0] === 'project');
+      let i = 0;
+      for (let d = from; d <= T; d = PM.addDays(d, 1), i++) {
+        const dow = new Date(d + 'T00:00:00').getDay(); // 0 = Sunday … 6 = Saturday
+        if (dow === 6 && site && (i + ri * 7) % 21 === 5) { tNo++; db.timesheets.push({ id: 't' + tNo, resourceId: r.id, date: d, kind: 'project', refId: site[1], phase: site[2], hours: r.level === 'TECH' ? 8 : 6 }); }
+        if (r.level === 'TECH' && dow >= 1 && dow <= 5) {
+          const endTime = (i + ri) % 7 === 0 ? '19:00' : (i + ri) % 11 === 0 ? '18:00' : '';
+          const noLunch = (i + ri) % 13 === 0;
+          if (endTime || noLunch) db.timesheets.push({ id: `ot-${r.id}-${d}`, resourceId: r.id, date: d, kind: 'ot', refId: 'ot', phase: '', hours: 0, endTime, noLunch });
+        }
+      }
+    });
 
     /* weekly plan — 6 past weeks, this week, next week (built from each person's allocation) */
     const TASKS = {

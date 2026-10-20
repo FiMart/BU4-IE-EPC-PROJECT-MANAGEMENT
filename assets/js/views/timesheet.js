@@ -19,6 +19,11 @@
     state.rows.forEach((r) => r.hours.forEach((h, i) => {
       if (h > 0) PM.db.timesheets.push({ id: `ts-${who}-${dates[i]}-${r.kind}-${r.refId}-${r.phase || '-'}`, resourceId: who, date: dates[i], kind: r.kind, refId: r.refId, phase: r.phase, hours: h });
     }));
+    // OT inputs of the week (clock-out time / no lunch break) — a record only for days that have one (PM.overtime)
+    dates.forEach((d) => {
+      const o = (state.ot || {})[d];
+      if (o && (o.endTime || o.noLunch)) PM.db.timesheets.push({ id: `ot-${who}-${d}`, resourceId: who, date: d, kind: 'ot', refId: 'ot', phase: '', hours: 0, endTime: o.endTime || '', noLunch: !!o.noLunch });
+    });
     PM.save();
     state.dirty = false;
     const s = document.getElementById('ts-summary');
@@ -47,7 +52,9 @@
       r.planned += p.plannedHours || 0;
       r.fromPlan = true;
     });
+    state.ot = {};
     PM.db.timesheets.filter((t) => t.resourceId === state.resourceId && t.date >= state.week && t.date <= end).forEach((t) => {
+      if (t.kind === 'ot') { state.ot[t.date] = { endTime: t.endTime || '', noLunch: !!t.noLunch }; return; } // OT inputs, not a work row
       const r = row({ kind: t.kind, refId: t.refId, phase: t.phase || '' });
       r.hours[PM.diffDays(state.week, t.date)] += t.hours;
     });
@@ -126,6 +133,17 @@
       commit(); state.resourceId = e.target.value; state.rows = null; PM.views.timesheet(el);
     });
     el.oninput = (e) => {
+      // OT inputs: weekday clock-out time / no lunch break
+      const ot = e.target.closest('[data-ot-end], [data-ot-lunch]');
+      if (ot && canEdit) {
+        const d = ot.dataset.otEnd || ot.dataset.otLunch;
+        const o = state.ot[d] || (state.ot[d] = { endTime: '', noLunch: false });
+        if (ot.dataset.otEnd) o.endTime = ot.value; else o.noLunch = ot.checked;
+        state.dirty = true;
+        updateTotals(el, dates, res);
+        commitSoon();
+        return;
+      }
       const inp = e.target.closest('input[data-r]');
       if (!inp || !canEdit) return;
       const v = Math.max(0, Math.min(24, Number(inp.value) || 0));
@@ -195,12 +213,31 @@
         <td class="num" data-rowtotal="${ri}"></td>
         <td class="num ts-plan">${r.fromPlan ? U.num(r.planned, 1) : '–'}</td>
         <td>${canEdit && !r.fromPlan ? `<button class="icon-btn" data-action="remove" data-r="${ri}" aria-label="ลบแถว ${esc(rowLabel(r))}">✕</button>` : ''}</td></tr>`).join('')}
-      </tbody><tfoot><tr><td>รวมต่อวัน</td>${DAYS.map((_, i) => `<td class="num ${dayCls(i)}" data-daytotal="${i}"></td>`).join('')}<td class="num" data-grand></td><td class="num ts-plan">${U.num(PM.sum(state.rows, (r) => r.planned || 0), 1)}</td><td></td></tr></tfoot></table>`;
+      </tbody><tfoot><tr><td>รวมต่อวัน</td>${DAYS.map((_, i) => `<td class="num ${dayCls(i)}" data-daytotal="${i}"></td>`).join('')}<td class="num" data-grand></td><td class="num ts-plan">${U.num(PM.sum(state.rows, (r) => r.planned || 0), 1)}</td><td></td></tr>
+      ${otRows(dates, res, dayCls, canEdit)}</tfoot></table>`;
     updateTotals(el, dates, res);
   }
 
+  /* OT (overtime) rows under the totals — what can be entered depends on the person's level (PM.OT_RULES):
+     weekday clock-out time (after 16:30) and "no lunch break" for Technicians; weekends count the hours logged */
+  function otRows(dates, res, dayCls, canEdit) {
+    const rule = PM.otRule(res);
+    const o = (d) => (state.ot || {})[d] || {};
+    const cell = (i, html) => `<td class="num ${dayCls(i)}">${html}</td>`;
+    const wk = (i) => i < 5;
+    const end = dates.map((d, i) => cell(i, !wk(i) ? '<span class="muted" title="เสาร์ – อาทิตย์: OT = ชั่วโมงที่ลงทั้งวัน">ทั้งวัน</span>'
+      : !rule.weekday ? '<span class="muted">–</span>'
+      : canEdit ? `<input type="time" class="ts-ot-end" value="${esc(o(d).endTime || '')}" data-ot-end="${d}" aria-label="เวลาเลิกงาน ${DAYS[i]}">` : esc(o(d).endTime || '–'))).join('');
+    const lunch = dates.map((d, i) => cell(i, !wk(i) || !rule.lunch ? '<span class="muted">–</span>'
+      : canEdit ? `<input type="checkbox" ${o(d).noLunch ? 'checked' : ''} data-ot-lunch="${d}" aria-label="ไม่ได้พักเที่ยง ${DAYS[i]}">` : o(d).noLunch ? '✓' : '–')).join('');
+    return `<tr class="ts-ot-h"><td colspan="11"><b>OT (ล่วงเวลา)</b> <span class="chip">${esc(PM.levelName(res.level))}: ${esc(rule.text)}</span></td></tr>
+      ${rule.weekday ? `<tr class="ts-ot"><td>เวลาเลิกงาน <small>OT นับหลัง ${PM.OT_START}</small></td>${end}<td colspan="3"></td></tr>` : ''}
+      ${rule.lunch ? `<tr class="ts-ot"><td>ไม่ได้พักเที่ยง (12:00) <small>ได้ OT ${PM.OT_LUNCH_HOURS} ชม.</small></td>${lunch}<td colspan="3"></td></tr>` : ''}
+      <tr class="ts-ot ts-ot-sum"><td>OT (ชม.)</td>${dates.map((_, i) => `<td class="num ${dayCls(i)}" data-otday="${i}"></td>`).join('')}<td class="num" data-ottotal></td><td colspan="2"></td></tr>`;
+  }
+
   function updateTotals(el, dates, res) {
-    const perDay = PM.cap(res) / 5;
+    state.ot = state.ot || {};
     let grand = 0, billable = 0, leave = 0;
     state.rows.forEach((r, ri) => {
       const t = PM.sum(r.hours);
@@ -209,15 +246,26 @@
       if (r.refId === 'leave') leave += t;
       const c = el.querySelector(`[data-rowtotal="${ri}"]`); if (c) c.textContent = U.num(t, 1);
     });
+    let ot = 0;
     dates.forEach((d, i) => {
       const t = PM.sum(state.rows, (r) => r.hours[i]);
       const c = el.querySelector(`[data-daytotal="${i}"]`);
-      if (c) { c.innerHTML = U.num(t, 1) + (t > perDay + 2 ? ' <span class="badge critical" title="Overtime"><i>!</i>OT</span>' : ''); }
+      if (c) c.textContent = U.num(t, 1);
+      // OT of the day by the person's level rule (leave hours never count)
+      const worked = PM.sum(state.rows.filter((r) => r.refId !== 'leave'), (r) => r.hours[i]);
+      const o = PM.otDay(res, d, worked, state.ot[d]);
+      ot += o.total;
+      const oc = el.querySelector(`[data-otday="${i}"]`);
+      if (oc) {
+        oc.innerHTML = o.total ? `<b>${U.num(o.total, 1)}</b>` : '<span class="muted">–</span>';
+        oc.title = o.total ? [o.after && `หลัง ${PM.OT_START}: ${U.num(o.after, 1)} ชม.`, o.lunch && `พักเที่ยง: ${U.num(o.lunch, 1)} ชม.`, o.weekend && `เสาร์ – อาทิตย์: ${U.num(o.weekend, 1)} ชม.`].filter(Boolean).join('\n') : '';
+      }
     });
     const g = el.querySelector('[data-grand]'); if (g) g.textContent = U.num(grand, 1);
+    const og = el.querySelector('[data-ottotal]'); if (og) og.innerHTML = `<b>${U.num(ot, 1)}</b>`;
     const cap = PM.cap(res) - leave;
     const planned = PM.sum(state.rows, (r) => r.planned || 0);
-    el.querySelector('#ts-summary').textContent = `จริง ${U.num(grand, 1)} h / แผน ${U.num(planned, 1)} h · Billable ${U.num(billable, 1)} h · Utilization ${U.pct(cap > 0 ? billable / cap : null)} · ${state.dirty ? 'กำลังบันทึก…' : 'บันทึกอัตโนมัติแล้ว'}`;
+    el.querySelector('#ts-summary').textContent = `จริง ${U.num(grand, 1)} h / แผน ${U.num(planned, 1)} h · Billable ${U.num(billable, 1)} h · OT ${U.num(ot, 1)} h · Utilization ${U.pct(cap > 0 ? billable / cap : null)} · ${state.dirty ? 'กำลังบันทึก…' : 'บันทึกอัตโนมัติแล้ว'}`;
   }
 
   /* every bid with hours this week (whole team), split by bidding stage */

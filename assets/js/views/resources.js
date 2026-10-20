@@ -20,6 +20,7 @@
     const ut = PM.utilization(from, to);
     const weeks = []; for (let i = 11; i >= 0; i--) weeks.push(PM.addDays(PM.monday(T), -7 * i));
     const weekUt = weeks.map((w) => PM.utilization(w, PM.addDays(w, 6)));
+    const ot = PM.overtime(from, to);
 
     el.innerHTML = `
       <div class="row">
@@ -37,6 +38,7 @@
         ${V.tile({ label: 'Overhead hours', value: U.num(ut.total.overhead), sub: 'Admin / Training' })}
         ${V.tile({ label: 'Timesheet missing', value: U.num(ut.total.missing), sub: ut.total.missing > ut.total.capacity * 0.05 ? U.badge('warning', 'ตามให้กรอก') : U.badge('good', 'ครบ') })}
       </div>
+      <div class="card" id="r-ot">${otCard(ot)}</div>
       <div class="grid cols-2">
         <div class="card"><div class="card-h"><h2>Utilization by level</h2><p>เส้นดำ = Target ของ level</p></div><div class="card-b"><div class="chart" id="c-level"></div></div></div>
         <div class="card"><div class="card-h"><h2>Weekly hours by category</h2><p>12 สัปดาห์ล่าสุด (ทั้งทีม)</p></div><div class="card-b"><div class="chart" id="c-weekly"></div></div></div>
@@ -51,12 +53,13 @@
       </div>
       <div class="card">
         <div class="card-h"><h2>Levels</h2><p>อัตราค่าแรงต่อชั่วโมงและ utilization target ของแต่ละระดับ — คลิกเพื่อแก้ไข</p></div>
-        <div class="card-b flush table-wrap"><table class="tbl"><thead><tr><th>Code</th><th>Level</th><th class="num">Headcount</th><th class="num">Rate (THB/h)</th><th class="num">Target</th><th class="num">Actual</th><th>Status</th></tr></thead><tbody>
+        <div class="card-b flush table-wrap"><table class="tbl"><thead><tr><th>Code</th><th>Level</th><th class="num">Headcount</th><th class="num">Rate (THB/h)</th><th class="num">Target</th><th class="num">Actual</th><th>Status</th><th>สิทธิ์ OT</th></tr></thead><tbody>
           ${db.levels.map((l) => {
             const x = ut.byLevel.find((b) => b.level.id === l.id);
             const u = x ? x.util : null, st = U.utilLevel(u, l.target / 100);
             return `<tr class="click" data-action="edit-level" data-id="${esc(l.id)}"><td><span class="title">${esc(l.id)}</span></td><td>${esc(l.name)}</td>
-              <td class="num">${x ? x.n : 0}</td><td class="num">${U.num(l.rate)}</td><td class="num">${l.target}%</td><td class="num">${U.pct(u)}</td><td>${U.badge(st, U.utilLabel(u, l.target / 100))}</td></tr>`;
+              <td class="num">${x ? x.n : 0}</td><td class="num">${U.num(l.rate)}</td><td class="num">${l.target}%</td><td class="num">${U.pct(u)}</td><td>${U.badge(st, U.utilLabel(u, l.target / 100))}</td>
+              <td><small>${esc(PM.otRule({ level: l.id }).text)}</small></td></tr>`;
           }).join('')}
         </tbody></table></div>
       </div>`;
@@ -74,6 +77,17 @@
         { name: 'Bidding', color: 'var(--s2)', values: cat((t) => t.bid) },
         { name: 'Overhead', color: 'var(--s3)', values: cat((t) => t.overhead) },
         { name: 'Leave', color: 'var(--s4)', values: cat((t) => t.leave) },
+      ],
+    });
+
+    // OT per week (12 weeks), split by where it came from
+    const weekOt = weeks.map((w) => PM.overtime(w, PM.addDays(w, 6)).total);
+    PM.charts.columns(document.getElementById('c-ot-week'), {
+      categories: weeks.map((w) => U.date(w).slice(0, 6)), tipTitle: weeks.map((w, i) => `สัปดาห์ ${U.date(w)} · OT ${U.num(weekOt[i].total, 1)} ชม.`), fmt: (v) => U.num(v, 1) + ' ชม.', label: 'Weekly overtime',
+      series: [
+        { name: `จันทร์ – ศุกร์ หลัง ${PM.OT_START}`, color: 'var(--s1)', values: weekOt.map((t) => t.after) },
+        { name: 'ไม่ได้พักเที่ยง', color: 'var(--s4)', values: weekOt.map((t) => t.lunch) },
+        { name: 'เสาร์ – อาทิตย์', color: 'var(--s2)', values: weekOt.map((t) => t.weekend) },
       ],
     });
 
@@ -113,6 +127,33 @@
       </tbody></table>
       <div class="heat-legend"><span class="muted">Utilization %</span>
         <span><i class="h1"></i>&lt; 50</span><span><i class="h2"></i>50–70</span><span><i class="h3"></i>70–85</span><span><i class="h4"></i>85–105</span><span><i class="h5" style="box-shadow:inset 0 0 0 2px var(--critical)"></i>&gt; 105 (over)</span></div>`;
+  }
+
+  /* Overtime: by level rule (PM.OT_RULES) — totals of the chosen period, 12-week chart, one row per person */
+  function otCard(ot) {
+    const h = (v) => (v ? U.num(v, 1) : '<span class="muted">–</span>');
+    const rows = ot.people.filter((x) => x.total > 0 || x.rule.weekday || x.rule.weekend).sort((a, b) => b.total - a.total);
+    const rules = ['ENG', 'TECH'].map((id) => `<b>${esc(PM.levelName(id))}</b>: ${esc(PM.OT_RULES[id].text)}`).join(' · ');
+    return `<div class="card-h"><h2>OT (ล่วงเวลา)</h2>${U.badge(ot.total.total ? 'info' : 'neutral', `${U.num(ot.total.total, 1)} ชม. · ${ot.total.people} คน`)}
+        <span class="spacer"></span><a class="btn sm" href="#/timesheet">กรอกเวลาเลิกงาน / พักเที่ยง ที่ Timesheet →</a>
+        <p>${rules} · Other ไม่มี OT · เสาร์ – อาทิตย์ = ชั่วโมงที่ลงใน Timesheet ทั้งวัน · ช่วงเวลาตามตัวเลือกด้านบน</p></div>
+      <div class="card-b">
+        <div class="grid cols-4">
+          ${V.tile({ label: 'OT รวม', value: `${U.num(ot.total.total, 1)} <small>ชม.</small>`, sub: `${ot.total.people} คนที่มี OT`, icon: 'clock' })}
+          ${V.tile({ label: `จันทร์ – ศุกร์ หลัง ${PM.OT_START}`, value: `${U.num(ot.total.after, 1)} <small>ชม.</small>`, sub: 'Technician — จากเวลาเลิกงาน', icon: 'clock' })}
+          ${V.tile({ label: 'ไม่ได้พักเที่ยง (12:00)', value: `${U.num(ot.total.lunch, 1)} <small>ชม.</small>`, sub: `Technician — ครั้งละ ${PM.OT_LUNCH_HOURS} ชม.`, icon: 'clock' })}
+          ${V.tile({ label: 'เสาร์ – อาทิตย์', value: `${U.num(ot.total.weekend, 1)} <small>ชม.</small>`, sub: 'Engineer และ Technician', icon: 'calendar' })}
+        </div>
+        <h3 class="cf-sub">OT รายสัปดาห์ — 12 สัปดาห์ล่าสุด (ทั้งทีม)</h3><div class="chart" id="c-ot-week"></div>
+      </div>
+      <div class="card-b flush table-wrap"><table class="tbl"><thead><tr><th>ชื่อ</th><th>Level</th><th>สิทธิ์ OT</th><th class="num">จ.–ศ. หลัง ${PM.OT_START}</th><th class="num">ไม่ได้พักเที่ยง</th><th class="num">เสาร์ – อาทิตย์</th><th class="num">รวม OT (ชม.)</th><th class="num">วันที่มี OT</th></tr></thead><tbody>
+        ${rows.length ? rows.map((x) => `<tr>
+          <td><span class="title">${esc(x.r.name)}</span></td><td>${esc(PM.levelName(x.r.level))}</td><td><small>${esc(x.rule.text)}</small></td>
+          <td class="num">${x.rule.weekday ? h(x.after) : '<span class="muted">ไม่มีสิทธิ์</span>'}</td>
+          <td class="num">${x.rule.lunch ? h(x.lunch) : '<span class="muted">ไม่มีสิทธิ์</span>'}</td>
+          <td class="num">${h(x.weekend)}</td><td class="num"><b>${U.num(x.total, 1)}</b></td><td class="num">${x.days || '–'}</td></tr>`).join('')
+          : '<tr><td colspan="8" class="empty">ไม่มีพนักงานที่มีสิทธิ์ OT</td></tr>'}
+      </tbody></table></div>`;
   }
 
   function peopleTable(ut) {

@@ -1661,6 +1661,15 @@ kbd { font: 600 10.5px/1 var(--font); padding: 3px 5px; border-radius: 5px; bord
 .ts-oh .row { gap: 8px; align-items: center; }
 .ts-oh select { width: auto; }
 
+/* Timesheet — OT rows under the daily totals (timesheet.js) */
+.ts-grid tr.ts-ot-h td { padding-top: 16px; border-top: 2px solid var(--border-strong); font-weight: 400; }
+.ts-grid tr.ts-ot-h .chip { margin-left: 6px; font-weight: 600; }
+.ts-grid tr.ts-ot td { font-weight: 400; }
+.ts-grid tr.ts-ot td small { display: block; color: var(--muted); }
+.ts-grid input.ts-ot-end { width: 96px; padding: 4px 6px; text-align: center; }
+.ts-grid tr.ts-ot input[type="checkbox"] { width: 18px; height: 18px; }
+.ts-grid tr.ts-ot-sum td { font-weight: 700; color: var(--accent); }
+
 /* phase line items (phase-items.js): status colours shared by the share bar, legend and the status dropdown */
 .pi-card .card-h .badge { margin-left: 2px; }
 .pi-share { display: flex; gap: 2px; height: 12px; border-radius: 999px; overflow: hidden; background: var(--surface-2); }
@@ -1674,6 +1683,15 @@ select.pi-st.st-todo { background-color: var(--surface-2); color: var(--ink-2); 
 select.pi-st.st-wip { background-color: var(--accent-soft); color: var(--accent); }
 select.pi-st.st-review { background-color: var(--warning-bg); color: var(--warning-text); }
 select.pi-st.st-done { background-color: var(--good-bg); color: var(--good-text); }
+select.pi-st.st-return { background-color: var(--critical-bg); color: var(--critical-text); }
+.st-return.pi-seg, .st-return.pi-sw { background: var(--critical); }
+.pi-tbl tr.pi-returned td:first-child { box-shadow: inset 3px 0 0 var(--critical); }
+.pi-tbl small.pi-comment { color: var(--critical-text); font-weight: 600; }
+.pi-files .po-clip { font-size: 13px; margin-right: 8px; }
+.pi-log { display: flex; flex-direction: column; gap: 6px; font-size: 13px; font-weight: 600; color: var(--ink-2); }
+.pi-log ol { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; border-left: 2px solid var(--border-strong); }
+.pi-log li { padding-left: 12px; font-weight: 400; color: var(--ink); display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.pi-log li small { flex-basis: 100%; color: var(--critical-text); }
 .pi-tbl td small.neg { display: block; font-weight: 600; }
 .pi-empty { display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 18px 0; text-align: center; }
 .pi-empty p { margin: 0; color: var(--ink-2); font-weight: 600; }

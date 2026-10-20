@@ -37,6 +37,8 @@
     const att = PM.attention();
     const nCrit = att.filter((a) => a.level === 'critical').length;
     el.innerHTML = `
+      <div class="row dash-tools"><span class="muted">ข้อมูลทุกส่วน ณ ${U.date(T)}</span><span class="spacer"></span>
+        <button class="btn" data-action="dash-report" title="รายงานภาพรวมแผนกขนาด A4 — พิมพ์ หรือบันทึกเป็น PDF">📄 พิมพ์รายงาน PDF</button></div>
       <div class="card att-card">
         <div class="card-h"><h2>ต้องดำเนินการวันนี้</h2>${att.length ? `${nCrit ? U.badge('critical', `ด่วน ${nCrit}`) : ''} ${att.length - nCrit ? U.badge('warning', `ติดตาม ${att.length - nCrit}`) : ''}` : U.badge('good', 'เรียบร้อย')}
           <p>รวมเรื่องที่ต้องตามจากทุกส่วน เรียงเรื่องด่วนก่อน — คลิกเพื่อเปิดหน้าที่เกี่ยวข้อง</p></div>
@@ -119,6 +121,7 @@
 
     V.bindFlowLinks(el);
     el.onclick = (e) => {
+      if (e.target.closest('[data-action="dash-report"]')) { PM.dashboardReport(); return; } // report.js
       const seg = e.target.closest('[data-seg="overrun"]');
       if (seg) { state.overrun = seg.dataset.val; el.querySelector('#d-overrun').innerHTML = overrunCard(overrun); return; }
       const cseg = e.target.closest('[data-seg="cfsc"]');
