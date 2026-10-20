@@ -199,13 +199,14 @@
       updateTotals(el, dates, res);
       return;
     }
-    const dayCls = (i) => `${i > 4 ? 'weekend' : ''}${dates[i] === T ? ' today' : ''}`;
+    const hol = dates.map((d) => PM.holidayOf(d)); // public holidays (OT settings) look like a weekend
+    const dayCls = (i) => `${i > 4 || hol[i] ? 'weekend' : ''}${hol[i] ? ' holiday' : ''}${dates[i] === T ? ' today' : ''}`;
     // under each row: the plan's tasks (name · due day · status) — or why the row is there
     const taskLine = (r) => (r.tasks.length
       ? r.tasks.map((p) => { const s = PM.PLAN_STATUS.find((x) => x.key === p.status) || {}; return `<span class="ts-task st-${esc(p.status)}" title="${esc(`${p.title}\nกำหนดเสร็จ ${U.date(p.dueDate)} · ${s.th || ''}\nแผน ${U.num(p.plannedHours || 0, 1)} h`)}">${esc(p.title)}</span>`; }).join('')
       : r.off ? '<span class="ts-off">ไม่อยู่ในแผน — ชั่วโมงที่บันทึกไว้ก่อน</span>' : `<small>${esc(rowSub(r))}</small>`);
     box.innerHTML = `<table class="tbl ts-grid"><thead><tr><th>งานจาก Weekly Plan</th>
-      ${DAYS.map((d, i) => `<th class="num ${dayCls(i)}">${d}<small>${U.date(dates[i]).slice(0, 6)}</small></th>`).join('')}
+      ${DAYS.map((d, i) => `<th class="num ${dayCls(i)}"${hol[i] ? ` title="${esc(hol[i].name)} — ชั่วโมงที่ลงวันนี้นับเป็น OT"` : ''}>${d}<small>${U.date(dates[i]).slice(0, 6)}</small>${hol[i] ? '<em class="ts-hol">วันหยุด</em>' : ''}</th>`).join('')}
       <th class="num">รวม</th><th class="num" title="ชั่วโมงตามแผนของคนนี้ (Weekly Plan)">แผน</th><th></th></tr></thead><tbody>
       ${state.rows.map((r, ri) => `<tr class="${r.off ? 'ts-row-off' : r.kind === 'overhead' && !r.fromPlan ? 'ts-row-oh' : ''}">
         <td><span class="title">${esc(rowLabel(r))}</span>${r.kind !== 'overhead' && rowSub(r) && r.tasks.length ? `<small>${esc(rowSub(r))}</small>` : ''}<div class="ts-tasks">${taskLine(r)}</div></td>
@@ -226,8 +227,8 @@
     const rule = PM.otRule(res);
     const o = (d) => (state.ot || {})[d] || {};
     const cell = (i, html) => `<td class="num ${dayCls(i)}">${html}</td>`;
-    const wk = (i) => i < 5;
-    const end = dates.map((d, i) => cell(i, !wk(i) ? '<span class="muted" title="เสาร์ – อาทิตย์: OT = ชั่วโมงที่ลงทั้งวัน">ทั้งวัน</span>'
+    const wk = (i) => !PM.isOffDay(dates[i]); // Mon – Fri that are not public holidays
+    const end = dates.map((d, i) => cell(i, !wk(i) ? '<span class="muted" title="เสาร์ – อาทิตย์ / วันหยุด: OT = ชั่วโมงที่ลงทั้งวัน">ทั้งวัน</span>'
       : !rule.weekday ? '<span class="muted">–</span>'
       : canEdit ? `<input type="time" class="ts-ot-end" value="${esc(o(d).endTime || '')}" data-ot-end="${d}" aria-label="เวลาเลิกงาน ${DAYS[i]}">` : esc(o(d).endTime || '–'))).join('');
     const lunch = dates.map((d, i) => cell(i, !wk(i) || !rule.lunch ? '<span class="muted">–</span>'
@@ -248,7 +249,7 @@
       if (r.refId === 'leave') leave += t;
       const c = el.querySelector(`[data-rowtotal="${ri}"]`); if (c) c.textContent = U.num(t, 1);
     });
-    let ot = 0;
+    let ot = 0, otCost = 0;
     dates.forEach((d, i) => {
       const t = PM.sum(state.rows, (r) => r.hours[i]);
       const c = el.querySelector(`[data-daytotal="${i}"]`);
@@ -256,7 +257,7 @@
       // OT of the day by the person's level rule (leave hours never count)
       const worked = PM.sum(state.rows.filter((r) => r.refId !== 'leave'), (r) => r.hours[i]);
       const o = PM.otDay(res, d, worked, state.ot[d]);
-      ot += o.total;
+      ot += o.total; otCost += o.cost;
       const oc = el.querySelector(`[data-otday="${i}"]`);
       if (oc) {
         oc.innerHTML = o.total ? `<b>${U.num(o.total, 1)}</b>` : '<span class="muted">–</span>';
@@ -267,7 +268,7 @@
     const og = el.querySelector('[data-ottotal]'); if (og) og.innerHTML = `<b>${U.num(ot, 1)}</b>`;
     const cap = PM.cap(res) - leave;
     const planned = PM.sum(state.rows, (r) => r.planned || 0);
-    el.querySelector('#ts-summary').textContent = `จริง ${U.num(grand, 1)} h / แผน ${U.num(planned, 1)} h · Billable ${U.num(billable, 1)} h · OT ${U.num(ot, 1)} h · Utilization ${U.pct(cap > 0 ? billable / cap : null)} · ${state.dirty ? 'กำลังบันทึก…' : 'บันทึกอัตโนมัติแล้ว'}`;
+    el.querySelector('#ts-summary').textContent = `จริง ${U.num(grand, 1)} h / แผน ${U.num(planned, 1)} h · Billable ${U.num(billable, 1)} h · OT ${U.num(ot, 1)} h${otCost ? ` (≈ ${U.money(otCost)})` : ''} · Utilization ${U.pct(cap > 0 ? billable / cap : null)} · ${state.dirty ? 'กำลังบันทึก…' : 'บันทึกอัตโนมัติแล้ว'}`;
   }
 
   /* every bid with hours this week (whole team), split by bidding stage */

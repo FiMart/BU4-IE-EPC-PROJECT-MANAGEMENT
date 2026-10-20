@@ -1669,6 +1669,8 @@ kbd { font: 600 10.5px/1 var(--font); padding: 3px 5px; border-radius: 5px; bord
 .ts-grid input.ts-ot-end { width: 96px; padding: 4px 6px; text-align: center; }
 .ts-grid tr.ts-ot input[type="checkbox"] { width: 18px; height: 18px; }
 .ts-grid tr.ts-ot-sum td { font-weight: 700; color: var(--accent); }
+.ts-grid th .ts-hol { display: block; font-style: normal; font-size: 10.5px; font-weight: 700; color: var(--critical-text); }
+.ts-grid .holiday { background: color-mix(in srgb, var(--critical-bg) 55%, transparent); }
 
 /* phase line items (phase-items.js): status colours shared by the share bar, legend and the status dropdown */
 .pi-card .card-h .badge { margin-left: 2px; }
@@ -1696,6 +1698,24 @@ select.pi-st.st-return { background-color: var(--critical-bg); color: var(--crit
 .pi-empty { display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 18px 0; text-align: center; }
 .pi-empty p { margin: 0; color: var(--ink-2); font-weight: 600; }
 .pi-count { margin-top: 6px; font-size: 12.5px; color: var(--muted); }
+/* transmittal: tick column + the bar that appears with a selection */
+.pi-tbl .pi-sel { width: 34px; padding-right: 0; text-align: center; }
+.pi-tbl .pi-sel input { width: 17px; height: 17px; cursor: pointer; }
+.pi-bulk { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px; margin-top: 12px; padding: 10px 12px; border-radius: 12px; background: var(--accent-soft); color: var(--accent); }
+.pi-bulk[hidden] { display: none; }
+.pi-bulk small { flex-basis: 100%; }
+.pi-trs { border-top: 1px solid var(--border); }
+/* daily report: the last 14 working days */
+.dr-strip { display: grid; grid-template-columns: repeat(14, minmax(0, 1fr)); gap: 6px; }
+.dr-day { display: flex; flex-direction: column; align-items: center; gap: 1px; padding: 6px 2px; border-radius: 10px; border: 1px dashed var(--border-strong); background: var(--surface); color: var(--muted); font: inherit; cursor: pointer; }
+.dr-day small { font-size: 11px; }
+.dr-day b { font-size: 16px; color: var(--ink-2); }
+.dr-day i { font-style: normal; font-size: 14px; min-height: 18px; }
+.dr-day.has { border-style: solid; border-color: color-mix(in srgb, var(--good) 45%, transparent); background: var(--good-bg); color: var(--good-text); }
+.dr-day.has b { color: var(--good-text); }
+.dr-day.today { box-shadow: 0 0 0 2px var(--accent); }
+.dr-day:disabled { cursor: default; opacity: .6; }
+@media (max-width: 640px) { .dr-strip { grid-template-columns: repeat(7, minmax(0, 1fr)); } }
 
 /* bid form split into parts: one tab per stage (V.bidForm) — the tab bar stays on top while the part scrolls */
 .bf-tabs { position: sticky; top: -20px; z-index: 2; display: flex; gap: 4px; overflow-x: auto; scrollbar-width: none; margin: -20px -22px 0; padding: 12px 22px 10px; background: var(--surface); border-bottom: 1px solid var(--border); }

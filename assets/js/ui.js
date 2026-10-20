@@ -61,7 +61,7 @@
     const cls = o.full ? ' class="full"' : '';
     let input;
     if (o.options) input = `<select name="${name}"${o.required ? ' required' : ''}>${U.options(o.options, value, o.placeholder)}</select>`;
-    else if (o.type === 'textarea') input = `<textarea name="${name}" rows="${o.rows || 3}">${U.esc(value)}</textarea>`;
+    else if (o.type === 'textarea') input = `<textarea name="${name}" rows="${o.rows || 3}"${o.placeholder ? ` placeholder="${U.esc(o.placeholder)}"` : ''}>${U.esc(value)}</textarea>`;
     else input = `<input name="${name}" type="${o.type || 'text'}" value="${U.esc(value)}"${o.required ? ' required' : ''}${o.step ? ` step="${o.step}"` : ''}${o.min != null ? ` min="${o.min}"` : ''}${o.max != null ? ` max="${o.max}"` : ''}${o.placeholder ? ` placeholder="${U.esc(o.placeholder)}"` : ''}>`;
     return `<label${cls}><span>${U.esc(label)}</span>${input}${o.hint ? `<small>${U.esc(o.hint)}</small>` : ''}</label>`;
   };

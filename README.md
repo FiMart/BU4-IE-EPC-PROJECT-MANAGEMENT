@@ -166,7 +166,8 @@ assets/js/pull.js            ดึงลงเพื่อรีเฟรช (m
 assets/js/app.js             router
 assets/js/notify.js          กระดิ่งแจ้งเตือน (รายการจากข้อมูลจริง · อ่านแล้ว / ยังไม่อ่านต่อผู้ใช้ · แจ้งเตือนบนเครื่อง)
 assets/js/i18n.js            แสดงป้าย / หัวตาราง / สถานะเป็นภาษาไทย (พจนานุกรม PM.i18n.dict — เพิ่มคำแปลได้ที่นี่) + ⓘ อธิบายศัพท์ตัวชี้วัด
-assets/js/views/phase-items.js  รายการย่อยของขั้นงาน EPC (เอกสารออกแบบ · แพ็กเกจจัดซื้อ · งานก่อสร้าง · เอกสารส่งมอบ) — แก้รายการมาตรฐานที่ PM.PHASE_ITEMS
+assets/js/views/phase-items.js  รายการย่อยของขั้นงาน EPC (เอกสารออกแบบ · แพ็กเกจจัดซื้อ · งานก่อสร้าง · เอกสารส่งมอบ) + Transmittal — แก้รายการมาตรฐานที่ PM.PHASE_ITEMS
+assets/js/views/daily.js     รายงานประจำวันหน้างาน (collection dailies) + พิมพ์ PDF
 assets/js/version.js         เวอร์ชัน + ประวัติการแก้ไข (หน้า About)
 assets/js/config.js          Supabase URL + anon key (ต้องกรอก)
 assets/js/auth.js            login / register / reset password (Supabase Auth)

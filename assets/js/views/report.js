@@ -100,6 +100,9 @@
     win.document.close();
   }
   const monthThai = (ym) => new Date(ym + '-01T00:00:00').toLocaleDateString('th-TH', { month: 'long', year: 'numeric' });
+  /* for other printouts (daily report, transmittal): same page, logo, styles and "← กลับ" — open the window
+     from the click first (pop-up blockers), fill it when the data is ready */
+  PM.printDoc = { open: newWindow, write: writePage, kpi, tbl };
   const th = (s) => (PM.i18n && PM.i18n.tr(s)) || s; // Thai label (the report window has no i18n layer of its own)
 
   PM.projectReport = function (p) {

@@ -58,6 +58,9 @@
         if (x.status === 'return') add({ id: `ret-${x.id}-${x.rev || ''}`, level: 'warning', icon: 'layers', title: `ลูกค้าส่งกลับแก้ไข: ${x.no} ${x.name}`, sub: `${p.code} · Rev. ${x.rev || '–'}${x.comment ? ' · ' + x.comment : ''}`, href: at(), mine: mineX });
         else if (PM.itemLate && PM.itemLate(x, T)) add({ id: `pil-${x.id}`, level: 'warning', icon: 'layers', title: `${cfg ? cfg.noun : 'รายการ'}เลยกำหนด: ${x.no} ${x.name}`, sub: `${p.code} · กำหนด ${U.date(x.due)} (เลย ${PM.diffDays(x.due, T)} วัน)`, href: at(), mine: mineX, date: x.due });
       });
+      // daily site report missing for the last working day (projects that keep daily reports — daily.js)
+      const dm = PM.dailyMissing && PM.dailyMissing(p, T);
+      if (dm) add({ id: `daily-${p.id}-${dm}`, level: 'info', icon: 'calendar', title: `${p.code} ยังไม่มีรายงานประจำวัน ${U.date(dm)}`, sub: `${p.name} — เขียนที่แท็บรายงานประจำวัน`, href: at('daily'), mine, date: dm });
       (db.ncrs || []).filter((n) => n.projectId === p.id && n.status === 'open' && n.severity === 'Critical')
         .forEach((n) => add({ id: `ncr-${n.id}`, level: 'critical', icon: 'quality', title: `NCR ระดับวิกฤต: ${n.no}`, sub: `${p.code} · ${n.description || ''}`, href: at('quality'), mine, date: n.date }));
     });

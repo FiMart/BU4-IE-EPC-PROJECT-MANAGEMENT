@@ -99,6 +99,7 @@
       if (!a) return;
       const act = a.dataset.action, id = a.dataset.id;
       if (act === 'new-person') personForm(null, rerender);
+      if (act === 'ot-settings') otSettingsForm(rerender);
       if (act === 'edit-person') personForm(PM.find('resources', id), rerender);
       if (act === 'new-level') levelForm(null, rerender);
       if (act === 'edit-level') levelForm(PM.db.levels.find((l) => l.id === id), rerender);
@@ -134,26 +135,85 @@
     const h = (v) => (v ? U.num(v, 1) : '<span class="muted">–</span>');
     const rows = ot.people.filter((x) => x.total > 0 || x.rule.weekday || x.rule.weekend).sort((a, b) => b.total - a.total);
     const rules = ['ENG', 'TECH'].map((id) => `<b>${esc(PM.levelName(id))}</b>: ${esc(PM.OT_RULES[id].text)}`).join(' · ');
+    const R = ot.rates;
+    const rateText = `จ.–ศ. ${R.weekday}× · วันหยุด ${R.holiday}× (${R.holidayHours} ชม.แรก) · เกิน ${R.holidayHours} ชม. ${R.holidayOt}×`;
+    const projects = Object.keys(ot.byProject).map((id) => ({ id, p: id && PM.find('projects', id), ...ot.byProject[id] })).filter((x) => x.hours > 0).sort((a, b) => b.cost - a.cost);
+    const T = PM.today();
+    const nextHol = PM.otSettings().holidays.filter((x) => x.date >= T).slice(0, 4);
     return `<div class="card-h"><h2>OT (ล่วงเวลา)</h2>${U.badge(ot.total.total ? 'info' : 'neutral', `${U.num(ot.total.total, 1)} ชม. · ${ot.total.people} คน`)}
-        <span class="spacer"></span><a class="btn sm" href="#/timesheet">กรอกเวลาเลิกงาน / พักเที่ยง ที่ Timesheet →</a>
-        <p>${rules} · Other ไม่มี OT · เสาร์ – อาทิตย์ = ชั่วโมงที่ลงใน Timesheet ทั้งวัน · ช่วงเวลาตามตัวเลือกด้านบน</p></div>
+        <span class="spacer"></span>
+        <button class="btn sm" data-action="ot-settings">${PM.can('ot.settings') ? 'ตั้งวันหยุด / อัตราค่า OT' : 'ดูวันหยุด / อัตราค่า OT'}</button>
+        <a class="btn sm" href="#/timesheet">กรอกเวลาเลิกงาน / พักเที่ยง →</a>
+        <p>${rules} · Other ไม่มี OT · เสาร์ – อาทิตย์ และ<b>วันหยุดนักขัตฤกษ์</b> = ชั่วโมงที่ลงใน Timesheet ทั้งวัน · ค่า OT = อัตราค่าแรงของ Level × ${esc(rateText)} · ช่วงเวลาตามตัวเลือกด้านบน</p></div>
       <div class="card-b">
-        <div class="grid cols-4">
-          ${V.tile({ label: 'OT รวม', value: `${U.num(ot.total.total, 1)} <small>ชม.</small>`, sub: `${ot.total.people} คนที่มี OT`, icon: 'clock' })}
+        <div class="grid cols-5">
+          ${V.tile({ label: 'ค่า OT (ประมาณ)', value: U.money(ot.total.cost), sub: `${U.num(ot.total.total, 1)} ชม. · ${ot.total.people} คน`, icon: 'coins', tip: `ค่า OT = อัตราค่าแรง (บาท/ชม.) ของ Level × ตัวคูณ\n${rateText}\nแก้อัตราค่าแรงได้ที่ตาราง Levels ด้านล่าง` })}
           ${V.tile({ label: `จันทร์ – ศุกร์ หลัง ${PM.OT_START}`, value: `${U.num(ot.total.after, 1)} <small>ชม.</small>`, sub: 'Technician — จากเวลาเลิกงาน', icon: 'clock' })}
           ${V.tile({ label: 'ไม่ได้พักเที่ยง (12:00)', value: `${U.num(ot.total.lunch, 1)} <small>ชม.</small>`, sub: `Technician — ครั้งละ ${PM.OT_LUNCH_HOURS} ชม.`, icon: 'clock' })}
-          ${V.tile({ label: 'เสาร์ – อาทิตย์', value: `${U.num(ot.total.weekend, 1)} <small>ชม.</small>`, sub: 'Engineer และ Technician', icon: 'calendar' })}
+          ${V.tile({ label: 'เสาร์ – อาทิตย์ / วันหยุด', value: `${U.num(ot.total.weekend, 1)} <small>ชม.</small>`, sub: ot.holidays.length ? `รวมวันหยุดนักขัตฤกษ์ ${ot.holidays.length} วันในช่วงนี้` : 'Engineer และ Technician', icon: 'calendar' })}
+          ${V.tile({ label: 'วันหยุดถัดไป', value: nextHol.length ? U.date(nextHol[0].date) : '–', sub: nextHol.length ? esc(nextHol.map((x) => x.name).slice(0, 1).join('')) + (nextHol.length > 1 ? ` · ถัดไป ${U.date(nextHol[1].date)}` : '') : 'ยังไม่ได้ตั้งวันหยุด', icon: 'calendar' })}
         </div>
-        <h3 class="cf-sub">OT รายสัปดาห์ — 12 สัปดาห์ล่าสุด (ทั้งทีม)</h3><div class="chart" id="c-ot-week"></div>
+        <div class="grid cols-2">
+          <div><h3 class="cf-sub">OT รายสัปดาห์ — 12 สัปดาห์ล่าสุด (ทั้งทีม)</h3><div class="chart" id="c-ot-week"></div></div>
+          <div><h3 class="cf-sub">ค่า OT ตามโครงการ (ช่วงที่เลือก)</h3>
+            ${projects.length ? `<table class="tbl"><thead><tr><th>โครงการ</th><th class="num">OT (ชม.)</th><th class="num">ค่า OT</th></tr></thead><tbody>
+              ${projects.map((x) => `<tr><td>${x.p ? `<a href="#/projects/${esc(x.p.id)}">${esc(x.p.code)}</a><small>${esc(x.p.name)}</small>` : '<span class="muted">ไม่ใช่งานโครงการ (ประมูล / ส่วนกลาง)</span>'}</td><td class="num">${U.num(x.hours, 1)}</td><td class="num">${U.money(x.cost)}</td></tr>`).join('')}
+              </tbody></table><p class="muted" style="margin:6px 0 0;font-size:12.5px">แบ่งค่า OT ของแต่ละวันตามสัดส่วนชั่วโมงที่ลงในแต่ละโครงการวันนั้น</p>` : '<p class="empty">ไม่มี OT ในช่วงนี้</p>'}</div>
+        </div>
       </div>
-      <div class="card-b flush table-wrap"><table class="tbl"><thead><tr><th>ชื่อ</th><th>Level</th><th>สิทธิ์ OT</th><th class="num">จ.–ศ. หลัง ${PM.OT_START}</th><th class="num">ไม่ได้พักเที่ยง</th><th class="num">เสาร์ – อาทิตย์</th><th class="num">รวม OT (ชม.)</th><th class="num">วันที่มี OT</th></tr></thead><tbody>
+      <div class="card-b flush table-wrap"><table class="tbl"><thead><tr><th>ชื่อ</th><th>Level</th><th>สิทธิ์ OT</th><th class="num">จ.–ศ. หลัง ${PM.OT_START}</th><th class="num">ไม่ได้พักเที่ยง</th><th class="num">เสาร์ – อาทิตย์ / วันหยุด</th><th class="num">รวม OT (ชม.)</th><th class="num">วันที่มี OT</th><th class="num">อัตรา (บาท/ชม.)</th><th class="num">ค่า OT</th></tr></thead><tbody>
         ${rows.length ? rows.map((x) => `<tr>
           <td><span class="title">${esc(x.r.name)}</span></td><td>${esc(PM.levelName(x.r.level))}</td><td><small>${esc(x.rule.text)}</small></td>
           <td class="num">${x.rule.weekday ? h(x.after) : '<span class="muted">ไม่มีสิทธิ์</span>'}</td>
           <td class="num">${x.rule.lunch ? h(x.lunch) : '<span class="muted">ไม่มีสิทธิ์</span>'}</td>
-          <td class="num">${h(x.weekend)}</td><td class="num"><b>${U.num(x.total, 1)}</b></td><td class="num">${x.days || '–'}</td></tr>`).join('')
-          : '<tr><td colspan="8" class="empty">ไม่มีพนักงานที่มีสิทธิ์ OT</td></tr>'}
-      </tbody></table></div>`;
+          <td class="num">${h(x.weekend)}</td><td class="num"><b>${U.num(x.total, 1)}</b></td><td class="num">${x.days || '–'}</td>
+          <td class="num">${U.num(x.rate)}</td><td class="num"><b>${x.cost ? U.money(x.cost) : '<span class="muted">–</span>'}</b></td></tr>`).join('')
+          : '<tr><td colspan="10" class="empty">ไม่มีพนักงานที่มีสิทธิ์ OT</td></tr>'}
+      </tbody><tfoot><tr><td colspan="6">รวม</td><td class="num">${U.num(ot.total.total, 1)}</td><td></td><td></td><td class="num">${U.money(ot.total.cost)}</td></tr></tfoot></table></div>`;
+  }
+
+  /* public holidays + OT pay multipliers (PM.otSettings — collection 'settings', id 'ot') */
+  function otSettingsForm(done) {
+    const s = PM.otSettings(), canEdit = PM.can('ot.settings');
+    const Y = +PM.today().slice(0, 4);
+    const lines = (list) => list.map((h) => `${h.date} ${h.name}`).join('\n');
+    const form = U.modal({
+      title: 'วันหยุดนักขัตฤกษ์และอัตราค่า OT', wide: true,
+      body: `
+        <div class="sub-h">ตัวคูณค่า OT (× อัตราค่าแรงของ Level)</div>
+        ${U.field('OT วันทำงาน (หลัง 16:30 · พักเที่ยง)', 'weekday', s.rates.weekday, { type: 'number', min: 0, step: 0.25 })}
+        ${U.field('ทำงานวันหยุด (ชั่วโมงแรก ๆ)', 'holiday', s.rates.holiday, { type: 'number', min: 0, step: 0.25 })}
+        ${U.field('ชั่วโมงทำงานปกติของวันหยุด', 'holidayHours', s.rates.holidayHours, { type: 'number', min: 0, max: 24, step: 0.5, hint: 'เกินกว่านี้คิดเป็น OT วันหยุด' })}
+        ${U.field('OT วันหยุด (เกินชั่วโมงปกติ)', 'holidayOt', s.rates.holidayOt, { type: 'number', min: 0, step: 0.25 })}
+        <p class="full muted" style="margin:0">ค่าเริ่มต้นตาม พ.ร.บ.คุ้มครองแรงงาน: OT วันทำงาน 1.5 เท่า · ทำงานวันหยุด 2 เท่า (8 ชม.แรก) · OT วันหยุด 3 เท่า — ปรับตามระเบียบบริษัทได้</p>
+        <div class="sub-h">วันหยุดนักขัตฤกษ์ — นับเป็นวัน OT เหมือนเสาร์ – อาทิตย์</div>
+        <label class="full"><span>หนึ่งบรรทัดต่อหนึ่งวัน: <b>ปปปป-ดด-วว ชื่อวันหยุด</b></span>
+          <textarea name="holidays" rows="12" placeholder="${Y}-01-01 วันขึ้นปีใหม่">${U.esc(lines(s.holidays))}</textarea>
+          <small class="muted">วันหยุดตามจันทรคติ (มาฆบูชา · วิสาขบูชา · อาสาฬหบูชา · เข้าพรรษา) และวันหยุดชดเชย เปลี่ยนทุกปี — เพิ่มเองตามประกาศ</small></label>
+        ${canEdit ? `<div class="full row"><button type="button" class="btn sm" data-hol="${Y}">+ วันหยุดราชการ (วันที่คงที่) ปี ${Y + 543}</button><button type="button" class="btn sm" data-hol="${Y + 1}">+ ปี ${Y + 544}</button></div>` : ''}`,
+      onSubmit: !canEdit ? null : (f) => {
+        const bad = [], holidays = [];
+        f.holidays.split('\n').map((l) => l.trim()).filter(Boolean).forEach((l) => {
+          const m = /^(\d{4}-\d{2}-\d{2})\s*(.*)$/.exec(l);
+          if (!m || isNaN(new Date(m[1] + 'T00:00:00'))) bad.push(l); else if (!holidays.some((h) => h.date === m[1])) holidays.push({ date: m[1], name: m[2] || 'วันหยุด' });
+        });
+        if (bad.length) { U.alert(`อ่านบรรทัดนี้ไม่ได้ — ใช้รูปแบบ ปปปป-ดด-วว ชื่อวันหยุด (ปี ค.ศ.)\n\n${bad.slice(0, 5).join('\n')}`); return false; }
+        const rec = (PM.db.settings || []).find((x) => x.id === 'ot') || { id: 'ot' };
+        Object.assign(rec, { holidays: holidays.sort((a, b) => (a.date < b.date ? -1 : 1)), rates: { weekday: f.weekday, holiday: f.holiday, holidayOt: f.holidayOt, holidayHours: f.holidayHours } });
+        PM.upsert('settings', rec);
+        U.toast(`บันทึกแล้ว — วันหยุด ${holidays.length} วัน`);
+        done();
+      },
+    });
+    form.addEventListener('click', (e) => {
+      const b = e.target.closest('[data-hol]');
+      if (!b) return;
+      const have = new Set(form.holidays.value.split('\n').map((l) => l.trim().slice(0, 10)));
+      const add = PM.thaiHolidays(+b.dataset.hol).filter((h) => !have.has(h.date));
+      form.holidays.value = (form.holidays.value.trim() ? form.holidays.value.trim() + '\n' : '') + lines(add);
+      U.toast(add.length ? `เพิ่ม ${add.length} วัน — กดบันทึกเพื่อใช้งาน` : 'มีครบแล้ว');
+    });
+    if (!canEdit) form.querySelectorAll('input, textarea').forEach((i) => { i.disabled = true; });
   }
 
   function peopleTable(ut) {

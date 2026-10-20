@@ -24,6 +24,8 @@
     'plan.edit': { label: 'สร้าง / แก้ไขงานใน Weekly Plan', roles: ['admin', 'dept_manager', 'project_manager', 'engineer', 'sales', 'doc_control'] },
     'plan.status': { label: 'อัปเดตสถานะงานใน Weekly Plan', roles: ['admin', 'dept_manager', 'project_manager', 'engineer', 'sales', 'doc_control', 'technician'] },
     'resource.view': { label: 'เปิดหัวข้อ Resources (Resource Utilization · Timesheet) และส่วน Resource Utilization บน Dashboard', roles: ['admin', 'dept_manager', 'project_manager'] },
+    'daily.edit': { label: 'เขียน / แก้ไขรายงานประจำวันหน้างาน (Daily Report) และแนบรูปถ่าย', roles: ['admin', 'dept_manager', 'project_manager', 'engineer', 'technician'] },
+    'ot.settings': { label: 'ตั้งวันหยุดนักขัตฤกษ์และอัตราค่า OT (ตัวคูณ)', roles: ['admin', 'dept_manager', 'project_manager'] },
     'timesheet.edit': { label: 'กรอก / แก้ไข Timesheet และ OT (คนอื่นดูได้อย่างเดียว — บังคับในฐานข้อมูล)', roles: ['admin', 'project_manager'] },
     'po.edit': { label: 'สร้าง / แก้ไข PO และแนบไฟล์', roles: ['admin', 'dept_manager', 'project_manager', 'engineer'] },
     'price.edit': { label: 'เพิ่ม / แก้ไข Price List (ราคาผู้ขาย) — ทุกคนดูและ Export ได้', roles: ['admin', 'dept_manager', 'project_manager', 'engineer'] },

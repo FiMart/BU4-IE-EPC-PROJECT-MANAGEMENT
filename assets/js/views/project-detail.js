@@ -13,6 +13,7 @@
     { key: 'billing', label: 'งวดเงิน', icon: 'proposal', group: 'ต้นทุนและการเงิน' },
     { key: 'risks', label: 'ความเสี่ยง', icon: 'alert', group: 'หน้างานและทีม' },
     { key: 'quality', label: 'Quality · NCR', icon: 'quality', group: 'หน้างานและทีม' },
+    { key: 'daily', label: 'รายงานประจำวัน', icon: 'calendar', group: 'หน้างานและทีม' },
     { key: 'safety', label: 'Safety', icon: 'safety', group: 'หน้างานและทีม' },
     { key: 'team', label: 'ทีม & ชั่วโมง', icon: 'people', group: 'หน้างานและทีม' },
   ];
@@ -81,7 +82,7 @@
 
     const tabEl = el.querySelector('#tab');
     const rerender = () => PM.views.project(el, params);
-    ({ overview, timeline: timelineTab, boq: boqTab, changes: (...a) => PM.changesTab(...a), billing: (...a) => PM.billingTab(...a), risks: (...a) => PM.risksTab(...a), cost: costTab, cashflow: cashflowTab, quality, safety, team, po: poTab }[tab] || overview)(tabEl, p, m, rerender);
+    ({ overview, timeline: timelineTab, boq: boqTab, changes: (...a) => PM.changesTab(...a), billing: (...a) => PM.billingTab(...a), risks: (...a) => PM.risksTab(...a), daily: (...a) => PM.dailyTab(...a), cost: costTab, cashflow: cashflowTab, quality, safety, team, po: poTab }[tab] || overview)(tabEl, p, m, rerender);
 
     el.onchange = (e) => { if (full) PM.phaseItemsHandle(e, p, rerender); };
     el.onclick = (e) => {

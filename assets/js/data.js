@@ -266,7 +266,7 @@
   };
   /* data saved by older versions may miss newer collections */
   PM.ensureShape = () => {
-    ['bids', 'projects', 'ncrs', 'safety', 'resources', 'levels', 'timesheets', 'plans', 'pos', 'costs', 'prices'].forEach((c) => { if (!Array.isArray(PM.db[c])) PM.db[c] = []; });
+    ['bids', 'projects', 'ncrs', 'safety', 'resources', 'levels', 'timesheets', 'plans', 'pos', 'costs', 'prices', 'settings', 'dailies'].forEach((c) => { if (!Array.isArray(PM.db[c])) PM.db[c] = []; });
     // projects from before the expense ledger: carry the typed-in actual cost over as one "opening balance" entry per phase
     // (fixed ids, so two browsers doing this at the same time create the same records)
     PM.db.projects.forEach((p) => {
@@ -309,7 +309,7 @@
   PM.emptyDb = () => ({
     meta: { version: 1, company: PM.COMPANY, created: PM.today() },
     levels: PM.PERSON_LEVELS.map((l) => Object.assign({}, l)),
-    resources: [], bids: [], projects: [], ncrs: [], safety: [], timesheets: [], plans: [], pos: [], costs: [], prices: [],
+    resources: [], bids: [], projects: [], ncrs: [], safety: [], timesheets: [], plans: [], pos: [], costs: [], prices: [], settings: [], dailies: [],
   });
 
   /* Build the 4 EPC phases for a new project from its dates and budget */
@@ -613,43 +613,80 @@
   };
   PM.otRule = (r) => PM.OT_RULES[r && r.level] || PM.OT_RULES[PM.mapLegacyLevel(r && r.level)] || PM.OT_RULES.OTHER;
   const minutes = (hhmm) => { const m = /^(\d{1,2}):(\d{2})$/.exec(hhmm || ''); return m ? +m[1] * 60 + +m[2] : null; };
-  /* OT of one person on one day: { after, lunch, weekend, total } in hours
-     worked = hours logged that day (leave not counted) · rec = that day's 'ot' record (clock-out time / no lunch) */
-  PM.otDay = function (r, date, worked, rec) {
+
+  /* OT settings — collection 'settings', record id 'ot' (edited on the Resources page, permission ot.settings):
+     holidays = [{ date, name }] — public holidays count like Saturday / Sunday (every hour logged = OT)
+     rates    = pay multipliers of the Level's hourly rate. Defaults follow the Thai Labour Protection Act:
+                weekday OT 1.5× · work on an off day 2× for the first 8 h · beyond 8 h on an off day 3× */
+  PM.OT_DEFAULT_RATES = { weekday: 1.5, holiday: 2, holidayOt: 3, holidayHours: 8 };
+  PM.otSettings = () => {
+    const s = (PM.db.settings || []).find((x) => x.id === 'ot') || {};
+    return { holidays: (s.holidays || []).slice().sort((a, b) => (a.date < b.date ? -1 : 1)), rates: Object.assign({}, PM.OT_DEFAULT_RATES, s.rates) };
+  };
+  PM.holidayOf = (date) => PM.otSettings().holidays.find((h) => h.date === date) || null;
+  PM.isOffDay = (date, hol) => !PM.isWeekday(date) || (hol ? hol.has(date) : !!PM.holidayOf(date));
+  PM.levelRate = (r) => { const l = PM.db.levels.find((x) => x.id === (r && r.level)); return l ? Number(l.rate) || 0 : 0; };
+
+  /* OT of one person on one day: { after, lunch, weekend, total, cost } — hours, and pay in THB
+     worked = hours logged that day (leave not counted) · rec = that day's 'ot' record (clock-out time / no lunch)
+     ctx (optional, for speed in loops) = { hol: Set of holiday dates, rates } */
+  PM.otDay = function (r, date, worked, rec, ctx) {
     const rule = PM.otRule(r);
-    const out = { after: 0, lunch: 0, weekend: 0, total: 0 };
-    if (!PM.isWeekday(date)) out.weekend = rule.weekend ? worked || 0 : 0;
+    const set = ctx || PM.otSettings();
+    const hol = ctx ? ctx.hol : new Set(set.holidays.map((h) => h.date));
+    const rates = set.rates;
+    const out = { after: 0, lunch: 0, weekend: 0, total: 0, cost: 0, off: PM.isOffDay(date, hol) };
+    if (out.off) out.weekend = rule.weekend ? worked || 0 : 0; // Saturday · Sunday · public holiday
     else if (rec) {
       const end = minutes(rec.endTime), start = minutes(PM.OT_START);
       if (rule.weekday && end != null && end > start) out.after = (end - start) / 60;
       if (rule.lunch && rec.noLunch) out.lunch = PM.OT_LUNCH_HOURS;
     }
     out.total = out.after + out.lunch + out.weekend;
+    const normal = Math.min(out.weekend, rates.holidayHours), over = Math.max(0, out.weekend - rates.holidayHours);
+    out.cost = PM.levelRate(r) * ((out.after + out.lunch) * rates.weekday + normal * rates.holiday + over * rates.holidayOt);
     return out;
   };
-  /* everyone's OT between two dates (inclusive) */
+  /* everyone's OT between two dates (inclusive) — hours, pay, and pay shared out to projects by that day's hours on each */
   PM.overtime = function (from, to) {
     const db = PM.db;
     to = PM.min(to, PM.today());
+    const set = PM.otSettings();
+    const ctx = { hol: new Set(set.holidays.map((h) => h.date)), rates: set.rates, holidays: set.holidays };
     const ts = db.timesheets.filter((t) => t.date >= from && t.date <= to);
+    const byProject = {}; // project id ('' = not a project: bidding / overhead) → { hours, cost }
     const people = db.resources.filter((r) => r.active !== false).map((r) => {
       const mine = ts.filter((t) => t.resourceId === r.id);
       const day = {};
       mine.forEach((t) => {
-        const d = day[t.date] || (day[t.date] = { worked: 0, rec: null });
-        if (t.kind === 'ot') d.rec = t; else if (t.refId !== 'leave') d.worked += Number(t.hours) || 0;
+        const d = day[t.date] || (day[t.date] = { worked: 0, rec: null, on: {} });
+        if (t.kind === 'ot') d.rec = t;
+        else if (t.refId !== 'leave') { const h = Number(t.hours) || 0; d.worked += h; const k = t.kind === 'project' ? t.refId : ''; d.on[k] = (d.on[k] || 0) + h; }
       });
-      const x = { r, rule: PM.otRule(r), after: 0, lunch: 0, weekend: 0, total: 0, days: 0 };
+      const x = { r, rule: PM.otRule(r), rate: PM.levelRate(r), after: 0, lunch: 0, weekend: 0, total: 0, cost: 0, days: 0 };
       Object.keys(day).forEach((date) => {
-        const o = PM.otDay(r, date, day[date].worked, day[date].rec);
-        x.after += o.after; x.lunch += o.lunch; x.weekend += o.weekend; x.total += o.total;
-        if (o.total > 0) x.days++;
+        const d = day[date], o = PM.otDay(r, date, d.worked, d.rec, ctx);
+        x.after += o.after; x.lunch += o.lunch; x.weekend += o.weekend; x.total += o.total; x.cost += o.cost;
+        if (o.total > 0) {
+          x.days++;
+          const keys = Object.keys(d.on), all = PM.sum(keys, (k) => d.on[k]);
+          (all ? keys : ['']).forEach((k) => { const share = all ? d.on[k] / all : 1; const b = byProject[k] || (byProject[k] = { hours: 0, cost: 0 }); b.hours += o.total * share; b.cost += o.cost * share; });
+        }
       });
       return x;
     });
     const sum = (k) => PM.sum(people, (p) => p[k]);
-    return { from, to, people, total: { after: sum('after'), lunch: sum('lunch'), weekend: sum('weekend'), total: sum('total'), people: people.filter((p) => p.total > 0).length } };
+    return { from, to, people, byProject, rates: set.rates, holidays: set.holidays.filter((h) => h.date >= from && h.date <= to),
+      total: { after: sum('after'), lunch: sum('lunch'), weekend: sum('weekend'), total: sum('total'), cost: sum('cost'), people: people.filter((p) => p.total > 0).length } };
   };
+  /* fixed-date Thai public holidays of a year (lunar ones — มาฆบูชา · วิสาขบูชา · อาสาฬหบูชา · เข้าพรรษา — and substitution days
+     change every year: add them by hand) */
+  PM.thaiHolidays = (y) => [
+    ['01-01', 'วันขึ้นปีใหม่'], ['04-06', 'วันจักรี'], ['04-13', 'วันสงกรานต์'], ['04-14', 'วันสงกรานต์'], ['04-15', 'วันสงกรานต์'],
+    ['05-01', 'วันแรงงานแห่งชาติ'], ['05-04', 'วันฉัตรมงคล'], ['06-03', 'วันเฉลิมพระชนมพรรษาสมเด็จพระราชินี'],
+    ['07-28', 'วันเฉลิมพระชนมพรรษาพระบาทสมเด็จพระเจ้าอยู่หัว'], ['08-12', 'วันแม่แห่งชาติ'], ['10-13', 'วันนวมินทรมหาราช'],
+    ['10-23', 'วันปิยมหาราช'], ['12-05', 'วันพ่อแห่งชาติ'], ['12-10', 'วันรัฐธรรมนูญ'], ['12-31', 'วันสิ้นปี'],
+  ].map(([md, name]) => ({ date: `${y}-${md}`, name }));
 
   /* ---------- demo seed (relative to today so it always looks current) ---------- */
   function rng(seed) {
@@ -892,9 +929,13 @@
     const dayHours = { R3: 8.5, R6: 9.5, R11: 8.5 };
     let tNo = 0;
     db.timesheets = [];
+    // OT settings: this year's and next year's fixed-date public holidays, Labour Act pay multipliers (PM.overtime)
+    const Y = +T.slice(0, 4);
+    db.settings = [{ id: 'ot', holidays: PM.thaiHolidays(Y).concat(PM.thaiHolidays(Y + 1)), rates: Object.assign({}, PM.OT_DEFAULT_RATES) }];
+    const offDays = new Set(db.settings[0].holidays.map((h) => h.date));
     const from = PM.addDays(PM.monday(T), -7 * 11);
     for (let d = from; d <= T; d = PM.addDays(d, 1)) {
-      if (!PM.isWeekday(d)) continue;
+      if (!PM.isWeekday(d) || offDays.has(d)) continue; // nobody logs a normal day on a public holiday
       db.resources.forEach((r) => {
         const push = (kind, refId, phase, hours) => { tNo++; db.timesheets.push({ id: 't' + tNo, resourceId: r.id, date: d, kind, refId, phase, hours }); };
         if (R() < 0.04) { push('overhead', 'leave', '', 8); return; }
@@ -932,6 +973,8 @@
         }
       }
     });
+    // daily site reports of the projects on site (daily.js) — uses the holidays above, so it runs after PM.db.settings is known
+    if (PM.buildSampleDailies) { const keep = PM.db; PM.db = db; db.dailies = PM.buildSampleDailies(db.projects, T); PM.db = keep; }
 
     /* weekly plan — 6 past weeks, this week, next week (built from each person's allocation) */
     const TASKS = {
