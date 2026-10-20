@@ -116,6 +116,9 @@
         <span class="spacer"></span>
         <span class="sync" id="sync-status" role="status" aria-live="polite" hidden></span>
         <span class="muted" id="asof"></span>
+        <button class="icon-btn bell-btn" id="bell-btn" type="button" aria-haspopup="dialog" aria-expanded="false" aria-label="การแจ้งเตือน" title="การแจ้งเตือน">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9a6 6 0 0 1 12 0c0 6 2.5 7.5 2.5 7.5h-17S6 15 6 9"/><path d="M10.3 20a1.9 1.9 0 0 0 3.4 0"/></svg>
+          <span class="bell-n" hidden></span></button>
         <a class="icon-btn present-btn" href="#/present" title="โหมดนำเสนอขึ้นจอ (TV / โปรเจกเตอร์)" aria-label="โหมดนำเสนอ">
           <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="2.5" y="4" width="19" height="13" rx="2"/><path d="M8 21h8M12 17v4M10 8.5v5l4.5-2.5z"/></svg></a>
         <button class="icon-btn hero-toggle" type="button" data-hero-toggle title="แสดง / ซ่อนแถบแนะนำของแต่ละหน้า" aria-label="แสดง / ซ่อนแถบแนะนำ">?</button>
@@ -184,6 +187,7 @@
   <script src="assets/js/assist.js"></script>
   <script src="assets/js/app.js"></script>
   <script src="assets/js/i18n.js"></script>
+  <script src="assets/js/notify.js"></script>
   <script src="assets/js/pull.js"></script>
   <script src="assets/js/config.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.2/dist/umd/supabase.js"></script>

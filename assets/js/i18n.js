@@ -9,7 +9,7 @@
   const D = {
     // statuses & results
     'On track': 'ตามแผน', 'At risk': 'เฝ้าระวัง', 'Off track': 'ต้องแก้ไข', 'No data': 'ไม่มีข้อมูล',
-    'Slightly behind': 'ช้ากว่าแผนเล็กน้อย', 'Complete': 'เสร็จแล้ว', 'Not started': 'ยังไม่เริ่ม', 'In progress': 'กำลังทำ',
+    'Slightly behind': 'ช้ากว่าแผนเล็กน้อย', 'Behind': 'ช้ากว่าแผน', 'On plan': 'ตามแผน', 'Complete': 'เสร็จแล้ว', 'Not started': 'ยังไม่เริ่ม', 'In progress': 'กำลังทำ',
     'Done': 'เสร็จ', 'Open': 'เปิดอยู่', 'Closed': 'ปิดแล้ว', 'Active': 'ดำเนินการอยู่', 'All': 'ทั้งหมด',
     'Won': 'ชนะ', 'Lost': 'แพ้', 'No-bid': 'ไม่ยื่น', 'Won / Lost': 'ชนะ / แพ้', 'Lost / No-bid': 'แพ้ / ไม่ยื่น',
     'Won / Lost / No-bid': 'ชนะ / แพ้ / ไม่ยื่น', '✓ Won': '✓ ชนะ', '✕ Lost': '✕ แพ้', 'On time': 'ตรงเวลา',

@@ -69,6 +69,7 @@
     }
     PM.motion.centerTabs(el);
     if (PM.measureTopbar) PM.measureTopbar();
+    if (PM.notify) PM.notify.refresh(); // bell count (notify.js)
   }
   let lastAnimated = null;
   PM.render = render;

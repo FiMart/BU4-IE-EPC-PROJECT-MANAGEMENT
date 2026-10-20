@@ -295,6 +295,85 @@ html.hero-off body:not(:has(#tour-root.on)) .page-hero + .content { padding-top:
 .topbar .hero-toggle { font: 700 15px/1 var(--font); }
 html:not(.hero-off) .topbar .hero-toggle { color: var(--accent); background: var(--accent-soft); border-color: transparent; }
 
+/* =====================================================================
+   Notifications — bell in the top bar + panel (notify.js)
+   ===================================================================== */
+.bell-btn { position: relative; }
+.bell-n {
+  position: absolute; top: -6px; right: -7px; min-width: 18px; height: 18px; padding: 0 5px; border-radius: 999px;
+  background: var(--accent); color: #fff; font: 700 10.5px/18px var(--font); text-align: center; box-shadow: 0 0 0 2px var(--surface);
+}
+.bell-n.crit { background: var(--critical); }
+.bell-n[hidden] { display: none; }
+.nt-panel {
+  position: fixed; top: 68px; right: 24px; z-index: 70; width: min(430px, calc(100vw - 24px)); max-height: min(78vh, 720px);
+  display: flex; flex-direction: column; background: var(--surface); color: var(--ink);
+  border: 1px solid var(--border-strong); border-radius: 16px; box-shadow: 0 24px 60px -12px rgba(15, 23, 42, .35); overflow: hidden;
+}
+.nt-panel[hidden] { display: none; }
+.nt-panel > header, .nt-panel > .nt-tabs, .nt-panel > footer { flex: none; } /* only the list shrinks and scrolls */
+.nt-panel header { display: flex; align-items: center; gap: 8px; padding: 14px 14px 10px 18px; }
+.nt-panel header b { font-size: 16px; }
+.nt-tabs { display: flex; gap: 4px; padding: 0 12px 10px; border-bottom: 1px solid var(--border); overflow-x: auto; }
+.nt-tabs button { flex: none; font: inherit; font-size: 13px; font-weight: 600; border: 0; background: transparent; color: var(--muted); padding: 6px 12px; border-radius: 999px; cursor: pointer; }
+.nt-tabs button:hover { color: var(--ink); background: var(--surface-2); }
+.nt-tabs button.on { background: var(--accent-soft); color: var(--accent); }
+.nt-list { overflow-y: auto; overscroll-behavior: contain; padding: 4px 8px 10px; }
+.nt-group { font-size: 12px; font-weight: 700; color: var(--muted); padding: 10px 8px 4px; }
+.nt-item { display: flex; align-items: flex-start; gap: 10px; padding: 9px 8px; border-radius: 10px; color: var(--ink); }
+.nt-item:hover { background: var(--surface-2); text-decoration: none; }
+.nt-item .nt-ic { flex: none; width: 32px; height: 32px; }
+.nt-item.lv-critical .nt-ic { --tone: var(--critical); }
+.nt-item.lv-warning .nt-ic { --tone: var(--serious); }
+.nt-item.lv-info .nt-ic { --tone: var(--accent); }
+.nt-t { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+.nt-t b { font-size: 13.5px; font-weight: 550; line-height: 1.35; }
+.nt-t small { font-size: 12px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.nt-item.unread .nt-t b { font-weight: 700; }
+.nt-item:not(.unread) { opacity: .72; }
+.nt-mine { flex: none; margin-top: 2px; font-size: 10.5px; font-weight: 700; color: var(--accent); background: var(--accent-soft); border-radius: 999px; padding: 1px 7px; }
+.nt-dot { flex: none; width: 9px; height: 9px; margin-top: 6px; border-radius: 50%; }
+.nt-item.unread .nt-dot { background: var(--accent); }
+.nt-item.unread.lv-critical .nt-dot { background: var(--critical); }
+.nt-empty { padding: 32px 12px; margin: 0; text-align: center; color: var(--muted); }
+.nt-panel footer { display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: center; justify-content: space-between; padding: 10px 16px; border-top: 1px solid var(--border); font-size: 12.5px; background: color-mix(in srgb, var(--surface-2) 50%, var(--surface)); }
+.nt-desk { display: inline-flex; align-items: center; gap: 7px; color: var(--ink-2); cursor: pointer; }
+
+/* =====================================================================
+   Phones (≤ 640 px) — everything fits the screen width
+   ===================================================================== */
+@media (max-width: 640px) {
+  /* top bar: page title + search · new · bell (presentation mode and theme are in the menu / Settings) */
+  .topbar .present-btn, .topbar .hero-toggle, .topbar #theme-toggle { display: none; }
+  .topbar { gap: 6px; }
+  .topbar .icon-btn { width: 36px; height: 36px; }
+  /* the page banner: its words are clipped at this width, and the title is already in the top bar */
+  body:not(:has(#tour-root.on)) .page-hero { display: none; }
+  .page-hero + .content { padding-top: 12px; }
+  /* notifications: a sheet from the bottom over a dimmed page */
+  .nt-panel { top: auto; left: 0; right: 0; bottom: 0; width: 100%; max-height: 86vh; max-height: 86dvh; border-radius: 18px 18px 0 0; padding-bottom: env(safe-area-inset-bottom); }
+  body.nt-open::after { content: ''; position: fixed; inset: 0; z-index: 69; background: rgba(15, 23, 42, .42); }
+  .nt-item .nt-t small { white-space: normal; }
+  /* project page buttons: one row that scrolls sideways instead of three rows */
+  .prj-tools { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; margin: 0 -12px; padding: 2px 12px 4px; }
+  .prj-tools::-webkit-scrollbar { display: none; }
+  .prj-tools > * { flex: none; }
+  .prj-tools .btn { padding: 7px 11px; font-size: 13px; }
+  /* KPI tile labels: the ⓘ stays after the words */
+  .tile-label { flex-direction: row; flex-wrap: wrap; align-items: center; gap: 2px 4px; }
+  /* segmented filters never push the page wider */
+  .seg { max-width: 100%; overflow-x: auto; scrollbar-width: none; }
+  .seg button { flex: none; }
+  /* timesheet entry grid: the work column stays put while the days scroll */
+  .ts-grid th:first-child, .ts-grid td:first-child { position: sticky; left: 0; z-index: 1; background: var(--surface); min-width: 148px; max-width: 168px; box-shadow: 1px 0 0 var(--border); }
+  .ts-grid thead th:first-child { background: color-mix(in srgb, var(--surface-2) 55%, var(--surface)); }
+  .ts-grid tr.ts-ot-h td:first-child { position: static; max-width: none; box-shadow: none; }
+  .ts-grid td input[type="number"] { width: 52px; }
+  .ts-grid input.ts-ot-end { width: 84px; }
+  /* long words / codes never overflow a card */
+  .card-h h2, .kv dd, .tbl td { overflow-wrap: anywhere; }
+}
+
 /* ---------- print: keep documents plain ---------- */
 @media print {
   .main { background: none; }

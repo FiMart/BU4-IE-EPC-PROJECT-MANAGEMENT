@@ -52,7 +52,7 @@
     // the phase whose line items are listed under the phase cards: the one clicked, else the current phase
     const sel = phaseSel[p.id] || (m.current && m.current.key) || 'engineering';
     el.innerHTML = `
-      <div class="row">
+      <div class="row prj-tools">
         <a href="#/projects">← Projects</a>
         <span class="spacer"></span>
         ${full ? (p.status === 'closed' ? U.badge('neutral', 'Closed') : p.status === 'onhold' ? U.badge('warning', 'On hold') : U.badge(h, U.healthLabel[h])) : ''}

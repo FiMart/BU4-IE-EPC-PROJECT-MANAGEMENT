@@ -259,6 +259,7 @@
   PM.save = function () {
     PM.saveLocal();
     if (PM.cloud) PM.cloud.schedule();
+    if (PM.notify) PM.notify.refresh(); // a change may add or clear a notification (notify.js, debounced)
   };
   /* data saved by older versions may miss newer collections */
   PM.ensureShape = () => {
