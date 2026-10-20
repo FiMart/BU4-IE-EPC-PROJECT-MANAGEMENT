@@ -95,7 +95,7 @@
         ${U.field('วันที่อนุมัติ', 'approvedDate', c.approvedDate, { type: 'date', hint: 'ใส่เมื่อสถานะ = อนุมัติแล้ว' })}
         ${U.field('หมายเหตุ', 'note', c.note, { type: 'textarea', full: true, rows: 2 })}`,
       onSubmit: canEdit ? (f) => {
-        if (!f.title) { alert('กรุณากรอกรายการ'); return false; }
+        if (!f.title) { U.alert('กรุณากรอกรายการ'); return false; }
         if (f.status === 'approved' && !f.approvedDate) f.approvedDate = T;
         if (f.status !== 'approved') f.approvedDate = '';
         Object.assign(c, f);

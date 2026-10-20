@@ -125,7 +125,10 @@
     if (a === 'won' || a === 'lost' || a === 'nobid') {
       b.result = a; b.resultDate = T; PM.upsert('bids', b);
       U.toast(`${b.code} → ${PM.BID_RESULTS[a]}`);
-      if (a === 'won' && confirm(`${b.code} ได้งานแล้ว — สร้าง Project จาก bid นี้เลยหรือไม่?`)) V.projectForm(null, b, (p) => (location.hash = '#/projects/' + p.id));
+      if (a === 'won') {
+        U.confirm(`${b.code} ได้งานแล้ว — สร้าง Project จาก Bid นี้เลยหรือไม่?`, { title: 'ยินดีด้วย! ได้งานแล้ว', ok: 'สร้าง Project', cancel: 'ภายหลัง', tone: 'success' })
+          .then((ok) => { if (ok) V.projectForm(null, b, (p) => (location.hash = '#/projects/' + p.id)); });
+      }
       done();
       return true;
     }
@@ -162,7 +165,7 @@
     const T = PM.today();
     const isNew = !bid;
     const canEdit = PM.canEditBid(bid || null); // Admin · PM · Engineer (every bid) · Sales (their own bids; any new inquiry)
-    if (isNew && !canEdit) { alert('เพิ่ม Inquiry ได้เฉพาะ Admin · Project Manager · Engineer · Sales'); return; }
+    if (isNew && !canEdit) { U.alert('เพิ่ม Inquiry ได้เฉพาะ Admin · Project Manager · Engineer · Sales'); return; }
     // value · margin · quotation files: Admin and the owning Sales only (the database enforces it) —
     // a PM / Engineer adding an inquiry leaves the price to the Sales chosen for it
     const canPrice = isNew ? PM.seesBidPrices() : PM.canSeeBidPrice(bid);
@@ -257,13 +260,13 @@
         PM.remove('bids', b.id); U.toast('ลบแล้ว'); onSaved && onSaved();
       },
       onSubmit: !canEdit ? null : (f, frm) => {
-        if (f.code === V.bidNoPrefix()) { alert(`พิมพ์เลขต่อท้าย Bid No. ก่อนบันทึก (เช่น ${V.bidNoPrefix()}1)`); frm.code.focus(); return false; }
+        if (f.code === V.bidNoPrefix()) { U.alert(`พิมพ์เลขต่อท้าย Bid No. ก่อนบันทึก (เช่น ${V.bidNoPrefix()}1)`).then(() => frm.code.focus()); return false; }
         if (PM.db.bids.some((x) => x.id !== b.id && String(x.code).trim().toUpperCase() === f.code.toUpperCase())) {
-          alert(`Bid No. ${f.code} ถูกใช้แล้ว`); frm.code.focus(); return false;
+          U.alert(`Bid No. ${f.code} ถูกใช้แล้ว`).then(() => frm.code.focus()); return false;
         }
         const dates = { inquiry: f.d_inquiry, estimate: f.d_estimate, proposal: f.d_proposal, submit: f.d_submit };
         const order = PM.BID_STAGES.map((s) => dates[s.key]).filter(Boolean);
-        if (order.some((d, i) => i && d < order[i - 1])) { alert('วันที่แต่ละขั้นต้องเรียงตามลำดับ Inquiry → Estimate → Proposal → Submit (วันที่อยู่ในแท็บของแต่ละขั้น)'); return false; }
+        if (order.some((d, i) => i && d < order[i - 1])) { U.alert('วันที่แต่ละขั้นต้องเรียงตามลำดับ Inquiry → Estimate → Proposal → Submit (วันที่อยู่ในแท็บของแต่ละขั้น)'); return false; }
         save(f, dates, frm);
         return false; // closed by save() once the files are uploaded
       },
@@ -342,7 +345,7 @@
       PM.upsert('bids', b);
       U.closeModal();
       U.toast(problems.length ? 'บันทึกแล้ว แต่ไฟล์บางไฟล์มีปัญหา' : 'บันทึกแล้ว');
-      if (problems.length) alert('ไฟล์ที่ไม่สำเร็จ:\n' + problems.join('\n'));
+      if (problems.length) U.alert('ไฟล์ที่ไม่สำเร็จ:\n' + problems.join('\n'));
       onSaved && onSaved(b);
     }
   };
@@ -528,9 +531,9 @@
         location.hash = '#/projects';
       },
       onSubmit: (f) => {
-        if (f.endDate <= f.startDate) { alert('Finish date ต้องอยู่หลัง Start date'); return false; }
+        if (f.endDate <= f.startDate) { U.alert('Finish date ต้องอยู่หลัง Start date'); return false; }
         if (PM.db.projects.some((x) => x.id !== p.id && String(x.code).toUpperCase() === f.code.toUpperCase())) {
-          alert(`Project No. ${f.code} ถูกใช้แล้ว`); return false;
+          U.alert(`Project No. ${f.code} ถูกใช้แล้ว`); return false;
         }
         const planChanged = p.phases && Math.round(f.budget) !== Math.round(planNow);
         // names are kept next to the ids so they still show offline

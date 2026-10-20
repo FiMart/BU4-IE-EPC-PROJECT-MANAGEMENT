@@ -173,8 +173,9 @@
       if (act === 'remove') {
         const r = state.rows[+a.dataset.r];
         if (!r || r.fromPlan) return;
-        if (PM.sum(r.hours) && !confirm(`ลบแถว "${rowLabel(r)}" และชั่วโมงที่บันทึกไว้ ${U.num(PM.sum(r.hours), 1)} h?`)) return;
-        state.rows.splice(+a.dataset.r, 1); state.dirty = true; commit(); drawGrid(el, dates, res); drawBids(el, dates); drawTeam(el, dates);
+        const remove = () => { state.rows.splice(state.rows.indexOf(r), 1); state.dirty = true; commit(); drawGrid(el, dates, res); drawBids(el, dates); drawTeam(el, dates); };
+        if (!PM.sum(r.hours)) remove();
+        else U.confirm(`ลบแถว "${rowLabel(r)}" และชั่วโมงที่บันทึกไว้ ${U.num(PM.sum(r.hours), 1)} h?`, { title: 'ลบแถว Timesheet', ok: 'ลบ' }).then((ok) => { if (ok) remove(); });
       }
       if (act === 'save') {
         state.dirty = true; // write now even if autosave already did

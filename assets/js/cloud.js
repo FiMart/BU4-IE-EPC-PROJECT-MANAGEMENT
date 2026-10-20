@@ -359,7 +359,8 @@
     synced = true; // the cloud is known (empty) — from here on this browser's edits go up
     if (n && PM.can('data.import')) {
       const what = PM.freshSeed ? 'ข้อมูลตัวอย่าง (Demo)' : 'ข้อมูลที่อยู่ในเครื่องนี้';
-      const ok = confirm(`ฐานข้อมูลบน Cloud ยังว่างอยู่\n\nอัปโหลด${what} ขึ้น Cloud เพื่อใช้งานร่วมกันหรือไม่?\n(${db.projects.length} โครงการ · ${db.bids.length} bids · ${db.timesheets.length} timesheet entries)\n\nOK = อัปโหลด   ·   Cancel = เริ่มจากข้อมูลว่าง`);
+      const ok = await U.confirm(`อัปโหลด${what} ขึ้น Cloud เพื่อใช้งานร่วมกันหรือไม่?\n(${db.projects.length} โครงการ · ${db.bids.length} bids · ${db.timesheets.length} timesheet entries)`,
+        { title: 'ฐานข้อมูลบน Cloud ยังว่างอยู่', ok: 'อัปโหลด', cancel: 'เริ่มจากข้อมูลว่าง', tone: 'question' });
       if (ok) { await C.replaceAll(); return; }
     }
     // start clean (keep a copy of real local data first)

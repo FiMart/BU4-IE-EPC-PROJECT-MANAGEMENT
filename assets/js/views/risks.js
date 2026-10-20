@@ -110,7 +110,7 @@
         ${U.field('สถานะ', 'status', r.status, { options: PM.RISK_STATUS.map((s) => ({ value: s.key, label: s.label })) })}
         ${U.field('หมายเหตุ', 'note', r.note, { type: 'textarea', full: true, rows: 2 })}`,
       onSubmit: canEdit ? (f) => {
-        if (!f.title) { alert('กรุณากรอกเรื่อง'); return false; }
+        if (!f.title) { U.alert('กรุณากรอกเรื่อง'); return false; }
         Object.assign(r, f, { likelihood: Number(f.likelihood), impact: Number(f.impact) });
         p.risks = p.risks || [];
         if (!p.risks.includes(r)) p.risks.push(r);

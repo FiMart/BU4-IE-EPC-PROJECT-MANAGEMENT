@@ -196,8 +196,8 @@
         <span></span>
         ${U.field('หมายเหตุ', 'note', t.note, { type: 'textarea', full: true, rows: 2 })}`,
       onSubmit: canEdit ? (f) => {
-        if (!f.name) { alert('กรุณากรอกชื่อกิจกรรม'); return false; }
-        if (f.end < f.start) { alert('วันเสร็จต้องไม่ก่อนวันเริ่ม'); return false; }
+        if (!f.name) { U.alert('กรุณากรอกชื่อกิจกรรม'); return false; }
+        if (f.end < f.start) { U.alert('วันเสร็จต้องไม่ก่อนวันเริ่ม'); return false; }
         f.progress = Math.max(0, Math.min(100, f.progress));
         Object.assign(t, f);
         p.tasks = p.tasks || [];
@@ -227,8 +227,8 @@
         ${U.field('วันที่สำเร็จจริง', 'actual', x.actual, { type: 'date', hint: 'เว้นว่างไว้จนกว่าจะถึง milestone นี้' })}
         ${U.field('หมายเหตุ', 'note', x.note, { type: 'textarea', full: true, rows: 2 })}`,
       onSubmit: canEdit ? (f) => {
-        if (!f.name) { alert('กรุณากรอกชื่อ Milestone'); return false; }
-        if (!f.date) { alert('กรุณาเลือกวันที่ตามแผน'); return false; }
+        if (!f.name) { U.alert('กรุณากรอกชื่อ Milestone'); return false; }
+        if (!f.date) { U.alert('กรุณาเลือกวันที่ตามแผน'); return false; }
         Object.assign(x, f);
         p.milestones = p.milestones || [];
         if (!p.milestones.includes(x)) p.milestones.push(x);

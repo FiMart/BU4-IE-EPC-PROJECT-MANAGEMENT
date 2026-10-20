@@ -343,7 +343,7 @@
   }
 
   A.signOut = async function () {
-    if (!confirm('ต้องการออกจากระบบหรือไม่?')) return;
+    if (!(await U.confirm('ต้องการออกจากระบบหรือไม่? ข้อมูลที่แก้ไขจะถูกบันทึกขึ้น Cloud ก่อนออก', { title: 'ออกจากระบบ', ok: 'ออกจากระบบ' }))) return;
     U.closeModal();
     await PM.cloud.flush(); // send any unsaved edits before the session ends
     signingOut = true;

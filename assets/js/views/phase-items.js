@@ -149,17 +149,21 @@
     if (st) {
       const x = (p.phaseItems || []).find((i) => i.id === st.dataset.piSt);
       if (!x || !PM.can('phaseitem.edit')) return true;
-      const prev = x.status;
-      if (st.value === 'return') { // what the client asked to change (shown under the document until it is sent again)
-        const cm = prompt(`ความเห็นจากลูกค้า / สาเหตุที่ส่งกลับ — ${x.no}\n(เว้นว่างได้ · แนบไฟล์ Comment sheet ได้ด้วยปุ่ม 📎)`, x.comment || '');
-        if (cm === null) { st.value = prev; return true; } // cancelled — nothing changes
-        x.comment = cm.trim();
-      }
-      x.status = st.value;
-      const bumped = applyStep(x, prev);
-      PM.upsert('projects', p);
-      U.toast(`${x.no} → ${cfg(x.phase).steps[x.status]}${bumped ? ` · Revision ใหม่ ${x.rev}` : ''}`);
-      rerender();
+      const prev = x.status, want = st.value;
+      const apply = () => {
+        x.status = want;
+        const bumped = applyStep(x, prev);
+        PM.upsert('projects', p);
+        U.toast(`${x.no} → ${cfg(x.phase).steps[x.status]}${bumped ? ` · Revision ใหม่ ${x.rev}` : ''}`);
+        rerender();
+      };
+      if (want !== 'return') { apply(); return true; }
+      // Return: ask what the client wants changed (shown under the document until it is sent again) —
+      // the dropdown shows the old status until the box is answered; cancel = nothing changes
+      st.value = prev;
+      U.prompt(`ความเห็นจากลูกค้า / สาเหตุที่ส่งกลับ (เว้นว่างได้ · แนบไฟล์ Comment sheet ได้ด้วยปุ่ม 📎)`, x.comment || '',
+        { title: `${x.no} — ลูกค้าส่งกลับแก้ไข (Return)`, ok: 'บันทึก Return', placeholder: 'เช่น แก้ระยะ Clearance ตาม Comment sheet', multiline: true, tone: 'warning' })
+        .then((cm) => { if (cm === null) return; x.comment = cm.trim(); apply(); });
       return true;
     }
     if (e.type !== 'click' || e.target.closest('select')) return false;
@@ -175,7 +179,7 @@
           if (it && files.length) { it.files = (it.files || []).concat(files); PM.upsert('projects', cur); }
           else if (!it && files.length) PM.poFiles.remove(files.map((f) => f.path)).catch(() => { /* item deleted meanwhile */ });
           U.toast(files.length && it ? `แนบ ${files.length} ไฟล์ให้ ${item.no} แล้ว` : 'ไม่ได้แนบไฟล์');
-          if (problems.length) alert('ไฟล์ที่ไม่สำเร็จ:\n' + problems.join('\n'));
+          if (problems.length) U.alert('ไฟล์ที่ไม่สำเร็จ:\n' + problems.join('\n'));
           rerender();
         }, (chosen) => { a.disabled = true; a.classList.add('loading'); a.textContent = `อัปโหลด ${chosen.length} ไฟล์…`; });
       }
@@ -183,11 +187,14 @@
       if (a.dataset.pi === 'new') itemForm(p, key, null, rerender);
       if (a.dataset.pi === 'use-pct') {
         const s = PM.phaseItemStats(p, key), ph = p.phases.find((x) => x.key === key);
-        if (!confirm(`ตั้งความคืบหน้า ${PM.PHASES.find((x) => x.key === key).label} = ${U.pct(s.pct, 1)} (จากรายการ ${s.total} ${cfg(key).noun})?`)) return true;
-        ph.progress = Math.round(s.pct * 1000) / 10;
-        if (ph.progress > 0 && !ph.actStart) ph.actStart = PM.today();
-        if (ph.progress >= 100 && !ph.actEnd) ph.actEnd = PM.today();
-        PM.snapshotProgress(p); PM.upsert('projects', p); U.toast('อัปเดตความคืบหน้าแล้ว'); rerender();
+        U.confirm(`ตั้งความคืบหน้า ${PM.PHASES.find((x) => x.key === key).label} = ${U.pct(s.pct, 1)}\n(คำนวณจากรายการ ${s.total} ${cfg(key).noun} · ตอนนี้ ${U.pct((ph.progress || 0) / 100, 1)})`, { title: 'ใช้ % จากรายการเป็นความคืบหน้า', ok: 'ตั้งค่า' })
+          .then((ok) => {
+            if (!ok) return;
+            ph.progress = Math.round(s.pct * 1000) / 10;
+            if (ph.progress > 0 && !ph.actStart) ph.actStart = PM.today();
+            if (ph.progress >= 100 && !ph.actEnd) ph.actEnd = PM.today();
+            PM.snapshotProgress(p); PM.upsert('projects', p); U.toast('อัปเดตความคืบหน้าแล้ว'); rerender();
+          });
       }
       return true;
     }
@@ -222,7 +229,7 @@
         ${PM.poFiles.boxHtml(canEdit, c.rev ? 'ไฟล์เอกสาร / แบบ / Comment sheet' : 'ไฟล์แนบ', 'ทุกคนในทีมเห็นได้', 'item')}
         ${log.length ? `<div class="full pi-log"><span>ประวัติสถานะ${c.rev ? ' (Transmittal)' : ''}</span><ol>${log.map((l) => `<li><b>${U.date(l.date)}</b> ${U.badge(STEP_LEVEL[l.status] || 'neutral', c.steps[l.status] || l.status)}${c.rev && l.rev ? ` Rev. ${esc(l.rev)}` : ''}${l.comment ? `<small>${esc(l.comment)}</small>` : ''}</li>`).join('')}</ol></div>` : ''}`,
       onSubmit: !canEdit ? null : (f, frm) => {
-        if ((p.phaseItems || []).some((i) => i.id !== x.id && i.phase === f.phase && String(i.no).trim().toUpperCase() === f.no.toUpperCase())) { alert(`เลขที่ ${f.no} มีอยู่แล้วในขั้นงานนี้`); return false; }
+        if ((p.phaseItems || []).some((i) => i.id !== x.id && i.phase === f.phase && String(i.no).trim().toUpperCase() === f.no.toUpperCase())) { U.alert(`เลขที่ ${f.no} มีอยู่แล้วในขั้นงานนี้`); return false; }
         (async () => {
           const btn = frm.querySelector('[type=submit]'); btn.disabled = true; btn.classList.add('loading');
           const { files: kept, problems } = await files.commit(`${p.id}/items/${x.id}`, btn);
@@ -234,7 +241,7 @@
           if (!p.phaseItems.includes(x)) p.phaseItems.push(x);
           PM.upsert('projects', p); U.closeModal();
           U.toast(problems.length ? 'บันทึกแล้ว แต่ไฟล์บางไฟล์มีปัญหา' : item ? 'บันทึกแล้ว' : 'เพิ่มแล้ว');
-          if (problems.length) alert('ไฟล์ที่ไม่สำเร็จ:\n' + problems.join('\n'));
+          if (problems.length) U.alert('ไฟล์ที่ไม่สำเร็จ:\n' + problems.join('\n'));
           done();
         })();
         return false;

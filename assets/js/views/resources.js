@@ -201,8 +201,8 @@
         ${U.field('Rate (THB / hour)', 'rate', x.rate, { type: 'number', min: 0 })}
         ${U.field('Utilization target (%)', 'target', x.target, { type: 'number', min: 0, max: 120 })}`,
       onSubmit: (f) => {
-        if (isNew && PM.db.levels.some((y) => y.id === f.id)) { alert('Code ซ้ำ'); return false; }
-        if (!isNew && f.id !== x.id && PM.PERSON_LEVELS.some((l) => l.id === x.id)) { alert(`Code ${x.id} ใช้กับตัวเลือก Level ใน Add person — เปลี่ยน Code ไม่ได้ (แก้ชื่อ / rate / target ได้)`); return false; }
+        if (isNew && PM.db.levels.some((y) => y.id === f.id)) { U.alert('Code ซ้ำ'); return false; }
+        if (!isNew && f.id !== x.id && PM.PERSON_LEVELS.some((l) => l.id === x.id)) { U.alert(`Code ${x.id} ใช้กับตัวเลือก Level ใน Add person — เปลี่ยน Code ไม่ได้ (แก้ชื่อ / rate / target ได้)`); return false; }
         if (!isNew && f.id !== x.id) PM.db.resources.forEach((r) => { if (r.level === x.id) r.level = f.id; });
         Object.assign(x, f);
         if (isNew) PM.db.levels.push(x);

@@ -131,7 +131,8 @@
     wrap.addEventListener('mousedown', (e) => { if (e.target === wrap) U.closeModal(); });
     wrap.querySelectorAll('[data-close]').forEach((b) => b.addEventListener('click', U.closeModal));
     const del = wrap.querySelector('[data-delete]');
-    if (del) del.addEventListener('click', () => { if (confirm('ยืนยันการลบรายการนี้?')) { onDelete(); U.closeModal(); } });
+    if (del) del.addEventListener('click', () => U.confirm('ยืนยันการลบรายการนี้? ลบแล้วกู้คืนไม่ได้', { title: 'ลบรายการ', ok: 'ลบ', tone: 'danger' })
+      .then((ok) => { if (ok) { onDelete(); U.closeModal(); } }));
     form.addEventListener('submit', (e) => {
       e.preventDefault();
       if (!form.checkValidity()) { form.reportValidity(); return; }
@@ -146,7 +147,78 @@
     m.classList.add('closing'); // plays the exit animation, then removes
     setTimeout(() => m.remove(), 180);
   });
-  document.addEventListener('keydown', (e) => { if (e.key === 'Escape') U.closeModal(); });
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !document.querySelector('.dlg-backdrop')) U.closeModal(); });
+
+  /* ---------- message boxes: the app's own alert / confirm / prompt (never the browser's) ----------
+     Each returns a Promise, so code continues in .then() / await:
+       U.alert(message, { title, tone })                          → resolves when closed
+       U.confirm(message, { title, ok, cancel, tone })            → true (OK) / false (cancel, Esc)
+       U.prompt(message, value, { title, ok, placeholder, multiline }) → the text, or null when cancelled
+     tone: 'info' · 'success' · 'warning' · 'danger' (red OK button) — confirm guesses 'danger' for delete / overwrite.
+     They sit above forms (a form under a box stays open) · Enter = OK · Esc = cancel · focus returns where it was. */
+  const DLG_ICON = {
+    info: '<circle cx="12" cy="12" r="9"/><path d="M12 11v6M12 7.5v.01"/>',
+    success: '<circle cx="12" cy="12" r="9"/><path d="M8 12.5l2.8 2.8L16.5 9.5"/>',
+    warning: '<path d="M12 3.5l9.5 16.5h-19z"/><path d="M12 10v4.5M12 17.5v.01"/>',
+    danger: '<circle cx="12" cy="12" r="9"/><path d="M12 7.5v5.5M12 16.5v.01"/>',
+    question: '<circle cx="12" cy="12" r="9"/><path d="M9.6 9.5a2.5 2.5 0 1 1 3.4 2.3c-.6.3-1 .8-1 1.5v.4M12 16.8v.01"/>',
+  };
+  const RISKY = /ลบ|เขียนทับ|แทนที่|ล้างข้อมูล|ออกจากระบบ|ลด Role/;
+  const ERRORISH = /ไม่สำเร็จ|ไม่ได้|ไม่ถูกต้อง|ถูกใช้แล้ว|ซ้ำ|ไม่มีสิทธิ์|บล็อก|ใหญ่เกิน|ไม่ตรงกัน|ไม่พบ/;
+  function dialog(o) {
+    return new Promise((resolve) => {
+      const kind = o.kind;
+      const tone = o.tone || (kind === 'confirm' ? (RISKY.test(o.message) ? 'danger' : 'question') : kind === 'prompt' ? 'info' : ERRORISH.test(o.message) ? 'warning' : 'info');
+      const title = o.title || { alert: tone === 'warning' ? 'ทำรายการไม่ได้' : 'แจ้งเตือน', confirm: 'ยืนยัน', prompt: 'กรอกข้อมูล' }[kind];
+      const prev = document.activeElement;
+      const wrap = document.createElement('div');
+      wrap.className = 'dlg-backdrop';
+      const field = kind !== 'prompt' ? ''
+        : o.multiline ? `<textarea class="dlg-input" rows="3" placeholder="${U.esc(o.placeholder || '')}">${U.esc(o.value || '')}</textarea>`
+          : `<input class="dlg-input" type="text" value="${U.esc(o.value || '')}" placeholder="${U.esc(o.placeholder || '')}">`;
+      wrap.innerHTML = `<div class="dlg dlg-${tone}" role="${kind === 'alert' ? 'alertdialog' : 'dialog'}" aria-modal="true" aria-label="${U.esc(title)}">
+          <div class="dlg-ic" aria-hidden="true"><svg viewBox="0 0 24 24">${DLG_ICON[tone] || DLG_ICON.info}</svg></div>
+          <div class="dlg-main"><h2>${U.esc(title)}</h2><p>${U.esc(o.message)}</p>${field}</div>
+          <footer>${kind === 'alert' ? '' : `<button type="button" class="btn ghost" data-dlg="cancel">${U.esc(o.cancel || 'ยกเลิก')}</button>`}
+            <button type="button" class="btn ${tone === 'danger' ? 'btn-danger' : 'primary'}" data-dlg="ok">${U.esc(o.ok || 'ตกลง')}</button></footer>
+        </div>`;
+      document.body.appendChild(wrap);
+      const input = wrap.querySelector('.dlg-input');
+      const okValue = () => (kind === 'confirm' ? true : kind === 'prompt' ? input.value : undefined);
+      const cancelValue = kind === 'confirm' ? false : kind === 'prompt' ? null : undefined;
+      let closed = false;
+      const done = (v) => {
+        if (closed) return;
+        closed = true;
+        document.removeEventListener('keydown', onKey, true);
+        wrap.classList.add('closing');
+        setTimeout(() => wrap.remove(), 150);
+        if (prev && prev.isConnected && typeof prev.focus === 'function') { try { prev.focus(); } catch (e) { /* ignore */ } }
+        resolve(v);
+      };
+      const onKey = (e) => {
+        const open = document.querySelectorAll('.dlg-backdrop:not(.closing)');
+        if (open[open.length - 1] !== wrap) return; // only the top box answers
+        if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); done(cancelValue); return; }
+        if (e.key === 'Enter' && !(e.target.tagName === 'BUTTON') && !(o.multiline && e.target === input && !e.ctrlKey)) { e.preventDefault(); e.stopPropagation(); done(okValue()); return; }
+        if (e.key === 'Tab') { // keep focus inside the box
+          const f = Array.from(wrap.querySelectorAll('input, textarea, button'));
+          const i = f.indexOf(document.activeElement);
+          e.preventDefault();
+          f[(i + (e.shiftKey ? -1 : 1) + f.length) % f.length].focus();
+        }
+      };
+      document.addEventListener('keydown', onKey, true);
+      wrap.addEventListener('click', (e) => { const b = e.target.closest('[data-dlg]'); if (b) done(b.dataset.dlg === 'ok' ? okValue() : cancelValue); });
+      wrap.addEventListener('mousedown', (e) => e.stopPropagation()); // a click here never closes the form underneath
+      const first = input || wrap.querySelector(kind === 'confirm' && tone === 'danger' ? '[data-dlg="cancel"]' : '[data-dlg="ok"]');
+      first.focus();
+      if (input) input.select();
+    });
+  }
+  U.alert = (message, o = {}) => dialog(Object.assign({}, o, { kind: 'alert', message: String(message) }));
+  U.confirm = (message, o = {}) => dialog(Object.assign({}, o, { kind: 'confirm', message: String(message) }));
+  U.prompt = (message, value, o = {}) => dialog(Object.assign({}, o, { kind: 'prompt', message: String(message), value: value == null ? '' : String(value) }));
 
   /* ---------- form drafts (one at a time, kept 3 days) ---------- */
   const DRAFT_KEY = 'epc-pm-form-draft';

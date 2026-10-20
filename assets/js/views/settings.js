@@ -125,7 +125,7 @@
     const busy = async (form, fn) => {
       const btn = form.querySelector('button');
       btn.disabled = true;
-      try { await fn(); } catch (err) { alert(err.message); } finally { btn.disabled = false; }
+      try { await fn(); } catch (err) { U.alert(err.message); } finally { btn.disabled = false; }
     };
     const pf = el.querySelector('#profile-form');
     if (pf) pf.addEventListener('submit', (e) => {
@@ -135,7 +135,7 @@
     const pwf = el.querySelector('#password-form');
     if (pwf) pwf.addEventListener('submit', (e) => {
       e.preventDefault();
-      if (pwf.password.value !== pwf.confirm.value) { alert('รหัสผ่านทั้งสองช่องไม่ตรงกัน'); return; }
+      if (pwf.password.value !== pwf.confirm.value) { U.alert('รหัสผ่านทั้งสองช่องไม่ตรงกัน'); return; }
       busy(pwf, async () => { await A.updatePassword(pwf.password.value); pwf.reset(); U.toast('เปลี่ยนรหัสผ่านแล้ว'); });
     });
 
@@ -146,16 +146,16 @@
       const f = e.target.files[0];
       if (!f) return;
       const rd = new FileReader();
-      rd.onload = () => {
+      rd.onload = async () => {
         try {
           const data = JSON.parse(rd.result);
           const need = ['bids', 'projects', 'ncrs', 'safety', 'resources', 'levels', 'timesheets'];
           if (!need.every((k) => Array.isArray(data[k]))) throw new Error('missing collections');
-          if (!confirm('Import จะเขียนทับข้อมูลปัจจุบันทั้งหมด ดำเนินการต่อ?')) return;
+          if (!(await U.confirm(`Import จะเขียนทับข้อมูลปัจจุบันทั้งหมดด้วยไฟล์ "${f.name}" — แนะนำให้ Export เก็บไว้ก่อน`, { title: 'Import ข้อมูล', ok: 'เขียนทับ' }))) return;
           PM.db = data; PM.ensureShape(); PM.lockCompany();
           PM.saveLocal(); PM.cloud.replaceAll();
           PM.applyAsOf(); U.toast('Import สำเร็จ — กำลังบันทึกขึ้น Cloud'); PM.render();
-        } catch (err) { alert('ไฟล์ไม่ถูกต้อง: ' + err.message); }
+        } catch (err) { U.alert('ไฟล์ไม่ถูกต้อง: ' + err.message); }
       };
       rd.readAsText(f);
     });
@@ -199,8 +199,10 @@
         download(`timesheet-${PM.today()}.csv`, '﻿' + lines.join('\r\n'), 'text/csv');
       }
       if ((act === 'demo' || act === 'empty') && !PM.can('data.reset')) { U.toast('ไม่มีสิทธิ์ Reset ข้อมูล'); return; }
-      if (act === 'demo' && confirm('แทนที่ข้อมูลทั้งหมดด้วยข้อมูลตัวอย่าง?')) { PM.reset(false); PM.applyAsOf(); U.toast('โหลดข้อมูลตัวอย่างแล้ว'); PM.render(); }
-      if (act === 'empty' && confirm('ลบข้อมูลทั้งหมด (Bids, Projects, NCR, Safety, People, Timesheet)? แนะนำให้ Export ก่อน')) { PM.reset(true); PM.applyAsOf(); U.toast('ล้างข้อมูลแล้ว'); PM.render(); }
+      if (act === 'demo') U.confirm('แทนที่ข้อมูลทั้งหมดด้วยข้อมูลตัวอย่าง? ข้อมูลปัจจุบันจะหายทั้งหมด — แนะนำให้ Export ก่อน', { title: 'โหลดข้อมูลตัวอย่าง', ok: 'แทนที่' })
+        .then((ok) => { if (ok) { PM.reset(false); PM.applyAsOf(); U.toast('โหลดข้อมูลตัวอย่างแล้ว'); PM.render(); } });
+      if (act === 'empty') U.confirm('ลบข้อมูลทั้งหมด (Bids, Projects, NCR, Safety, People, Timesheet)? ลบแล้วกู้คืนไม่ได้ — แนะนำให้ Export ก่อน', { title: 'ล้างข้อมูลทั้งหมด', ok: 'ลบทั้งหมด' })
+        .then((ok) => { if (ok) { PM.reset(true); PM.applyAsOf(); U.toast('ล้างข้อมูลแล้ว'); PM.render(); } });
     };
   };
 
@@ -275,7 +277,7 @@
   async function deleteUser(el, btn) {
     if (!PM.can('users.delete')) return;
     const name = btn.dataset.name, email = btn.dataset.email;
-    if (!confirm(`ลบบัญชีผู้ใช้ "${name}"${email && email !== name ? ` (${email})` : ''}?\n\nคนนี้จะเข้าสู่ระบบไม่ได้อีก และลบคืนไม่ได้\nข้อมูลโครงการ / Timesheet / งานที่เคยบันทึกไว้จะยังอยู่ครบ`)) return;
+    if (!(await U.confirm(`ลบบัญชี "${name}"${email && email !== name ? ` (${email})` : ''}?\n\nคนนี้จะเข้าสู่ระบบไม่ได้อีก และลบคืนไม่ได้\nข้อมูลโครงการ / Timesheet / งานที่เคยบันทึกไว้จะยังอยู่ครบ`, { title: 'ลบบัญชีผู้ใช้', ok: 'ลบบัญชี' }))) return;
     btn.disabled = true; btn.classList.add('loading');
     try {
       await PM.roles.remove(btn.dataset.id);
@@ -284,7 +286,7 @@
       loadUsers(el);
     } catch (err) {
       btn.disabled = false; btn.classList.remove('loading');
-      alert(err.message);
+      U.alert(err.message);
     }
   }
 
@@ -305,10 +307,10 @@
     // same rules as the database (checked again by roles.sql)
     if (!PM.assignableRoles({ id: sel.dataset.roleFor, role: prev }).includes(role)) {
       sel.value = prev;
-      alert('ไม่มีสิทธิ์ตั้ง Role นี้ — ' + PM.ROLE_RULES);
+      U.alert('ไม่มีสิทธิ์ตั้ง Role นี้ — ' + PM.ROLE_RULES);
       return;
     }
-    if (self && prev === 'admin' && role !== 'admin' && !confirm('คุณกำลังลด Role ของตัวเองจาก Admin — จะไม่สามารถจัดการ Role ได้อีก ดำเนินการต่อ?')) {
+    if (self && prev === 'admin' && role !== 'admin' && !(await U.confirm('คุณกำลังลด Role ของตัวเองจาก Admin — จะไม่สามารถจัดการ Role ได้อีก ดำเนินการต่อ?', { title: 'ลด Role ของตัวเอง', ok: 'ลด Role' }))) {
       sel.value = prev; return;
     }
     sel.disabled = true;
@@ -319,7 +321,7 @@
       if (self) { await PM.auth.refreshRole(); PM.render(); }
     } catch (err) {
       sel.value = prev;
-      alert(err.message);
+      U.alert(err.message);
     } finally {
       sel.disabled = false;
     }

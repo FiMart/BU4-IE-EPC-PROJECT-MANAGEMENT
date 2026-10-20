@@ -243,7 +243,7 @@
       e.preventDefault();
       if (!form.checkValidity()) return;
       const f = U.formData(form);
-      if (f.validUntil && f.quoteDate && f.validUntil < f.quoteDate) { alert('วันที่ "ใช้ได้ถึง" ต้องไม่ก่อนวันที่เสนอราคา'); return; }
+      if (f.validUntil && f.quoteDate && f.validUntil < f.quoteDate) { U.alert('วันที่ "ใช้ได้ถึง" ต้องไม่ก่อนวันที่เสนอราคา'); return; }
       const btn = form.querySelector('[type=submit]');
       btn.disabled = true; btn.classList.add('loading');
       const me = PM.auth.user, myName = me ? PM.auth.displayName(me) : '';
@@ -262,7 +262,7 @@
       PM.upsert('prices', x);
       U.closeModal();
       U.toast(problems.length ? 'บันทึกราคาแล้ว แต่ไฟล์บางไฟล์มีปัญหา' : 'บันทึกราคาแล้ว');
-      if (problems.length) alert('ไฟล์ที่ไม่สำเร็จ:\n' + problems.join('\n'));
+      if (problems.length) U.alert('ไฟล์ที่ไม่สำเร็จ:\n' + problems.join('\n'));
       done();
     });
   }

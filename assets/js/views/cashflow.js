@@ -283,9 +283,12 @@
       const act = a.dataset.cf;
       if (act === 'boq-add') boqForm(p, cf, null, rerender);
       if (act === 'boq-paste') pasteForm(p, cf, rerender);
-      if (act === 'boq-boq' && confirm('สร้างหมวดงานจากแท็บ BOQ ของโครงการ (1 หมวด BOQ = 1 แถว · ต้นทุน = ยอดรวมของหมวด · วันที่ / การกระจายตามหมวด)? รายการเดิมจะถูกแทนที่')) { cf.boq = PM.cashflowBoqFromBoq(p); rerender(); }
-      if (act === 'boq-phases' && confirm('สร้าง BOQ ใหม่จาก 4 Phase (ต้นทุน = Plan cost · วันที่ = แผนของแต่ละ Phase)? รายการ BOQ เดิมจะถูกแทนที่')) { cf.boq = PM.cashflowBoqFromPhases(p); rerender(); }
-      if (act === 'defaults' && confirm('คืนค่า Assumption และ Scenario เป็นค่าเริ่มต้น? (BOQ ไม่เปลี่ยน)')) { cf.a = Object.assign({}, DEFAULT_A); cf.sc = clone(DEFAULT_SC); rerender(); }
+      if (act === 'boq-boq') U.confirm('สร้างหมวดงานจากแท็บ BOQ ของโครงการ\n(1 หมวด BOQ = 1 แถว · ต้นทุน = ยอดรวมของหมวด · วันที่ / การกระจายตามหมวด)\nรายการเดิมจะถูกแทนที่', { title: 'ดึงจาก BOQ', ok: 'แทนที่' })
+        .then((ok) => { if (ok) { cf.boq = PM.cashflowBoqFromBoq(p); rerender(); } });
+      if (act === 'boq-phases') U.confirm('สร้างรายการใหม่จาก 4 Phase\n(ต้นทุน = Plan cost · วันที่ = แผนของแต่ละ Phase)\nรายการเดิมจะถูกแทนที่', { title: 'สร้างจาก Phase', ok: 'แทนที่' })
+        .then((ok) => { if (ok) { cf.boq = PM.cashflowBoqFromPhases(p); rerender(); } });
+      if (act === 'defaults') U.confirm('คืนค่า Assumption และ Scenario เป็นค่าเริ่มต้น? (รายการต้นทุนไม่เปลี่ยน)', { title: 'คืนค่าเริ่มต้น', ok: 'คืนค่า' })
+        .then((ok) => { if (ok) { cf.a = Object.assign({}, DEFAULT_A); cf.sc = clone(DEFAULT_SC); rerender(); } });
       if (act === 'discard') { delete drafts[p.id]; rerender(); U.toast('ยกเลิกการแก้ไขแล้ว'); }
       if (act === 'save' && canSave) {
         p.cashflow = clone(cf);
@@ -415,8 +418,8 @@
         ${U.field('การกระจายต้นทุนตามเวลา', 'curve', l.curve, { options: CURVES.map((c) => ({ value: c.value, label: c.label })), full: true })}
         <p class="full muted" style="margin:0">การแก้ไขนี้เป็นการทดลอง — กด "บันทึก" ด้านบนของแท็บเพื่อเก็บไว้กับโครงการ</p>`,
       onSubmit: (f) => {
-        if (!f.name) { alert('กรุณากรอกชื่อหมวดงาน'); return false; }
-        if (f.end < f.start) { alert('วันเสร็จต้องไม่ก่อนวันเริ่ม'); return false; }
+        if (!f.name) { U.alert('กรุณากรอกชื่อหมวดงาน'); return false; }
+        if (f.end < f.start) { U.alert('วันเสร็จต้องไม่ก่อนวันเริ่ม'); return false; }
         Object.assign(l, f, { cost: Math.max(0, Number(f.cost) || 0) });
         if (isNew) cf.boq.push(l);
         done();
@@ -472,7 +475,7 @@
         <p class="full" id="paste-preview" aria-live="polite"></p>`,
       onSubmit: (f) => {
         const { rows, skipped } = parse(f.data);
-        if (!rows.length) { alert('ไม่พบแถวที่อ่านได้ — ต้องมีอย่างน้อย หมวดงาน · ต้นทุน · เริ่ม · เสร็จ'); return false; }
+        if (!rows.length) { U.alert('ไม่พบแถวที่อ่านได้ — ต้องมีอย่างน้อย หมวดงาน · ต้นทุน · เริ่ม · เสร็จ'); return false; }
         cf.boq = f.mode === 'append' ? cf.boq.concat(rows) : rows;
         U.toast(`นำเข้า ${rows.length} หมวดงาน${skipped ? ` · ข้าม ${skipped} แถว` : ''}`);
         done();

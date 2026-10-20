@@ -85,7 +85,7 @@
   /* a new window for the report (opened straight from the click, so pop-up blockers allow it) */
   function newWindow() {
     const win = window.open('', '_blank');
-    if (!win) alert('เบราว์เซอร์บล็อกหน้าต่างใหม่ — อนุญาต Pop-up ของเว็บนี้แล้วลองอีกครั้ง');
+    if (!win) U.alert('เบราว์เซอร์บล็อกหน้าต่างใหม่ — อนุญาต Pop-up ของเว็บนี้แล้วลองอีกครั้ง');
     return win;
   }
   function writePage(win, { title, bar, head, body }) {

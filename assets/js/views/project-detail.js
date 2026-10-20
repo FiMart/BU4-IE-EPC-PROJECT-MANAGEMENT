@@ -286,7 +286,7 @@
         ${U.field('Weight (%)', 'weight', ph.weight, { type: 'number', min: 0, max: 100, hint: 'น้ำหนักของ phase ในความคืบหน้ารวม' })}
         ${U.field('Plan cost (THB)', 'budget', ph.budget, { type: 'number', min: 0, step: 'any' })}`,
       onSubmit: (f) => {
-        if (f.planEnd < f.planStart) { alert('Plan finish ต้องอยู่หลัง Plan start'); return false; }
+        if (f.planEnd < f.planStart) { U.alert('Plan finish ต้องอยู่หลัง Plan start'); return false; }
         f.progress = Math.max(0, Math.min(100, f.progress));
         if (f.progress > 0 && !f.actStart) f.actStart = PM.today();
         if (f.progress >= 100 && !f.actEnd) f.actEnd = PM.today();
@@ -431,7 +431,7 @@
         ${U.field('Remark', 'remark', s.remark, { full: true })}`,
       onSubmit: (f) => {
         const dup = PM.db.safety.find((x) => x.projectId === p.id && x.month === f.month && x.id !== s.id);
-        if (dup) { alert('มีข้อมูลของเดือนนี้อยู่แล้ว — กรุณาแก้ไขรายการเดิม'); return false; }
+        if (dup) { U.alert('มีข้อมูลของเดือนนี้อยู่แล้ว — กรุณาแก้ไขรายการเดิม'); return false; }
         Object.assign(s, f);
         PM.upsert('safety', s);
         U.toast('บันทึกแล้ว');

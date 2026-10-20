@@ -146,8 +146,8 @@
     const F = PM.poFiles, status = card.querySelector('.doc-status');
     const upload = async (list) => {
       const files = Array.from(list || []).filter((f) => {
-        if (f.size > 20 * 1048576) { alert(`${f.name} ใหญ่เกิน 20 MB`); return false; }
-        if (!/\.(pdf|png|jpe?g|webp|xlsx?)$/i.test(f.name)) { alert(`${f.name}: รองรับเฉพาะ PDF รูปภาพ และ Excel`); return false; }
+        if (f.size > 20 * 1048576) { U.alert(`${f.name} ใหญ่เกิน 20 MB`); return false; }
+        if (!/\.(pdf|png|jpe?g|webp|xlsx?)$/i.test(f.name)) { U.alert(`${f.name}: รองรับเฉพาะ PDF รูปภาพ และ Excel`); return false; }
         return true;
       });
       if (!files.length) return;
@@ -158,7 +158,7 @@
         try { b.files.push(await F.upload(`${p.id}/boq`, f)); } catch (e) { problems.push(`${f.name}: ${e.message}`); }
       }
       save(p, b);
-      if (problems.length) alert('อัปโหลดไม่สำเร็จ:\n' + problems.join('\n'));
+      if (problems.length) U.alert('อัปโหลดไม่สำเร็จ:\n' + problems.join('\n'));
       else U.toast(`อัปโหลด ${files.length} ไฟล์แล้ว`);
       rerender();
     };
@@ -177,11 +177,11 @@
       const f = (b.files || [])[+a.dataset.i];
       if (!f) return;
       if (a.dataset.boq === 'doc-view') {
-        if (!F.available()) { alert('เปิดไฟล์ได้เมื่อเชื่อมต่อ Cloud (Supabase)'); return; }
+        if (!F.available()) { U.alert('เปิดไฟล์ได้เมื่อเชื่อมต่อ Cloud (Supabase)'); return; }
         F.view(f);
       }
-      if (a.dataset.boq === 'doc-del' && canEdit && confirm(`ลบไฟล์ ${f.name}?`)) {
-        try { await F.remove([f.path]); } catch (err) { alert('ลบไฟล์ไม่สำเร็จ: ' + err.message); return; }
+      if (a.dataset.boq === 'doc-del' && canEdit && (await U.confirm(`ลบไฟล์ "${f.name}"? ลบแล้วกู้คืนไม่ได้`, { title: 'ลบเอกสาร BOQ', ok: 'ลบ' }))) {
+        try { await F.remove([f.path]); } catch (err) { U.alert('ลบไฟล์ไม่สำเร็จ: ' + err.message); return; }
         b.files = b.files.filter((x) => x !== f);
         save(p, b);
         U.toast('ลบไฟล์แล้ว');
@@ -242,8 +242,8 @@
         ${U.field('เสร็จ (แผน)', 'end', s.end, { type: 'date', required: true })}
         <p class="full muted" style="margin:0">วันที่และการกระจายต้นทุนใช้สร้าง Cash Flow จาก BOQ${sec && n ? ` · การลบหมวดนี้จะลบ ${n} รายการในหมวดด้วย` : ''}</p>`,
       onSubmit: canEdit ? (f) => {
-        if (!f.name) { alert('กรุณากรอกชื่อหมวดงาน'); return false; }
-        if (f.end < f.start) { alert('วันเสร็จต้องไม่ก่อนวันเริ่ม'); return false; }
+        if (!f.name) { U.alert('กรุณากรอกชื่อหมวดงาน'); return false; }
+        if (f.end < f.start) { U.alert('วันเสร็จต้องไม่ก่อนวันเริ่ม'); return false; }
         Object.assign(s, f);
         if (!sec) b.sections.push(s);
         save(p, b);
@@ -279,8 +279,8 @@
         ${U.field('หมายเหตุ / Spec', 'note', it.note, { type: 'textarea', full: true, rows: 2 })}
         <input type="hidden" name="priceId" value="${esc(it.priceId || '')}">`,
       onSubmit: canEdit ? (f) => {
-        if (!f.name) { alert('กรุณากรอกรายการ'); return false; }
-        if (!f.section) { alert('เพิ่มหมวดงานก่อน'); return false; }
+        if (!f.name) { U.alert('กรุณากรอกรายการ'); return false; }
+        if (!f.section) { U.alert('เพิ่มหมวดงานก่อน'); return false; }
         Object.assign(it, f, { qty: Math.max(0, num(f.qty)), mat: Math.max(0, num(f.mat)), lab: Math.max(0, num(f.lab)), done: Math.max(0, num(f.done)) });
         if (!item) b.items.push(it);
         save(p, b);
@@ -343,17 +343,24 @@
         <p class="full" id="boq-preview" aria-live="polite"></p>`,
       onSubmit: (f) => {
         const r = parseBoq(f.data);
-        if (!r.items.length) { alert('ไม่พบรายการที่อ่านได้ — ต้องมีอย่างน้อย ลำดับ · รายการ · หน่วย · ปริมาณ · ราคาต่อหน่วย'); return false; }
-        if (f.mode === 'replace' && b.items.length && !confirm(`แทนที่ BOQ เดิม ${b.items.length} รายการ?`)) return false;
-        const out = f.mode === 'replace' ? { sections: [], items: [], files: b.files || [] } : b; // uploaded documents stay
-        r.sections.forEach((s) => {
-          const sec = newSection(p, s.name, s.phase);
-          out.sections.push(sec);
-          r.items.filter((it) => it.sec === s).forEach((it) => out.items.push({ id: PM.uid('I'), section: sec.id, name: it.name, unit: it.unit, qty: it.qty, mat: it.mat, lab: it.lab, done: 0, priceId: '', note: '' }));
-        });
-        save(p, out);
-        U.toast(`นำเข้า ${r.items.length} รายการ ใน ${r.sections.length} หมวดงาน — ตรวจ Phase ของแต่ละหมวดได้โดยคลิกหัวหมวด`, 4000);
-        done();
+        if (!r.items.length) { U.alert('ไม่พบรายการที่อ่านได้ — ต้องมีอย่างน้อย ลำดับ · รายการ · หน่วย · ปริมาณ · ราคาต่อหน่วย'); return false; }
+        const importNow = () => {
+          const out = f.mode === 'replace' ? { sections: [], items: [], files: b.files || [] } : b; // uploaded documents stay
+          r.sections.forEach((s) => {
+            const sec = newSection(p, s.name, s.phase);
+            out.sections.push(sec);
+            r.items.filter((it) => it.sec === s).forEach((it) => out.items.push({ id: PM.uid('I'), section: sec.id, name: it.name, unit: it.unit, qty: it.qty, mat: it.mat, lab: it.lab, done: 0, priceId: '', note: '' }));
+          });
+          save(p, out);
+          U.closeModal();
+          U.toast(`นำเข้า ${r.items.length} รายการ ใน ${r.sections.length} หมวดงาน — ตรวจ Phase ของแต่ละหมวดได้โดยคลิกหัวหมวด`, 4000);
+          done();
+        };
+        // replacing an existing BOQ: ask first (the form stays open if the answer is no)
+        if (f.mode === 'replace' && b.items.length) {
+          U.confirm(`แทนที่ BOQ เดิม ${b.items.length} รายการ ด้วย ${r.items.length} รายการใหม่?`, { title: 'แทนที่ BOQ เดิม', ok: 'แทนที่' }).then((ok) => { if (ok) importNow(); });
+        } else importNow();
+        return false; // importNow() closes the form
       },
     });
     const prev = form.querySelector('#boq-preview');
@@ -367,9 +374,9 @@
   }
 
   /* ---------- BOQ → Plan cost / Phase progress ---------- */
-  function toPlan(p, sum, done) {
+  async function toPlan(p, sum, done) {
     const lines = PM.PHASES.map((ph) => `${ph.label}: ${U.money(phaseOf(p, ph.key).budget || 0)} → ${U.money(sum.byPhase[ph.key].total)}`).join('\n');
-    if (!confirm(`ตั้ง Plan cost ของแต่ละ Phase ตามยอด BOQ?\n\n${lines}\n\nรวม ${U.money(sum.total)}`)) return;
+    if (!(await U.confirm(`${lines}\n\nรวม ${U.money(sum.total)}`, { title: 'ตั้ง Plan cost ของแต่ละ Phase ตามยอด BOQ', ok: 'ตั้งค่า' }))) return;
     p.phases.forEach((ph) => { ph.budget = Math.round(sum.byPhase[ph.key] ? sum.byPhase[ph.key].total : 0); });
     p.budget = PM.sum(p.phases, (ph) => ph.budget);
     PM.snapshotProgress(p);
@@ -377,11 +384,11 @@
     U.toast('ตั้ง Plan cost ตาม BOQ แล้ว');
     done();
   }
-  function toPhase(p, sum, done) {
+  async function toPhase(p, sum, done) {
     const T = PM.today();
     const ch = p.phases.filter((ph) => sum.byPhase[ph.key] && sum.byPhase[ph.key].total).map((ph) => ({ ph, v: Math.round((sum.byPhase[ph.key].done / sum.byPhase[ph.key].total) * 1000) / 10 }));
     if (!ch.length) { U.toast('ยังไม่มี Phase ที่มีรายการ BOQ'); return; }
-    if (!confirm(`อัปเดต % ความคืบหน้าของ Phase จากปริมาณที่ทำแล้วใน BOQ?\n\n${ch.map((x) => `${U.phaseLabel(x.ph.key)}: ${U.num(x.ph.progress || 0, 1)}% → ${U.num(x.v, 1)}%`).join('\n')}`)) return;
+    if (!(await U.confirm(ch.map((x) => `${U.phaseLabel(x.ph.key)}: ${U.num(x.ph.progress || 0, 1)}% → ${U.num(x.v, 1)}%`).join('\n'), { title: 'อัปเดต % ความคืบหน้าของ Phase จาก BOQ', ok: 'อัปเดต' }))) return;
     ch.forEach(({ ph, v }) => {
       ph.progress = v;
       if (v > 0 && !ph.actStart) ph.actStart = T;

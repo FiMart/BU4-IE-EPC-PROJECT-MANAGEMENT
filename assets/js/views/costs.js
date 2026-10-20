@@ -187,7 +187,7 @@
         ${U.field('หมายเหตุ', 'note', c.note, { type: 'textarea', full: true, rows: 2 })}
         ${c.createdByName ? `<p class="full muted" style="margin:0">บันทึกโดย ${esc(c.createdByName)}${c.createdAt ? ' · ' + esc(new Date(c.createdAt).toLocaleString('en-GB')) : ''}</p>` : ''}`,
       onSubmit: canEdit ? (f) => {
-        if (!f.amount) { alert('กรุณากรอกจำนวนเงิน'); return false; }
+        if (!f.amount) { U.alert('กรุณากรอกจำนวนเงิน'); return false; }
         Object.assign(c, f, isNew ? creatorStamp() : {});
         const i = PM.db.costs.findIndex((x) => x.id === c.id);
         if (i >= 0) PM.db.costs[i] = c; else PM.db.costs.push(c);

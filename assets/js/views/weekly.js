@@ -440,11 +440,11 @@
       onSubmit: (f, frm) => {
         const [kind, refId] = (f.item || '').split('|');
         const ids = Array.from(frm.querySelectorAll('.pp-list input:checked')).map((i) => i.value);
-        if (!refId) { alert('กรุณาเลือก Work item'); return false; }
-        if (!ids.length && !guests.length) { alert('กรุณาเลือกผู้รับผิดชอบอย่างน้อย 1 คน (คนในแผนก หรือพิมพ์ชื่อคนแผนกอื่น)'); frm.querySelector('.pp-q').focus(); return false; }
+        if (!refId) { U.alert('กรุณาเลือก Work item'); return false; }
+        if (!ids.length && !guests.length) { U.alert('กรุณาเลือกผู้รับผิดชอบอย่างน้อย 1 คน (คนในแผนก หรือพิมพ์ชื่อคนแผนกอื่น)').then(() => frm.querySelector('.pp-q').focus()); return false; }
         // newly "ไม่เสร็จ" → save the rest first, then the NCR form takes the reason and sets the status
         const toNcr = f.status === 'not_done' && x.status !== 'not_done';
-        if (f.status === 'not_done' && !toNcr && !f.reason) { alert('งานที่ไม่เสร็จ กรุณาเลือกสาเหตุ'); return false; }
+        if (f.status === 'not_done' && !toNcr && !f.reason) { U.alert('งานที่ไม่เสร็จ กรุณาเลือกสาเหตุ'); return false; }
         Object.assign(x, {
           title: f.title, kind, refId, phase: kind === 'project' ? f.phase : '',
           resourceIds: ids, resourceId: ids[0] || '', // resourceId = first person, for older data / pages that read one
@@ -548,7 +548,7 @@
         ${U.field('การแก้ไข / แผนรองรับ (Corrective action)', 'action', old ? old.action : '', { type: 'textarea', full: true, rows: 2, placeholder: 'เช่น ยกงานไปสัปดาห์หน้า · เร่งจัดหาวัสดุ · เพิ่มคน' })}
         <p class="full muted" style="margin:0">ดู / ปิด NCR ได้ที่หน้าโครงการ → Quality · NCR · ถ้ากดยกเลิก สถานะงานจะไม่เปลี่ยน</p>`,
       onSubmit: (f) => {
-        if (!f.reason) { alert('กรุณาเลือกสาเหตุที่งานไม่เสร็จ'); return false; }
+        if (!f.reason) { U.alert('กรุณาเลือกสาเหตุที่งานไม่เสร็จ'); return false; }
         const pj = proj || (f.project ? PM.find('projects', f.project) : null);
         p.status = 'not_done';
         p.reason = f.reason;
@@ -581,12 +581,12 @@
     return canStatus ? `<button type="button" class="link-btn ncr-add" data-action="ncr" data-id="${esc(p.id)}">+ บันทึก NCR</button>` : '';
   };
 
-  function carryOver(done) {
+  async function carryOver(done) {
     const prev = PM.addDays(state.week, -7);
     const already = new Set(PM.db.plans.filter((p) => p.week === state.week && p.carriedFrom).map((p) => p.carriedFrom));
     const open = PM.db.plans.filter((p) => p.week === prev && p.status !== 'done' && !already.has(p.id));
     if (!open.length) { U.toast('ไม่มีงานค้างจากสัปดาห์ก่อน'); return; }
-    if (!confirm(`ยกงานที่ยังไม่เสร็จ ${open.length} งาน จากสัปดาห์ ${U.date(prev)} มาไว้สัปดาห์นี้?`)) return;
+    if (!(await U.confirm(`ยกงานที่ยังไม่เสร็จ ${open.length} งาน จากสัปดาห์ ${U.date(prev)} มาไว้สัปดาห์นี้?`, { title: 'ยกงานค้างมาสัปดาห์นี้', ok: 'ยกมา' }))) return;
     open.forEach((p) => {
       PM.db.plans.push(Object.assign({}, p, {
         id: PM.uid('W'), week: state.week, dueDate: PM.addDays(p.dueDate, 7),

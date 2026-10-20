@@ -29,7 +29,7 @@
   /* attach without a form: open the file picker (call it from a click), upload what was chosen into `prefix`,
      then onDone({ files, problems }) — onStart(chosen) runs as the upload begins (e.g. to show progress) */
   F.pickUpload = function (prefix, onDone, onStart) {
-    if (!F.available()) { alert('แนบไฟล์ได้เมื่อเชื่อมต่อ Cloud (Supabase)'); return; }
+    if (!F.available()) { U.alert('แนบไฟล์ได้เมื่อเชื่อมต่อ Cloud (Supabase)'); return; }
     const input = document.createElement('input');
     input.type = 'file'; input.multiple = true; input.accept = ACCEPT;
     input.addEventListener('change', async () => {
@@ -53,7 +53,7 @@
       if (win) win.location = data.signedUrl; else location.href = data.signedUrl;
     } catch (e) {
       if (win) win.close();
-      alert('เปิดไฟล์ไม่ได้: ' + storageError(e));
+      U.alert('เปิดไฟล์ไม่ได้: ' + storageError(e));
     }
   };
   /* a short-lived link to a private file (download = save under the original name instead of showing it) */
@@ -135,13 +135,17 @@
     listEl.addEventListener('click', (e) => {
       const o = e.target.closest('[data-open]'), d = e.target.closest('[data-drop]'), q = e.target.closest('[data-unqueue]');
       if (o) F.open(keep[+o.dataset.open].path);
-      if (d && confirm('ลบไฟล์นี้? (ลบจริงเมื่อกดบันทึก)')) { removed.push(keep.splice(+d.dataset.drop, 1)[0]); draw(); }
+      if (d) {
+        const f = keep[+d.dataset.drop];
+        U.confirm(`ลบไฟล์ "${f.name}"?\n(ลบจริงเมื่อกดบันทึก — กดยกเลิกที่ฟอร์มเพื่อเก็บไว้)`, { title: 'ลบไฟล์แนบ', ok: 'ลบ' })
+          .then((ok) => { if (ok && keep.includes(f)) { removed.push(keep.splice(keep.indexOf(f), 1)[0]); draw(); } });
+      }
       if (q) { pending.splice(+q.dataset.unqueue, 1); draw(); }
     });
     const input = root.querySelector('input[type=file]');
     if (input) input.addEventListener('change', () => {
       Array.from(input.files).forEach((f) => {
-        if (f.size > MAX_MB * 1048576) { alert(`${f.name} ใหญ่เกิน ${MAX_MB} MB`); return; }
+        if (f.size > MAX_MB * 1048576) { U.alert(`${f.name} ใหญ่เกิน ${MAX_MB} MB`); return; }
         pending.push(f);
       });
       input.value = '';
@@ -259,7 +263,7 @@
     const T = PM.today();
     const projects = PM.db.projects.filter((p) => p.status !== 'closed' || p.id === (po ? po.projectId : projectId));
     const pid = po ? po.projectId : projectId || (projects[0] && projects[0].id);
-    if (!pid) { alert('ยังไม่มีโครงการ — สร้างโครงการก่อน'); return; }
+    if (!pid) { U.alert('ยังไม่มีโครงการ — สร้างโครงการก่อน'); return; }
     const x = po || {
       id: PM.uid('PO'), projectId: pid, poNo: PM.nextPoNo(pid), supplier: '', description: '', category: 'Material', phase: 'procurement',
       amount: 0, poDate: T, deliveryDue: PM.addDays(T, 30), deliveredDate: '', status: 'issued', paidAmount: 0, note: '', files: [],
@@ -298,7 +302,7 @@
       e.preventDefault();
       if (!form.checkValidity()) return;
       const f = U.formData(form);
-      if (PM.db.pos.some((y) => y.id !== x.id && String(y.poNo).toUpperCase() === f.poNo.toUpperCase())) { alert(`PO No. ${f.poNo} ถูกใช้แล้ว`); return; }
+      if (PM.db.pos.some((y) => y.id !== x.id && String(y.poNo).toUpperCase() === f.poNo.toUpperCase())) { U.alert(`PO No. ${f.poNo} ถูกใช้แล้ว`); return; }
       const btn = form.querySelector('[type=submit]');
       btn.disabled = true; btn.classList.add('loading');
       Object.assign(x, {
@@ -314,7 +318,7 @@
       PM.upsert('pos', x);
       U.closeModal();
       U.toast(problems.length ? 'บันทึก PO แล้ว แต่ไฟล์บางไฟล์มีปัญหา' : 'บันทึก PO แล้ว');
-      if (problems.length) alert('ไฟล์ที่ไม่สำเร็จ:\n' + problems.join('\n'));
+      if (problems.length) U.alert('ไฟล์ที่ไม่สำเร็จ:\n' + problems.join('\n'));
       done();
     });
   };

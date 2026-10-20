@@ -176,7 +176,7 @@ ${sheets.map((_, i) => `<Override PartName="/xl/worksheets/sheet${i + 1}.xml" Co
   };
   X.pdf = function (rep) {
     const win = window.open('', '_blank');
-    if (!win) { alert('เบราว์เซอร์บล็อกหน้าต่างใหม่ — อนุญาต Pop-up ของเว็บนี้แล้วลองอีกครั้ง'); return; }
+    if (!win) { PM.ui.alert('เบราว์เซอร์บล็อกหน้าต่างใหม่ — อนุญาต Pop-up ของเว็บนี้แล้วลองอีกครั้ง'); return; }
     const right = (c) => (c.type === 'number' || c.type === 'int' ? ' class="r"' : '');
     const section = (sh) => `<section>
       <h2>${esc(sh.title || sh.name)}</h2>

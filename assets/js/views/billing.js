@@ -132,7 +132,7 @@
       onSubmit: canEdit ? (f) => {
         if (f.status === 'paid' && !f.paidDate) f.paidDate = T;
         if (f.status !== 'paid') { f.paidDate = ''; f.paidAmount = ''; }
-        if (PM.invNet(f) < 0) { alert('ยอดหักมากกว่ายอดวางบิล'); return false; }
+        if (PM.invNet(f) < 0) { U.alert('ยอดหักมากกว่ายอดวางบิล'); return false; }
         Object.assign(i, f);
         p.invoices = p.invoices || [];
         if (!p.invoices.includes(i)) p.invoices.push(i);
