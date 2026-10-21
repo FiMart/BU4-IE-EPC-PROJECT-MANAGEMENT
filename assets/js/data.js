@@ -964,7 +964,7 @@
     // daily site reports of the projects on site (daily.js) — uses the holidays above, so it runs after PM.db.settings is known
     if (PM.buildSampleDailies) { const keep = PM.db; PM.db = db; db.dailies = PM.buildSampleDailies(db.projects, T); PM.db = keep; }
     if (PM.buildSamplePunch) db.punch = PM.buildSamplePunch(db.projects, T); // punch.js
-    if (PM.buildSampleMeetings) db.meetings = PM.buildSampleMeetings(db.projects, T); // meetings.js
+    if (PM.buildSampleMeetings) db.meetings = PM.buildSampleMeetings(db.projects, T, db.resources); // meetings.js
 
     /* weekly plan — 6 past weeks, this week, next week (built from each person's allocation) */
     const TASKS = {

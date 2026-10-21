@@ -60,6 +60,12 @@
     user: '<circle cx="12" cy="8" r="4"/><path d="M4 20c1.5-4 4.5-6 8-6s6.5 2 8 6"/>',
     eye: '<path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/>',
     eyeOff: '<path d="M3 3l18 18M10.6 5.1A10 10 0 0 1 12 5c6.5 0 10 7 10 7a17 17 0 0 1-3.2 4.1M6.6 6.6C3.8 8.4 2 12 2 12s3.5 7 10 7a9.6 9.6 0 0 0 5.4-1.6"/><path d="M9.9 9.9a3 3 0 0 0 4.2 4.2"/>',
+    arrow: '<path d="M5 12h14M13 6l6 6-6 6"/>',
+    shield: '<path d="M12 3l7 3v6c0 4.5-3 7.5-7 9-4-1.5-7-4.5-7-9V6z"/><path d="m9 12 2 2 4-4"/>',
+    info: '<circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8h.01"/>',
+    trend: '<path d="M3 17l6-6 4 4 8-8"/><path d="M15 7h6v6"/>',
+    trophy: '<path d="M8 4h8v5a4 4 0 0 1-8 0z"/><path d="M8 6H5a3 3 0 0 0 3 4M16 6h3a3 3 0 0 1-3 4M12 13v4M8 20h8"/>',
+    truck: '<path d="M3 6h11v10H3zM14 10h4l3 3v3h-7"/><circle cx="7" cy="17.5" r="1.8"/><circle cx="17" cy="17.5" r="1.8"/>',
   };
   const svg = (k) => `<svg viewBox="0 0 24 24" aria-hidden="true">${ICON[k]}</svg>`;
 
@@ -108,42 +114,45 @@
       </ol>`,
     error: (o) => `<h1>เปิดระบบไม่สำเร็จ</h1><p class="muted">${esc(o.text || '')}</p><button class="btn primary block" type="button" onclick="location.reload()">ลองใหม่</button>`,
     login: () => `
+      <div class="auth-head"><span class="au-hello">ยินดีต้อนรับกลับ</span><h1>เข้าสู่ระบบ</h1>
+        <p>ใช้อีเมลและรหัสผ่านที่สมัครไว้ เพื่อดูงานประมูล โครงการ และงานของทีม</p></div>
       ${tabs('login')}
-      <div class="auth-head"><h1>ยินดีต้อนรับกลับ</h1><p class="muted">เข้าสู่ระบบด้วยอีเมลและรหัสผ่านที่สมัครไว้</p></div>
       <form class="auth-form" data-form="login" novalidate>
         ${field('mail', 'อีเมล', `type="email" name="email" autocomplete="email" placeholder="name@company.com" required value="${esc(lastEmail())}"`)}
         ${pw('password', 'current-password', 'รหัสผ่าน')}
         <div class="auth-row"><span></span><button type="button" class="link-btn" data-go="forgot">ลืมรหัสผ่าน?</button></div>
-        <button class="btn primary block" type="submit">เข้าสู่ระบบ</button>
+        <button class="btn primary block" type="submit"><span>เข้าสู่ระบบ</span>${svg('arrow')}</button>
       </form>
-      <p class="auth-switch">ยังไม่มีบัญชี? <button type="button" class="link-btn" data-go="register">สมัครสมาชิก</button></p>`,
+      <p class="au-secure">${svg('shield')}เชื่อมต่อแบบเข้ารหัส · เห็นข้อมูลตามสิทธิ์ (Role) ของบัญชี</p>`,
     register: () => `
+      <div class="auth-head"><span class="au-hello">บัญชีใหม่</span><h1>สมัครสมาชิก</h1>
+        <p>สร้างบัญชีสำหรับใช้งาน ${esc(PM.APP_NAME)}</p></div>
       ${tabs('register')}
-      <div class="auth-head"><h1>สร้างบัญชีใหม่</h1><p class="muted">สำหรับใช้งาน ${esc(PM.APP_NAME)} · Admin จะกำหนด Role ให้หลังสมัคร</p></div>
       <form class="auth-form" data-form="register" novalidate>
         ${field('user', 'ชื่อ-สกุล', 'name="fullName" autocomplete="name" placeholder="เช่น สมชาย ใจดี" required')}
         ${field('mail', 'อีเมล', 'type="email" name="email" autocomplete="email" placeholder="name@company.com" required', 'ใช้อีเมลโดเมนใดก็ได้ ไม่จำกัดเฉพาะ @flowlabservice.co.th')}
         ${pw('password', 'new-password', 'รหัสผ่าน', { meter: true })}
         ${pw('confirm', 'new-password', 'ยืนยันรหัสผ่าน', { match: true })}
-        <button class="btn primary block" type="submit">สมัครสมาชิก</button>
+        <div class="au-note">${svg('info')}<span>หลังสมัคร <b>Admin</b> จะกำหนดสิทธิ์ (Role) ให้ตามหน้าที่ — ระหว่างนี้บัญชีใหม่ใช้งานได้แบบจำกัด</span></div>
+        <button class="btn primary block" type="submit"><span>สร้างบัญชี</span>${svg('arrow')}</button>
       </form>
       <p class="auth-switch">มีบัญชีอยู่แล้ว? <button type="button" class="link-btn" data-go="login">เข้าสู่ระบบ</button></p>`,
     forgot: () => `
-      <div class="auth-head"><h1>ลืมรหัสผ่าน</h1>
-      <p class="muted">กรอกอีเมลที่ใช้สมัคร ระบบจะส่งลิงก์สำหรับตั้งรหัสผ่านใหม่ไปให้</p></div>
+      <div class="auth-head"><span class="auth-badge">${svg('lock')}</span><h1>ลืมรหัสผ่าน</h1>
+      <p>กรอกอีเมลที่ใช้สมัคร ระบบจะส่งลิงก์สำหรับตั้งรหัสผ่านใหม่ไปให้</p></div>
       <form class="auth-form" data-form="forgot" novalidate>
         ${field('mail', 'อีเมล', `type="email" name="email" autocomplete="email" placeholder="name@company.com" required value="${esc(lastEmail())}"`)}
-        <button class="btn primary block" type="submit">ส่งลิงก์ตั้งรหัสผ่านใหม่</button>
+        <button class="btn primary block" type="submit"><span>ส่งลิงก์ตั้งรหัสผ่านใหม่</span>${svg('arrow')}</button>
       </form>
       ${redirectUrl() ? '' : '<p class="muted small">หมายเหตุ: ตอนนี้เปิดไฟล์โดยตรง (file://) ลิงก์ในอีเมลจะพาไปที่ Site URL ที่ตั้งไว้ใน Supabase — ควรเปิดแอปผ่าน http(s) เพื่อให้ลิงก์กลับมาที่หน้านี้</p>'}
       <p class="auth-switch"><button type="button" class="link-btn" data-go="login">← กลับไปเข้าสู่ระบบ</button></p>`,
     recovery: () => `
-      <div class="auth-head"><h1>ตั้งรหัสผ่านใหม่</h1>
-      <p class="muted">กรอกรหัสผ่านใหม่สำหรับบัญชีของคุณ</p></div>
+      <div class="auth-head"><span class="auth-badge">${svg('shield')}</span><h1>ตั้งรหัสผ่านใหม่</h1>
+      <p>กรอกรหัสผ่านใหม่สำหรับบัญชีของคุณ</p></div>
       <form class="auth-form" data-form="recovery" novalidate>
         ${pw('password', 'new-password', 'รหัสผ่านใหม่', { meter: true })}
         ${pw('confirm', 'new-password', 'ยืนยันรหัสผ่านใหม่', { match: true })}
-        <button class="btn primary block" type="submit">บันทึกรหัสผ่านใหม่</button>
+        <button class="btn primary block" type="submit"><span>บันทึกรหัสผ่านใหม่</span>${svg('arrow')}</button>
       </form>`,
     sent: (o) => `
       <div class="auth-head"><span class="auth-badge">${svg('mail')}</span><h1>ตรวจสอบอีเมลของคุณ</h1></div>
@@ -160,36 +169,46 @@
       <p class="auth-switch"><button type="button" class="link-btn" data-go="login">← กลับไปเข้าสู่ระบบ</button></p>`,
   };
 
-  const bars = [38, 52, 45, 60, 58, 72, 66, 80, 76, 88, 84, 95];
-  const PREVIEW = `
-    <div class="auth-preview" aria-hidden="true">
-      <div><div class="k">Portfolio SPI</div><div class="v">0.97<small>▲ 0.03</small></div></div>
-      <svg viewBox="0 0 200 56" preserveAspectRatio="none">
-        <path class="spark-plan" d="M0,52 L200,6"/>
-        <path class="spark" pathLength="1" d="M0,52 C25,50 40,44 62,38 S100,30 122,22 S160,12 186,9"/>
-        <circle class="spark-dot" cx="186" cy="9" r="4.5"/>
-      </svg>
-      <div><div class="k">Utilization</div><div class="v" style="font-size:20px">82%</div></div>
-      <div class="mini-bars">${bars.map((h, i) => `<i style="height:${h}%;animation-delay:${0.5 + i * 0.06}s"></i>`).join('')}</div>
-    </div>`;
-
+  /* showcase panel (desktop): a blueprint line drawing of a plant — factory, tank, pipe rack, solar field, tower crane —
+     with three floating KPI cards and the four EPC phases. Decorative only (aria-hidden). */
+  const lattice = (x1, x2, top, bottom, step) => { let d = '', l = true; for (let y = bottom; y > top; y -= step) { d += `M${l ? x1 : x2} ${y}L${l ? x2 : x1} ${y - step}`; l = !l; } return d; };
+  const SCENE = `<svg class="au-scene" viewBox="0 0 560 300" aria-hidden="true">
+      <path class="dim" d="M40 98H190M40 92v12M190 92v12"/><text class="txt" x="115" y="88" text-anchor="middle">45.0 m</text>
+      <path class="ln fl draw" pathLength="1" d="M40 262V136L70 118V136L100 118V136L130 118V136L160 118V136L190 118V262Z"/>
+      <path class="ln soft" d="M56 176h18v14H56zM86 176h18v14H86zM116 176h18v14h-18zM146 176h18v14h-18zM98 226h34v36H98z"/>
+      <path class="ln fl draw" pathLength="1" d="M166 118V62h14v56"/>
+      <path class="smoke" d="M173 54c-7-8 7-12 0-20s7-12 0-20"/>
+      <path class="ln fl draw" pathLength="1" d="M214 262v-80c0-9 50-9 50 0v80"/>
+      <path class="ln soft" d="M214 182c0 9 50 9 50 0M214 208c0 9 50 9 50 0M214 234c0 9 50 9 50 0"/>
+      <path class="ln soft" d="M264 200h66M264 211h66M282 196v66M312 196v66M276 196h42"/>
+      <path class="pv" d="M330 254l18-26h58l-18 26z"/><path class="pv" d="M398 254l18-26h58l-18 26z"/>
+      <path class="ln soft" d="M339 241h58M357 228l-18 26M377 228l-18 26M407 241h58M425 228l-18 26M445 228l-18 26M352 254v8M384 254v8M420 254v8M452 254v8"/>
+      <path class="ln draw" pathLength="1" d="M486 262V48M500 262V48${lattice(486, 500, 48, 262, 14)}"/>
+      <path class="ln" d="M380 48H540M380 56H486M493 48V24L400 48M493 24L540 48M516 50h18v14h-18z"/>
+      <path class="ln soft" d="M420 56v58"/><path class="ln" d="M414 114h12M420 114v6c0 7 9 7 9 0"/>
+      <path class="ln soft" d="M10 262H550"/>
+      <text class="txt" x="40" y="286">DWG A-101 · REV C · IFC</text>
+    </svg>`;
   const SIDE = `
-    <span class="orb"></span><span class="gridlines"></span>
-    <div class="auth-co"><span class="logo-plate">${PM.logoImg('auth-co-logo')}</span><div><b>BU4 IE/EPC Project Management</b><small>${esc(PM.COMPANY)}</small></div></div>
-    <div class="auth-side-inner">
-      <div class="auth-pitch">
-        <span class="auth-eyebrow">Bidding · Execution · Resources</span>
-        <h2>ติดตามงานตั้งแต่ประมูลจนส่งมอบ ในที่เดียว</h2>
-        <p>ภาพรวม KPI ของทุกโครงการ — ประมูล · EPC · ต้นทุน · PO · คน — อัปเดตจากทีมแบบเรียลไทม์</p>
+    <div class="au-show-in">
+      <div class="au-show-head">
+        <span class="au-chip">ระบบบริหารงาน BU4 · IE / EPC</span>
+        <h2><span>จากงานประมูล</span> <span>ถึงวันส่งมอบ</span> <span>— ครบในที่เดียว</span></h2>
+        <p>ประมูล · โครงการ EPC · ต้นทุน · จัดซื้อ · ทีมงาน — ทุกคนเห็นตัวเลขชุดเดียวกัน อัปเดตทันทีจาก Cloud</p>
       </div>
-      ${PREVIEW}
-      <ol class="auth-pillars">
-        <li><b>Bidding</b><span>Inquiry → Submit</span></li>
-        <li><b>Execution (EPC)</b><span>SPI · CPI · NCR · Safety</span></li>
-        <li><b>Resources</b><span>Utilization · Timesheet</span></li>
+      <div class="au-visual">
+        ${SCENE}
+        <div class="au-float f1"><i>${svg('trend')}</i><div><small>SPI รวมทุกโครงการ</small><b>0.97<em>▲ 0.03</em></b></div></div>
+        <div class="au-float f2"><i class="o">${svg('trophy')}</i><div><small>อัตราชนะประมูล</small><b>56%</b></div></div>
+        <div class="au-float f3"><i class="g">${svg('truck')}</i><div><small>PO ส่งของตรงเวลา</small><b>92%</b></div></div>
+      </div>
+      <ol class="au-steps">
+        <li><b>Engineering</b><span>ออกแบบ · เอกสาร</span></li>
+        <li><b>Procurement</b><span>จัดซื้อ · PO</span></li>
+        <li><b>Construction</b><span>ก่อสร้าง · หน้างาน</span></li>
+        <li><b>Closing</b><span>ทดสอบ · ส่งมอบ</span></li>
       </ol>
-    </div>
-    <div class="auth-side-foot">© ${new Date().getFullYear()} ${esc(PM.COMPANY)} · v${esc(PM.VERSION || '')}</div>`;
+    </div>`;
 
   function screen(view, o = {}) {
     // checking the saved session: the loading screen covers it · any real screen (login, register …) takes over
@@ -197,14 +216,19 @@
     document.body.classList.remove('authed');
     const root = document.getElementById('auth-root');
     const card = `<div class="auth-card auth-${view}">
-        <div class="auth-brand-sm"><span class="logo-plate">${PM.logoImg('auth-sm-logo')}</span><div><b>BU4 IE/EPC Project Management</b><small>${esc(PM.COMPANY)}</small></div></div>
         ${o.notice ? `<div class="auth-msg ${o.notice.type || 'info'}" role="alert">${esc(o.notice.text)}</div>` : ''}
         ${VIEWS[view](o)}
       </div>`;
-    // switching login ⇄ register ⇄ forgot swaps only the card — the brand panel stays put (no re-draw / re-fade)
+    // switching login ⇄ register ⇄ forgot swaps only the card — the brand and the showcase stay put (no re-draw)
     const main = root.querySelector('.auth-main');
     if (main) main.innerHTML = card;
-    else root.innerHTML = `<div class="auth-wrap"><main class="auth-main">${card}</main><aside class="auth-side">${SIDE}</aside></div>`;
+    else root.innerHTML = `<div class="au">
+      <section class="au-form">
+        <div class="au-brand"><span class="logo-plate">${PM.logoImg('au-logo')}</span><div><b>BU4 IE/EPC Project Management</b><small>${esc(PM.COMPANY)}</small></div></div>
+        <main class="auth-main">${card}</main>
+        <footer class="au-foot"><span>© ${new Date().getFullYear()} ${esc(PM.COMPANY)}</span><span>v${esc(PM.VERSION || '')} · เข้าใช้งานไม่ได้ ติดต่อผู้ดูแลระบบ</span></footer>
+      </section>
+      <aside class="au-show" aria-hidden="true">${SIDE}</aside></div>`;
     // start where the typing is: the first empty field (login with a remembered e-mail → the password)
     const first = Array.from(root.querySelectorAll('input')).find((i) => !i.value) || root.querySelector('input');
     if (first) first.focus();
@@ -255,14 +279,14 @@
         showError(form, 'รหัสผ่านทั้งสองช่องไม่ตรงกัน'); return;
       }
       const btn = form.querySelector('[type=submit]');
-      const label = btn.textContent;
-      btn.disabled = true; btn.textContent = 'กำลังดำเนินการ…'; btn.classList.add('loading');
+      const label = btn.innerHTML; // text + arrow icon
+      btn.disabled = true; btn.innerHTML = '<span>กำลังดำเนินการ…</span>'; btn.classList.add('loading');
       try {
         await ACTIONS[kind](f);
       } catch (err) {
         if (document.body.contains(form)) showError(form, thai(err, kind));
       } finally {
-        if (document.body.contains(btn)) { btn.disabled = false; btn.textContent = label; btn.classList.remove('loading'); }
+        if (document.body.contains(btn)) { btn.disabled = false; btn.innerHTML = label; btn.classList.remove('loading'); }
       }
     });
   }
