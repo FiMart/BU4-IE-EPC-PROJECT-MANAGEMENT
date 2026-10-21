@@ -1,6 +1,6 @@
 /* changes.js — project tab "VO · งานเพิ่ม-ลด" (Change Orders / Variation Orders)
    Each VO: amount (± contract value), cost impact (± cost), days (± time) and an approval status.
-   Approved VOs give the revised contract value (PM.revisedContract — used by Billing, Cash Flow and the report),
+   Approved VOs give the revised contract value (PM.revisedContract — used by Billing and the report),
    the revised plan cost and the revised finish date. The original contract value on the project stays as it was.
    Data: p.changes = [{ id, no, title, reason, date, amount, cost, days, status, approvedDate, ref, note }] */
 (function () {
@@ -42,7 +42,7 @@
     const list = s.list.slice().sort((a, b) => String(b.date || '').localeCompare(String(a.date || '')) || String(b.no).localeCompare(String(a.no)));
     const V = PM.common;
     el.innerHTML = `
-      <div class="row"><p class="muted" style="margin:0">VO ที่ <b>อนุมัติแล้ว</b> เท่านั้นที่นับเข้ามูลค่าสัญญาปรับปรุง (ใช้ใน งวดเงิน · Cash Flow · รายงาน) — มูลค่าสัญญาเดิมของโครงการไม่ถูกแก้</p>
+      <div class="row"><p class="muted" style="margin:0">VO ที่ <b>อนุมัติแล้ว</b> เท่านั้นที่นับเข้ามูลค่าสัญญาปรับปรุง (ใช้ใน งวดเงิน · รายงาน) — มูลค่าสัญญาเดิมของโครงการไม่ถูกแก้</p>
         <span class="spacer"></span>${canEdit ? '<button class="btn primary" data-vo="new">+ VO ใหม่</button>' : ''}</div>
       <div class="grid cols-5">
         ${V.tile({ label: 'มูลค่าสัญญาปรับปรุง', tag: 'Revised', value: U.money(revised), sub: `เดิม ${U.money(contract)} · VO อนุมัติ ${s.approved.length ? sm(s.amount) : '–'}`, icon: 'coins' })}

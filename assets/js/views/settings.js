@@ -88,6 +88,7 @@
           ${PM.cloud.localBackup() ? `<p class="perm-note">มีสำเนาข้อมูลเดิมในเครื่องนี้ (ก่อนเชื่อม Cloud) · <button type="button" class="link-btn" data-action="download-local-backup">ดาวน์โหลด</button></p>` : ''}
         </div>
       </div>
+      ${PM.approvalSettingsHtml()}
       <div class="card"><div class="card-h"><h2>Backup & Restore</h2><p>ข้อมูลหลักอยู่บน Cloud — Export เป็นไฟล์ JSON เพื่อเก็บสำรองไว้เอง</p></div>
         <div class="card-b">
           <div class="row">

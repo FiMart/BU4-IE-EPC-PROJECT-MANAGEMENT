@@ -100,12 +100,6 @@
     { id: 'TECH', name: 'Technician', rate: 400, target: 85 },
     { id: 'OTHER', name: 'Other', rate: 500, target: 80 },
   ];
-  /* old level → new: junior / technician grades → Technician, everything else → Engineer */
-  PM.mapLegacyLevel = (id) => {
-    const old = PM.db && PM.db.levels.find((x) => x.id === id);
-    const text = `${id || ''} ${old ? old.name : ''}`;
-    return /^L1$|junior|technician|ช่าง/i.test(String(id || '')) || /junior|technician|ช่าง/i.test(text) ? 'TECH' : 'ENG';
-  };
   PM.levelName = (id) => { const l = PM.db && PM.db.levels.find((x) => x.id === id); return l ? l.name : id || '–'; };
   /* weekly capacity in hours (0 is valid, e.g. Sales who do not log project time) */
   PM.cap = (r) => (r && r.capacity != null && r.capacity !== '' ? Number(r.capacity) : 40);
@@ -200,7 +194,10 @@
   /* Expense ledger — each entry: date / description / amount; a project's Actual cost = sum of its entries */
   PM.COST_CATEGORIES = ['Material', 'Equipment', 'Subcontract', 'Labour', 'Rental', 'Service', 'Transport', 'Site expense', 'Other'];
   PM.COST_OPENING = 'Opening balance'; // actual cost typed in before the ledger existed
-  PM.projectCosts = (projectId) => PM.db.costs.filter((c) => c.projectId === projectId);
+  /* a project's expenses that count as Actual cost (not waiting for / refused approval — approvals.js) … */
+  PM.projectCosts = (projectId) => PM.db.costs.filter((c) => c.projectId === projectId && (!PM.costCounts || PM.costCounts(c)));
+  /* … and every entry, for the ledger list */
+  PM.projectCostsAll = (projectId) => PM.db.costs.filter((c) => c.projectId === projectId);
   /* write the ledger totals into each phase's actualCost (kept on the project so every KPI and screen reads one number) */
   PM.applyLedger = function (p) {
     const mine = PM.projectCosts(p.id);
@@ -266,27 +263,18 @@
   };
   /* data saved by older versions may miss newer collections */
   PM.ensureShape = () => {
-    ['bids', 'projects', 'ncrs', 'safety', 'resources', 'levels', 'timesheets', 'plans', 'pos', 'costs', 'prices', 'settings', 'dailies'].forEach((c) => { if (!Array.isArray(PM.db[c])) PM.db[c] = []; });
-    // projects from before the expense ledger: carry the typed-in actual cost over as one "opening balance" entry per phase
-    // (fixed ids, so two browsers doing this at the same time create the same records)
-    PM.db.projects.forEach((p) => {
-      if (p.costMode === 'ledger' || !Array.isArray(p.phases)) return;
-      p.phases.forEach((ph) => {
-        const id = `CO-${p.id}-${ph.key}`;
-        if (!(ph.actualCost > 0) || PM.db.costs.some((c) => c.id === id)) return;
-        PM.db.costs.push({
-          id, projectId: p.id, date: PM.today(), phase: ph.key, category: PM.COST_OPENING,
-          description: 'ยอดยกมา — Actual cost สะสมก่อนเริ่มบันทึกรายการ', vendor: '', ref: '', poId: '', amount: ph.actualCost, note: '',
-        });
-      });
-      p.costMode = 'ledger';
-    });
-    // fixed person levels: Engineer, Technician & Other
+    ['bids', 'projects', 'ncrs', 'safety', 'resources', 'levels', 'timesheets', 'plans', 'pos', 'costs', 'prices', 'settings', 'dailies', 'punch', 'meetings'].forEach((c) => { if (!Array.isArray(PM.db[c])) PM.db[c] = []; });
+    // fixed person levels: Engineer, Technician & Other (only these three exist)
     PM.PERSON_LEVELS.forEach((l) => { if (!PM.db.levels.some((x) => x.id === l.id)) PM.db.levels.push(Object.assign({}, l)); });
-    // older data (L1–L5): move people to Engineer / Technician, then drop the old levels
     const allowed = PM.PERSON_LEVELS.map((l) => l.id);
-    PM.db.resources.forEach((r) => { if (!allowed.includes(r.level)) r.level = PM.mapLegacyLevel(r.level); });
     PM.db.levels = PM.db.levels.filter((l) => allowed.includes(l.id));
+    // Cash Flow was removed (v1.61): its payment terms become the project's billing terms, the model itself is dropped
+    PM.db.projects.forEach((p) => {
+      if (!p.cashflow && !p.cashflowSaved) return;
+      const a = p.cashflow && p.cashflow.a;
+      if (a && !p.billingTerms) p.billingTerms = { advance: Number(a.advance) || 0, retention: Number(a.retention) || 0, creditDays: Math.max(0, Math.round((Number(a.recvLag) || 0) * 30)) };
+      delete p.cashflow; delete p.cashflowSaved;
+    });
   };
   PM.lockCompany = () => { PM.db.meta = Object.assign({}, PM.db.meta, { company: PM.COMPANY }); };
   PM.find = (coll, id) => PM.db[coll].find((x) => x.id === id);
@@ -309,7 +297,7 @@
   PM.emptyDb = () => ({
     meta: { version: 1, company: PM.COMPANY, created: PM.today() },
     levels: PM.PERSON_LEVELS.map((l) => Object.assign({}, l)),
-    resources: [], bids: [], projects: [], ncrs: [], safety: [], timesheets: [], plans: [], pos: [], costs: [], prices: [], settings: [], dailies: [],
+    resources: [], bids: [], projects: [], ncrs: [], safety: [], timesheets: [], plans: [], pos: [], costs: [], prices: [], settings: [], dailies: [], punch: [], meetings: [],
   });
 
   /* Build the 4 EPC phases for a new project from its dates and budget */
@@ -611,7 +599,7 @@
     TECH: { weekday: true, lunch: true, weekend: true, text: 'จันทร์ – ศุกร์ หลัง 16:30 · ไม่ได้พักเที่ยง 12:00 (1 ชม.) · เสาร์ – อาทิตย์' },
     OTHER: { weekday: false, lunch: false, weekend: false, text: 'ไม่มี OT' },
   };
-  PM.otRule = (r) => PM.OT_RULES[r && r.level] || PM.OT_RULES[PM.mapLegacyLevel(r && r.level)] || PM.OT_RULES.OTHER;
+  PM.otRule = (r) => PM.OT_RULES[r && r.level] || PM.OT_RULES.OTHER;
   const minutes = (hhmm) => { const m = /^(\d{1,2}):(\d{2})$/.exec(hhmm || ''); return m ? +m[1] * 60 + +m[2] : null; };
 
   /* OT settings — collection 'settings', record id 'ot' (edited on the Resources page, permission ot.settings):
@@ -975,6 +963,8 @@
     });
     // daily site reports of the projects on site (daily.js) — uses the holidays above, so it runs after PM.db.settings is known
     if (PM.buildSampleDailies) { const keep = PM.db; PM.db = db; db.dailies = PM.buildSampleDailies(db.projects, T); PM.db = keep; }
+    if (PM.buildSamplePunch) db.punch = PM.buildSamplePunch(db.projects, T); // punch.js
+    if (PM.buildSampleMeetings) db.meetings = PM.buildSampleMeetings(db.projects, T); // meetings.js
 
     /* weekly plan — 6 past weeks, this week, next week (built from each person's allocation) */
     const TASKS = {
@@ -1109,6 +1099,16 @@
     });
     db.costs.sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
     db.pos.forEach((po) => { delete po.billed; });
+    // approvals demo (approvals.js): one PO and one expense over the limit, waiting for the Department Manager
+    const ap = db.projects.find((p) => p.status !== 'closed');
+    if (ap) {
+      const short = ap.code.replace(/^PJ-/, ''), by = 'วิภาวดี ศรีสุข', at = T + 'T09:00:00.000Z';
+      db.pos.push({ id: 'PO-APR-1', projectId: ap.id, poNo: `PO-${short}-099`, supplier: 'EastPower Equipment Co., Ltd.', description: 'Transformer 2,000 kVA 22/0.4 kV', category: 'Equipment', phase: 'procurement',
+        amount: 1850000, poDate: T, deliveryDue: PM.addDays(T, 75), deliveredDate: '', status: 'draft', paidAmount: 0, note: '', files: [], createdBy: '', createdByName: by,
+        approval: { status: 'pending', amount: 1850000, requestedBy: '', requestedByName: by, requestedAt: at, wantStatus: 'issued' } });
+      db.costs.push({ id: 'C-APR-1', projectId: ap.id, date: T, phase: 'construction', category: 'Rental', description: 'ค่าเช่าเครน 100 ตัน 5 วัน (ยกหม้อแปลง)', vendor: 'Rayong Crane Service', ref: '', poId: '',
+        amount: 165000, note: '', createdBy: '', createdByName: by, approval: { status: 'pending', amount: 165000, requestedBy: '', requestedByName: by, requestedAt: at } });
+    }
 
     /* Sales — who found each customer / inquiry, and who looks after each project (capacity 0 = not in utilization) */
     const SALES = [['R15', 'ชัยวัฒน์ ศรีสมบูรณ์'], ['R16', 'ปวีณา วัฒนกุล']];

@@ -93,7 +93,7 @@
     const all = o.series.flatMap((s) => s.values.filter((v) => v != null));
     const raw = o.yMax || Math.max(1, ...all);
     let { max, step } = scaleMax(raw);
-    // values below zero (e.g. cumulative cash flow): a nice scale from the lowest value up, 0 drawn as the axis
+    // values below zero (e.g. a negative variance): a nice scale from the lowest value up, 0 drawn as the axis
     const lowRaw = Math.min(0, ...all);
     let min = 0;
     if (lowRaw < 0) {

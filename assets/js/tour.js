@@ -34,14 +34,13 @@
       ],
     },
     {
-      key: 'dashboard', topic: 'dashboard', route: 'dashboard', title: 'อ่าน Dashboard', desc: 'Bidding · Execution · Cost overrun · Cash Flow ทั้งแผนก · PO', steps: [
-        { route: '#/dashboard', sel: '.att-card', title: 'ต้องดำเนินการวันนี้', text: 'เริ่มวันจากตรงนี้: รวมเรื่องที่ต้องตามจากทุกส่วน — เกินงบ · ช้ากว่าแผน · Milestone / PO / Bid เลยกำหนด · NCR Critical — <b>ด่วน</b> อยู่ก่อน คลิกเพื่อเปิดหน้าที่เกี่ยวข้อง' },
+      key: 'dashboard', topic: 'dashboard', route: 'dashboard', title: 'อ่าน Dashboard', desc: 'Bidding · Execution · Cost overrun · PO', steps: [
+        { route: '#/dashboard', sel: '.att-bar', title: 'ต้องดำเนินการวันนี้', text: 'เริ่มวันจากตรงนี้: จำนวนเรื่องด่วน / ติดตาม และเรื่องที่ด่วนที่สุด — กดเพื่อเปิดรายการทั้งหมดที่กระดิ่ง 🔔 (เกินงบ · ช้ากว่าแผน · Milestone / PO / Bid เลยกำหนด · NCR ฯลฯ)' },
         { sel: '.sec-nav', title: 'ไปยังส่วนที่ต้องการ', text: 'กดเพื่อเลื่อนไปที่ Bidding · Execution · PO · Resource ได้ทันที ไม่ต้องเลื่อนหา' },
         { sel: '.section-h', title: 'ภาพรวมในหน้าเดียว', text: 'Dashboard แบ่งเป็นส่วน ๆ ตามขั้นของงาน: ① Bidding ② Execution (EPC) ③ Purchase Orders ④ Resource — ลิงก์ <b>เปิด … →</b> พาไปหน้าเต็ม' },
         { sel: '.flow', title: 'Flow ของ Bidding', text: 'จำนวนงานที่อยู่ในแต่ละขั้น และเวลาเฉลี่ย — <b>คลิกขั้นไหน</b> ก็เปิดหน้าของขั้นนั้น' },
         { sel: () => document.querySelectorAll('.section-h')[1], title: 'Execution (EPC)', text: 'จำนวนโครงการในแต่ละ Phase · SPI (เวลา) · CPI (ต้นทุน) · NCR · Safety — ตาราง Project status คลิกแถวเพื่อเปิดโครงการ' },
         { sel: '#d-overrun', title: 'Cost Project Overrun', text: 'โครงการไหน <b>เกินงบแล้ว</b> (Actual cost เกิน Plan cost) หรือ <b>คาดว่าจะเกิน</b> (EAC เกินงบ) — กรอง Active / Closed / All ได้' },
-        { sel: '#d-cash', title: 'Cash Flow ทั้งแผนก', text: 'รวม Cash Flow ของทุกโครงการ → <b>Peak funding</b> เงินทุนหมุนเวียนที่แผนกต้องเตรียม และเดือนที่เงินสดตึงสุด · สลับ 3 scenario ได้' },
         { sel: '#d-po-watch', title: 'PO ที่ต้องติดตาม', text: 'PO ที่เลยกำหนดส่ง หรือต้องส่งภายใน 14 วัน — คลิกเพื่อเปิด PO' },
         { sel: card('#c-level'), optional: true, title: 'Resource Utilization', text: 'Utilization ของแต่ละ Level เทียบเป้า และชั่วโมงตามประเภทจาก Timesheet (เห็นเฉพาะ Admin / Dept Manager / PM)' },
       ],
@@ -66,7 +65,7 @@
         { route: prj(''), sel: '.cost-strip', title: 'หน้ารายละเอียดโครงการ', text: 'ข้อมูลหลัก · Plan cost · Actual cost · คงเหลือ · EAC · PO ที่สั่งแล้ว' },
         { sel: '.flow', title: '4 Phase ของงาน EPC', text: 'Engineering → Procurement → Construction → Closing — % เสร็จจริง เทียบแผน ณ วันนี้ · <b>คลิก Phase</b> เพื่ออัปเดต' },
         { sel: '.modal', open: click('.flow .flow-step.link'), title: 'อัปเดต Phase', text: '% progress · ปริมาณงาน · วันที่แผน / จริง · น้ำหนัก · Plan cost — ระบบเก็บ snapshot สำหรับ S-Curve ให้อัตโนมัติ' },
-        { sel: 'nav.tabs', title: 'แท็บของโครงการ', text: 'จัดเป็น 3 กลุ่ม: <b>แผนและความคืบหน้า</b> (ภาพรวม · Timeline) · <b>ต้นทุนและการเงิน</b> (BOQ · ค่าใช้จ่าย · Cash Flow · PO) · <b>หน้างานและทีม</b> (NCR · Safety · ทีม) — แถบแท็บค้างอยู่ด้านบนขณะเลื่อน และแท็บอื่นนอกจากภาพรวมแสดงข้อมูลโครงการแบบย่อบรรทัดเดียว' },
+        { sel: 'nav.tabs', title: 'แท็บของโครงการ', text: 'จัดเป็น 3 กลุ่ม: <b>แผนและความคืบหน้า</b> (ภาพรวม · Timeline) · <b>ต้นทุนและการเงิน</b> (BOQ · ค่าใช้จ่าย · PO · VO · งวดเงิน) · <b>หน้างานและทีม</b> (NCR · Safety · ทีม) — แถบแท็บค้างอยู่ด้านบนขณะเลื่อน และแท็บอื่นนอกจากภาพรวมแสดงข้อมูลโครงการแบบย่อบรรทัดเดียว' },
       ],
     },
     {
@@ -80,7 +79,7 @@
       ],
     },
     {
-      key: 'boq', topic: 'projects', route: 'project', title: 'BOQ — Bill of Quantities', desc: 'วางจาก Excel · หมวดงาน / รายการ · ราคาจาก Price List · เชื่อม Plan cost / Phase / Cash Flow', steps: [
+      key: 'boq', topic: 'projects', route: 'project', title: 'BOQ — Bill of Quantities', desc: 'วางจาก Excel · หมวดงาน / รายการ · ราคาจาก Price List · เชื่อม Plan cost / Phase', steps: [
         { route: prj('boq'), sel: '#tab .grid', title: 'สรุป BOQ', text: 'มูลค่า BOQ (ต้นทุน) · สัดส่วนค่าวัสดุ / ค่าแรง · เทียบ Plan cost และมูลค่าสัญญา · <b>ผลงานตาม BOQ</b> จากปริมาณที่ทำแล้ว' },
         { sel: '.boq-docs', title: 'เอกสาร BOQ (PDF)', text: 'อัปโหลดไฟล์ PDF ของ BOQ (ฉบับลงนาม · ปร.4 / ปร.5 · แบบ) เก็บไว้กับโครงการ — ลากไฟล์มาวางได้ · <b>คลิกเพื่อเปิดดูในหน้านี้</b> พร้อมปุ่มดาวน์โหลด' },
         { sel: '.tbl.boq', title: 'ตาราง BOQ (แบบ ปร.4)', text: 'หมวดงาน → รายการ: หน่วย · ปริมาณ · ค่าวัสดุ / ค่าแรงต่อหน่วย · รวมเงิน · ปริมาณที่ทำแล้ว — คลิกหัวหมวดหรือรายการเพื่อแก้ไข · Export Excel / PDF ได้' },
@@ -88,7 +87,6 @@
         { sel: '.modal', open: click('[data-boq="paste"]'), need: 'boq.edit', title: 'ตรวจก่อนนำเข้า', text: 'ระบบบอกจำนวนรายการ หมวดงาน และยอดรวมที่อ่านได้ก่อนกดนำเข้า — เลือกแทนที่ BOQ เดิมหรือเพิ่มต่อท้ายได้' },
         { sel: '.modal', open: click('.tbl.boq tr.boq-item'), title: 'รายการ BOQ และราคาจาก Price List', text: 'พิมพ์ชื่อแล้วเลือกจาก Price List — ระบบเติมหน่วยและราคาล่าสุดของผู้ขายให้ · กรอก <b>ปริมาณที่ทำแล้ว</b> เพื่อติดตามผลงาน' },
         { sel: () => { const b = q('[data-boq="to-phase"]'); return b && b.closest('.tile'); }, need: 'boq.edit', title: 'เชื่อมกับส่วนอื่น', text: 'ใช้ยอด BOQ ตั้ง Plan cost ของแต่ละ Phase · <b>อัปเดต % Phase</b> จากปริมาณที่ทำแล้ว (S-Curve / SPI ตามมาเอง)' },
-        { route: prj('cashflow'), sel: '#cf-checks', title: 'BOQ → Cash Flow', text: 'Cash Flow ใช้หมวดงานจาก BOQ (ต้นทุน · วันที่ · การกระจาย) และตรวจว่าตรงกับยอด BOQ — แก้ BOQ ภายหลังให้กด "สร้างจาก BOQ"' },
       ],
     },
     {
@@ -102,28 +100,15 @@
       ],
     },
     {
-      key: 'cashflow', topic: 'projects', route: 'project', title: 'Cash Flow Model — S-Curve และ Peak funding', desc: 'BOQ · Assumptions · 3 Scenario · ตรวจตัวเลข · รวมทั้งแผนก', steps: [
-        { route: prj('cashflow'), sel: '#cf-kpi', title: 'ผลลัพธ์หลัก', text: '<b>Peak funding</b> = เงินทุนสูงสุดที่ต้องเตรียม และเดือนที่เงินสดตึงสุด · ช่วงที่เงินสดติดลบ · Cash In / Out · กำไรขั้นต้น' },
-        { sel: '#cf-status .seg', title: '3 Scenario', text: 'Conservative (ระวัง) · Base (ปกติ) · Optimistic (ดี) — สลับเพื่อดูรายละเอียดของแต่ละกรณี' },
-        { sel: card('.cf-a'), title: 'สมมติฐาน (Assumptions)', text: 'Contingency · เงินล่วงหน้า · Retention · รับเงิน / จ่ายเงินช้ากว่า progress กี่เดือน · ปรับต่อ scenario — <b>เปลี่ยนแล้วกราฟเปลี่ยนทันที</b>' },
-        { sel: card('#c-cf-cum'), title: 'เงินสดสะสม', text: 'Cash In − Cash Out สะสม 3 เส้น — ส่วนที่ต่ำกว่า 0 คือช่วงที่ต้องใช้เงินทุนหมุนเวียน จุดต่ำสุด = Peak funding' },
-        { sel: '#cf-compare', title: 'เปรียบเทียบ Scenario', text: 'Peak funding · เดือนที่ตึงสุด · ช่วงติดลบ · ต้นทุน · กำไร · Margin ของทั้ง 3 กรณีในตารางเดียว' },
-        { sel: '#cf-checks', title: 'ตรวจสอบตัวเลข', text: 'เทียบยอด BOQ กับ Plan cost และมูลค่าสัญญา · หมวดงานที่วันที่ไม่ครบ — ผลลัพธ์ยังต้องให้วิศวกรตรวจ assumption เสมอ' },
-        { sel: '[data-cf="boq-paste"]', title: 'BOQ แยกหมวดงาน', text: 'สร้างจาก 4 Phase อัตโนมัติ หรือ <b>วางจาก Excel</b> — แต่ละหมวดกำหนดวันที่และรูปแบบการกระจายต้นทุน (S-curve / เท่ากัน / หนักต้น / หนักท้าย)' },
-        { sel: '.modal', open: click('[data-cf="boq-paste"]'), title: 'วาง BOQ จาก Excel', text: 'คัดลอกตารางจาก Excel มาวาง: หมวดงาน · ต้นทุน · เริ่ม · เสร็จ (Phase และรูปแบบใส่หรือไม่ก็ได้) — วันที่ พ.ศ. ก็ได้' },
-        { sel: '[data-cf="save"]', need: 'cost.edit', title: 'บันทึก', text: 'ทดลองปรับได้ทุกคน · กด <b>บันทึก</b> เพื่อเก็บไว้กับโครงการ (Admin / Dept Manager / PM) — ตัวเลขรวมทั้งแผนกใช้ค่าที่บันทึกแล้วเท่านั้น' },
-        { route: '#/dashboard', sel: '#d-cash', title: 'Cash Flow ทั้งแผนก', text: 'Dashboard รวมทุกโครงการ → Peak funding ของแผนก · ตารางบอกว่าโครงการไหนดึงเงินมากที่สุด' },
-      ],
-    },
-    {
       key: 'commercial', topic: 'projects', route: 'project', title: 'VO · งวดเงิน · ความเสี่ยง · รายงานประจำเดือน', desc: 'งานเพิ่ม-ลด · วางบิลและรับเงิน · Risk matrix · รายงาน PDF', steps: [
-        { route: prj('changes'), sel: '#tab .grid', title: 'VO — งานเพิ่ม-ลด', text: 'บันทึกงานเพิ่ม / ลดจากสัญญา: มูลค่า · ต้นทุน · วันที่ขยาย · สถานะ — VO <b>อนุมัติแล้ว</b> รวมเป็น <b>มูลค่าสัญญาปรับปรุง</b> ใช้ต่อในงวดเงิน Cash Flow และรายงาน' },
+        { route: prj('changes'), sel: '#tab .grid', title: 'VO — งานเพิ่ม-ลด', text: 'บันทึกงานเพิ่ม / ลดจากสัญญา: มูลค่า · ต้นทุน · วันที่ขยาย · สถานะ — VO <b>อนุมัติแล้ว</b> รวมเป็น <b>มูลค่าสัญญาปรับปรุง</b> ใช้ต่อในงวดเงินและรายงาน' },
         { route: prj('billing'), sel: '#tab .grid', title: 'งวดเงิน — วางบิลและรับเงิน', text: 'วางบิลแล้ว · รับเงินแล้ว · <b>ค้างรับ</b> (เกินกำหนดขึ้นแดง) · <b>ผลงานที่ยังไม่ได้วางบิล</b> · Retention ที่ถูกหัก' },
-        { sel: card('#c-bill'), title: 'รับเงินจริง เทียบแผน', text: 'เส้นประ = แผนรับเงินจาก Cash Flow · เส้นทึบ = เงินที่รับจริง — ต่ำกว่าแผนมาก = ต้องตามเก็บเงิน' },
-        { sel: '[data-inv="new"]', need: 'billing.edit', title: 'วางบิลงวดใหม่', text: 'ระบบตั้งยอดตาม % งานเสร็จที่ยังไม่ได้เบิก และหักเงินล่วงหน้า / Retention ตามเงื่อนไขใน Cash Flow ให้ — เมื่อลูกค้าจ่ายเปลี่ยนสถานะเป็น "รับเงินแล้ว"' },
+        { sel: card('#c-bill'), title: 'วางบิลสะสม เทียบ รับเงินสะสม', text: 'เส้นประ = ยอดที่วางบิลแล้ว · เส้นทึบ = เงินที่รับจริง — ช่องว่างระหว่างสองเส้นกว้าง = ต้องตามเก็บเงิน' },
+        { sel: '[data-inv="terms"]', need: 'billing.edit', title: 'เงื่อนไขการชำระเงิน', text: 'ตั้ง % เงินล่วงหน้า · % Retention · เครดิตลูกค้า (วัน) ของโครงการ — ใช้ตั้งยอดหักและวันครบกำหนดของงวดใหม่ให้อัตโนมัติ' },
+        { sel: '[data-inv="new"]', need: 'billing.edit', title: 'วางบิลงวดใหม่', text: 'ระบบตั้งยอดตาม % งานเสร็จที่ยังไม่ได้เบิก และหักเงินล่วงหน้า / Retention ตามเงื่อนไขการชำระเงินให้ — เมื่อลูกค้าจ่ายเปลี่ยนสถานะเป็น "รับเงินแล้ว"' },
         { route: prj('risks'), sel: '.rm', title: 'Risk Matrix', text: 'ความเสี่ยงและปัญหาของโครงการ วางตามโอกาส × ผลกระทบ — มุมขวาบนเสี่ยงที่สุด · คะแนน ≥ 15 ขึ้น "ต้องดำเนินการวันนี้"' },
         { sel: '.risk-watch, #tab .card:last-child', title: 'ต้องติดตาม', text: 'ความเสี่ยงระดับสูงมาก · เลยกำหนดดำเนินการ · ปัญหาที่ยังไม่ปิด — แต่ละเรื่องมีผู้รับผิดชอบและแผนรับมือ' },
-        { sel: '[data-action="report"]', title: 'รายงานประจำเดือน (PDF)', text: 'กดครั้งเดียวได้รายงาน A4 พร้อมนำเสนอ: สรุปผู้บริหาร · S-Curve · ต้นทุน · VO · งวดเงิน · Cash Flow · Milestone · PO · NCR · Safety · ความเสี่ยง · ช่องลงนาม → กด "พิมพ์ / บันทึก PDF"' },
+        { sel: '[data-action="report"]', title: 'รายงานประจำเดือน (PDF)', text: 'กดครั้งเดียวได้รายงาน A4 พร้อมนำเสนอ: สรุปผู้บริหาร · S-Curve · ต้นทุน · VO · งวดเงิน · Milestone · PO · NCR · Safety · ความเสี่ยง · ช่องลงนาม → กด "พิมพ์ / บันทึก PDF"' },
       ],
     },
     {
@@ -157,7 +142,7 @@
     {
       key: 'present', topic: 'present', route: 'present', title: 'โหมดนำเสนอขึ้นจอ (TV)', desc: 'เปิดจอเต็ม · สลับหน้าอัตโนมัติ · ปุ่มควบคุม', steps: [
         { route: '#/dashboard', sel: '.present-btn', title: 'เปิดโหมดนำเสนอ', text: 'กดปุ่มจอภาพมุมขวาบน หรือเมนู "โหมดนำเสนอ" ใต้ Dashboard' },
-        { route: '#/present', sel: '.pres-stage', title: 'หน้าจอสำหรับทีวี', text: 'ตัวเลขใหญ่ อ่านได้จากระยะไกล · สลับหน้าเอง: Bidding · Projects · สุขภาพโครงการ · Cost Overrun · Cash Flow · PO · Weekly · Resource · Safety' },
+        { route: '#/present', sel: '.pres-stage', title: 'หน้าจอสำหรับทีวี', text: 'ตัวเลขใหญ่ อ่านได้จากระยะไกล · สลับหน้าเอง: Bidding · Projects · สุขภาพโครงการ · Cost Overrun · PO · Weekly · Resource · Safety' },
         { sel: '.pres-dots', title: 'เลือกหน้า', text: 'คลิกจุดเพื่อไปหน้านั้น · ปุ่ม ← → บนคีย์บอร์ดก็ได้' },
         { sel: '.pres-ctrl', title: 'ปุ่มควบคุม', text: 'หยุด / เล่น (Space) · ความเร็วสลับหน้า 10–60 วินาที · เต็มจอ (F) · ออก (Esc) — ข้อมูลอัปเดตจาก Cloud ทุก 1 นาที' },
       ],

@@ -407,6 +407,52 @@ html:not(.hero-off) .topbar .hero-toggle { color: var(--accent); background: var
   .card-h h2, .kv dd, .tbl td { overflow-wrap: anywhere; }
 }
 
+/* =====================================================================
+   Layout polish — even KPI tiles, one-line page title, calmer banner, steady spacing
+   ===================================================================== */
+/* page title + breadcrumb: always one line (… when long), the buttons keep their place */
+.tb-title { min-width: 0; flex: 0 1 auto; }
+.tb-title h1, .tb-title .crumb { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tb-title h1 { line-height: 1.3; }
+
+/* KPI tiles: every tile in a row is the same height, the ⓘ stays with its words,
+   and the labels take two lines' room so the numbers line up across the row */
+.grid > .tile { display: flex; flex-direction: column; }
+.tile-label { display: block; line-height: 1.35; text-wrap: balance; }
+.tile-label .gl { vertical-align: -2px; }
+.grid > .tile .tile-label { min-height: 2.7em; }
+.tile-value { line-height: 1.15; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tile-sub { margin-top: auto; padding-top: 2px; }
+.tile-sub:empty { display: none; }
+
+/* page banner: slimmer, so the page's own content starts higher */
+.page-hero { padding: 10px 48px 10px 22px; }
+.hero-art { width: 112px; height: 62px; }
+.hero-text b { font-size: 16px; }
+
+/* project page: the tab's content (Overview: phase cards → line items → KPI → charts) has the page's spacing */
+.prj-tab { display: flex; flex-direction: column; gap: 20px; min-width: 0; }
+.ptabs { margin-bottom: -4px; }
+/* projects list: nine columns fit the width without a sideways scroll */
+.prj-table { font-size: 13.5px; }
+.prj-table th, .prj-table td { padding-left: 10px; padding-right: 10px; }
+.prj-table .prj-progress { min-width: 120px; }
+.prj-table .prj-client { min-width: 150px; }
+
+/* Settings → account: each field's name above its box, like every other form */
+#profile-form label, #password-form label { display: flex; flex-direction: column; gap: 6px; font-size: 13.5px; font-weight: 600; color: var(--ink-2); }
+#profile-form input, #password-form input { width: 100%; }
+
+/* a badge in a one-line cell (e.g. "เลยกำหนด 298 วัน" under a PO due date) stays on one line */
+@media (min-width: 641px) { .tbl td.nowrap .badge { white-space: nowrap; } }
+
+@media (max-width: 900px) { .prj-tab { gap: 16px; } }
+@media (max-width: 640px) {
+  .prj-tab { gap: 14px; }
+  .grid > .tile .tile-label { min-height: 0; }
+  .tile-value { white-space: normal; }
+}
+
 /* ---------- print: keep documents plain ---------- */
 @media print {
   .main { background: none; }

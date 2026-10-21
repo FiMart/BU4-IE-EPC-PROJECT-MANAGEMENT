@@ -1,6 +1,6 @@
 /* report.js — monthly project report: one click → a print-ready A4 page (browser "Save as PDF").
    Pulls together everything the system knows about the project as of today: summary + key messages, S-curve,
-   phases, cost / EAC, VO, billing, cash flow, milestones, POs, NCR, safety, top risks, next month's plan, sign-off.
+   phases, cost / EAC, VO, billing, milestones, POs, NCR, safety, top risks, next month's plan, sign-off.
    Charts are drawn with the app's own chart code and copied in as SVG; the app's stylesheet gives them their colours. */
 (function () {
   const U = PM.ui, esc = U.esc;
@@ -114,7 +114,6 @@
     const ov = PM.costOverrun ? PM.costOverrun(m, p.status === 'closed') : null;
     const vo = PM.voSummary ? PM.voSummary(p) : null;
     const bill = PM.billingSummary ? PM.billingSummary(p, m) : null;
-    const cf = PM.cashflowSaved ? PM.cashflowModel(p, PM.cashflowSaved(p), 'base') : null;
     const risks = (p.risks || []).filter((r) => r.status !== 'closed').sort((a, b) => PM.riskScore(b) - PM.riskScore(a));
     const pos = (PM.db.pos || []).filter((x) => x.projectId === p.id);
     const poSt = PM.poStats(pos, T);
@@ -145,7 +144,6 @@
     const actual = months.map((x) => { if (x + '-01' > T) return null; const d = PM.min(PM.monthEnd(x), T); const s = log.filter((y) => y.date <= d).pop(); return s ? +PM.weightedProgress(p, s.values).toFixed(1) : 0; });
     const sCurve = chartHtml((el) => PM.charts.lines(el, { labels: months.map(U.month), yMax: 100, fmt: (v) => v.toFixed(1) + '%', axisFmt: (v) => v + '%', marker: months.indexOf(ym), markerLabel: 'เดือนนี้', height: 230, series: [{ name: 'แผน', color: 'var(--s1)', values: planned, dash: true }, { name: 'จริง', color: 'var(--s2)', values: actual }] }), 700);
     const costChart = chartHtml((el) => PM.charts.columns(el, { stacked: false, categories: m.phases.map((ph) => U.phaseLabel(ph.key)), fmt: U.money, axisFmt: U.money, height: 200, series: [{ name: 'Plan cost', color: 'var(--s1)', values: m.phases.map((ph) => ph.budget) }, { name: 'Earned value', color: 'var(--s3)', values: m.phases.map((ph) => ph.ev) }, { name: 'Actual cost', color: 'var(--s2)', values: m.phases.map((ph) => ph.actualCost) }] }), 700);
-    const cashChart = cf ? chartHtml((el) => PM.charts.lines(el, { labels: cf.months.map(U.month), marker: cf.months.indexOf(ym), markerLabel: 'เดือนนี้', fmt: sm, axisFmt: sm, height: 200, series: [{ name: 'เงินสดสะสม (แผน Base)', color: 'var(--s1)', values: cf.cum }] }), 700) : '';
 
     const monthTh = monthThai(ym);
 
@@ -165,7 +163,7 @@
       ${kpi('มูลค่าสัญญา', U.money(PM.revisedContract ? PM.revisedContract(p) : p.contractValue), vo && vo.amount ? `รวม VO ${sm(vo.amount)}` : 'ตามสัญญา')}
       ${kpi('Actual cost / Plan cost', U.money(m.ac), `${U.pct(m.bac ? m.ac / m.bac : null)} ของ ${U.money(m.bac)}`, ov ? { over: 'critical', forecast: 'warning', ok: 'good' }[ov.status] : null)}
       ${kpi('รับเงินแล้ว', bill ? U.money(bill.received) : '–', bill ? `ค้างรับ ${U.money(bill.outstanding)}` : '', bill && bill.overdue.length ? 'critical' : null)}
-      ${kpi('Peak funding', cf && cf.peak ? U.money(-cf.peak.value) : '฿0', cf && cf.peak ? `เงินสดตึงสุด ${U.month(cf.peak.ym)}` : 'เงินสดไม่ติดลบ')}
+      ${kpi('ผลงานที่ยังไม่ได้วางบิล', bill ? U.money(bill.unbilled) : '–', bill ? `Retention ที่ถูกหัก ${U.money(bill.retentionHeld)}` : '')}
     </div>
     <ul class="msg">${msgs.map((x) => `<li>${esc(x)}</li>`).join('')}</ul></section>
 
@@ -183,14 +181,13 @@
     ${vo && vo.list.length ? `<h2 style="font-size:12px;border:0;margin-top:8px">งานเพิ่ม-ลด (VO)</h2>${tbl([{ t: 'เลขที่' }, { t: 'รายการ' }, { t: 'มูลค่า', r: 1 }, { t: 'ต้นทุน', r: 1 }, { t: 'วัน', r: 1 }, { t: 'สถานะ' }],
       vo.list.map((c) => [esc(c.no), esc(c.title), sm(Number(c.amount) || 0), sm(Number(c.cost) || 0), U.num(c.days || 0), esc((PM.VO_STATUS.find((s) => s.key === c.status) || {}).label || c.status)]))}` : ''}</section>
 
-  <section><h2>4. การเงิน — งวดเงินและ Cash Flow</h2>
+  <section><h2>4. การเงิน — งวดเงิน</h2>
     ${bill ? `<div class="kpis" style="margin-bottom:6px">
       ${kpi('วางบิลแล้ว', U.money(bill.billed), `${U.pct(bill.contract ? bill.billed / bill.contract : null)} ของสัญญา`)}
       ${kpi('รับเงินแล้ว', U.money(bill.received))}
       ${kpi('ค้างรับ', U.money(bill.outstanding), bill.overdue.length ? `เกินกำหนด ${bill.overdue.length} งวด` : '', bill.overdue.length ? 'critical' : null)}
       ${kpi('ยังไม่ได้วางบิล', U.money(bill.unbilled), `Retention ที่ถูกหัก ${U.money(bill.retentionHeld)}`)}
-    </div>` : ''}
-    ${cashChart ? `<div class="chartbox">${cashChart}</div>` : ''}</section>
+    </div>` : '<p style="margin:0">ยังไม่มีงวดเงิน</p>'}</section>
 
   <section><h2>5. Milestone และกิจกรรม</h2>
     <div class="two"><div><b>เลยกำหนด / ล่าช้า</b>${tbl([{ t: 'รายการ' }, { t: 'กำหนด' }], msLate.map((x) => [`◆ ${esc(x.name)}`, U.date(x.date)]).concat(tasksLate.slice(0, 6).map((t) => [esc(t.name), U.date(t.end)])), 'ไม่มีรายการล่าช้า')}</div>
@@ -236,7 +233,7 @@
     const overrun = PM.costOverrunRows(rows);
     const nOver = overrun.filter((r) => r.o.status === 'over').length, nFc = overrun.filter((r) => r.o.status === 'forecast').length;
     const po = PM.poStats(db.pos || [], T);
-    const pc = PM.portfolioCashflow ? PM.portfolioCashflow(active, 'base') : null;
+    const bills = PM.billingSummary ? rows.map((r) => PM.billingSummary(r.p, r.m)) : []; // money billed / received per active project
     const att = PM.attention ? PM.attention() : [];
     const seesRes = PM.can('resource.view');
     const ut = seesRes ? PM.utilization(PM.addDays(T, -27), T) : null;
@@ -250,7 +247,6 @@
     if (nOver || nFc) msgs.push(`ต้นทุน: เกินงบแล้ว ${nOver} โครงการ · คาดว่าจะเกินงบ ${nFc} โครงการ`);
     else msgs.push('ต้นทุนทุกโครงการ Active อยู่ในงบ');
     msgs.push(`งานประมูล 12 เดือน: Inquiry ${bs.total} งาน · ยื่นราคา ${bs.submitted} งาน · ชนะ ${bs.won} จาก ${bs.won + bs.lost} งานที่ประกาศผล (อัตราชนะ ${U.pct(bs.winRate)}) · กำลังดำเนินการ ${pending.length} งาน`);
-    if (pc && pc.futurePeak) msgs.push(`เงินทุนหมุนเวียน: ต้องเตรียมสูงสุด ${U.money(-pc.futurePeak.value)} ช่วง ${U.month(pc.futurePeak.ym)} (แผน Base)`);
     if (po.late.length) msgs.push(`PO เลยกำหนดส่ง ${po.late.length} รายการ · ต้องส่งภายใน 14 วัน ${po.soon.length} รายการ`);
     if (openNcr) msgs.push(`NCR เปิดอยู่ ${openNcr} รายการ${critNcr ? ` (วิกฤต ${critNcr})` : ''}`);
     msgs.push(lti12 ? `ความปลอดภัย: LTI ${lti12} ครั้งใน 12 เดือน · LTIFR ${U.num(ltifr, 2)}` : `ความปลอดภัย: ไม่มี LTI ใน 12 เดือน (${U.num(mh12)} ชั่วโมงทำงาน)`);
@@ -262,11 +258,9 @@
       { name: 'ชนะ', color: 'var(--s1)', values: inMonth((b) => b.result === 'won') },
       { name: 'แพ้ / ไม่ยื่น', color: 'var(--s2)', values: inMonth((b) => b.result === 'lost' || b.result === 'nobid') },
       { name: 'กำลังดำเนินการ', color: 'var(--s-neutral)', values: inMonth((b) => b.result === 'pending') }] }), 380); // half-width column: drawn at that width so its text stays readable
-    const spend = (db.costs || []).filter((c) => c.date.slice(0, 7) >= months[0] && c.date <= T);
+    const spend = (db.costs || []).filter((c) => c.date.slice(0, 7) >= months[0] && c.date <= T && PM.costCounts(c));
     const spendChart = chartHtml((el) => PM.charts.columns(el, { categories: months.map(U.month), fmt: U.money, axisFmt: U.money, height: 190,
       series: PM.PHASES.map((ph, i) => ({ name: ph.label, color: `var(--s${i + 1})`, values: months.map((x) => PM.sum(spend.filter((c) => c.phase === ph.key && c.date.slice(0, 7) === x), (c) => Number(c.amount) || 0)) })) }), 700);
-    const cashLines = pc && PM.portfolioCashflowLines ? PM.portfolioCashflowLines(active, 'base') : null;
-    const cashChart = cashLines ? chartHtml((el) => PM.charts.lines(el, { labels: cashLines.months.map(U.month), marker: cashLines.months.indexOf(ym), markerLabel: 'เดือนนี้', fmt: sm, axisFmt: sm, height: 200, series: cashLines.series }), 700) : '';
 
     const levelTh = { critical: 'ด่วน', warning: 'ติดตาม', info: 'แจ้งให้ทราบ' };
     const body = `
@@ -278,7 +272,7 @@
       ${kpi('ต้นทุนเกินงบ', `${nOver} <small style="display:inline">/ คาดว่าจะเกิน ${nFc}</small>`, 'โครงการ', nOver ? 'critical' : nFc ? 'warning' : 'good')}
       ${kpi('อัตราชนะประมูล (12 เดือน)', U.pct(bs.winRate), `ชนะ ${bs.won} / ${bs.won + bs.lost} งาน`)}
       ${kpi('งานประมูลที่รอผล', U.num(pending.length), PM.seesBidPrices() ? `มูลค่า ${V.bidSum(pending)}` : 'งาน')}
-      ${kpi('เงินทุนสูงสุดที่ต้องใช้', pc && pc.peak ? U.money(-pc.peak.value) : '฿0', pc && pc.peak ? `ช่วง ${U.month(pc.peak.ym)}` : 'เงินสดรวมไม่ติดลบ')}
+      ${kpi('ค้างรับจากลูกค้า', U.money(PM.sum(bills, (b) => b.outstanding)), (() => { const n = PM.sum(bills, (b) => b.overdue.length); return n ? `เกินกำหนด ${n} งวด` : 'ไม่มีงวดเกินกำหนด'; })(), bills.some((b) => b.overdue.length) ? 'critical' : 'good')}
       ${kpi('PO เลยกำหนดส่ง', U.num(po.late.length), `จาก PO ยังไม่ส่งครบ ${po.open}`, po.late.length ? 'critical' : 'good')}
     </div>
     <ul class="msg">${msgs.map((x) => `<li>${esc(x)}</li>`).join('')}</ul></section>
@@ -310,22 +304,13 @@
       'ยังไม่มีโครงการ Active')}
     <h3>ค่าใช้จ่ายรายเดือน 12 เดือน แยกตามขั้นงาน</h3><div class="chartbox">${spendChart}</div></section>
 
-  ${pc ? `<section><h2>6. เงินทุนหมุนเวียนทั้งแผนก (Cash Flow — แผน Base)</h2>
-    <div class="kpis" style="margin-bottom:6px">
-      ${kpi('เงินทุนสูงสุดที่ต้องใช้', pc.peak ? U.money(-pc.peak.value) : '฿0', pc.peak ? `ช่วง ${U.month(pc.peak.ym)}${pc.peak.ym < ym ? ' (ผ่านมาแล้ว)' : ''}` : 'ไม่ติดลบ', pc.peak && pc.peak.ym >= ym ? 'critical' : null)}
-      ${kpi('สูงสุดข้างหน้า', pc.futurePeak ? U.money(-pc.futurePeak.value) : '฿0', pc.futurePeak ? U.month(pc.futurePeak.ym) : 'ไม่ติดลบอีก', pc.futurePeak ? 'warning' : 'good')}
-      ${kpi('เงินรับ 12 เดือนข้างหน้า', U.money(pc.next12In), `เงินจ่าย ${U.money(pc.next12Out)}`)}
-      ${kpi('สุทธิ 12 เดือนข้างหน้า', sm(pc.next12In - pc.next12Out), pc.neg ? `ติดลบ ${pc.neg.count} เดือน` : 'ไม่ติดลบ', pc.next12In - pc.next12Out < 0 ? 'critical' : 'good')}
-    </div>
-    ${cashChart ? `<h3>เงินสดสะสมทั้งแผนก</h3><div class="chartbox">${cashChart}</div>` : ''}</section>` : ''}
-
-  <section class="flow"><h2>${pc ? 7 : 6}. ใบสั่งซื้อ (PO)</h2>
+  <section class="flow"><h2>6. ใบสั่งซื้อ (PO)</h2>
     <p style="margin:0 0 4px">PO ทั้งหมด ${po.total} · ยังไม่ส่งครบ ${po.open} · เลยกำหนด ${po.late.length} · ต้องส่งใน 14 วัน ${po.soon.length} · จ่ายแล้ว ${U.pct(po.paidPct)}</p>
     ${tbl([{ t: 'PO' }, { t: 'โครงการ' }, { t: 'ผู้ขาย' }, { t: 'รายการ' }, { t: 'กำหนดส่ง' }, { t: 'สถานะ' }],
       po.late.concat(po.soon).slice(0, 12).map((x) => { const p = PM.find('projects', x.projectId); return [esc(x.poNo), esc(p ? p.code : '–'), esc(x.supplier || ''), esc(x.description || ''), U.date(x.deliveryDue), PM.poDaysLate(x, T) ? `<span class="neg">เลย ${PM.poDaysLate(x, T)} วัน</span>` : `อีก ${PM.diffDays(T, x.deliveryDue)} วัน`]; }),
       'ไม่มี PO ที่ต้องติดตาม')}</section>
 
-  ${seesRes ? `<section><h2>${pc ? 8 : 7}. บุคลากร (4 สัปดาห์ล่าสุด)</h2>
+  ${seesRes ? `<section><h2>7. บุคลากร (4 สัปดาห์ล่าสุด)</h2>
     <div class="kpis" style="margin-bottom:6px">
       ${kpi('อัตราใช้งาน', U.pct(ut.total.util), 'ชม.คิดเงินได้ ÷ ชม.ที่มี')}
       ${kpi('แผนสัปดาห์นี้ (PPC)', U.pct(wp.ppc), wp.total ? `เสร็จ ${wp.done} / ${wp.total} งาน` : 'ยังไม่มีแผน', wp.total ? (wp.ppc >= 0.8 ? 'good' : 'warning') : null)}
@@ -341,7 +326,7 @@
     writePage(win, {
       title: `รายงานภาพรวมแผนก BU4 ${T}`, bar: 'รายงานภาพรวม (Dashboard)',
       head: {
-        title: `<h1>รายงานภาพรวมแผนก BU4 IE/EPC — ${esc(monthThai(ym))}</h1><p><b>งานประมูล · โครงการ EPC · ต้นทุน · เงินทุนหมุนเวียน · จัดซื้อ${seesRes ? ' · บุคลากร' : ''}</b></p><p>ข้อมูลทุกโครงการ ณ ${U.date(T)} · ผู้ออกรายงาน ${esc(PM.auth && PM.auth.user ? PM.auth.displayName(PM.auth.user) : '–')}</p>`,
+        title: `<h1>รายงานภาพรวมแผนก BU4 IE/EPC — ${esc(monthThai(ym))}</h1><p><b>งานประมูล · โครงการ EPC · ต้นทุน · จัดซื้อ${seesRes ? ' · บุคลากร' : ''}</b></p><p>ข้อมูลทุกโครงการ ณ ${U.date(T)} · ผู้ออกรายงาน ${esc(PM.auth && PM.auth.user ? PM.auth.displayName(PM.auth.user) : '–')}</p>`,
         meta: `${esc(PM.COMPANY)}<br>ข้อมูล ณ ${U.date(T)}`,
       },
       body,

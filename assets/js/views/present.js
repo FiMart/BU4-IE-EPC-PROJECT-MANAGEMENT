@@ -105,32 +105,6 @@
       });
     }
 
-    // 3c · Department cash flow — every active project's saved Cash Flow Model added up (cashflow.js)
-    const cfProjects = active.map((r) => r.p);
-    const pcBase = PM.portfolioCashflow ? PM.portfolioCashflow(cfProjects, 'base') : null;
-    if (pcBase) {
-      const pcCons = PM.portfolioCashflow(cfProjects, 'conservative');
-      const now = T.slice(0, 7);
-      out.push({
-        key: 'cashflow', title: 'Cash Flow — เงินทุนหมุนเวียนทั้งแผนก', sub: `รวมทุกโครงการ Active · เส้นทึบ = Base · เส้นประ = Conservative / Optimistic${pcBase.defaults ? ` · ${pcBase.defaults} โครงการใช้ค่าเริ่มต้น` : ''}`,
-        html: () => `
-          <div class="pres-kpis">
-            ${kpi('Peak funding (Base)', pcBase.peak ? U.money(-pcBase.peak.value) : '฿0', pcBase.peak ? `เงินสดตึงสุด ${U.month(pcBase.peak.ym)}${pcBase.peak.ym < now ? ' (ผ่านมาแล้ว)' : ''}` : 'เงินสดรวมไม่ติดลบ', pcBase.peak && pcBase.peak.ym >= now ? 'critical' : 'good')}
-            ${kpi('Peak ข้างหน้า', pcBase.futurePeak ? U.money(-pcBase.futurePeak.value) : '฿0', pcBase.futurePeak ? U.month(pcBase.futurePeak.ym) : 'ไม่ติดลบอีก', pcBase.futurePeak ? 'warning' : 'good')}
-            ${kpi('Peak กรณีระวัง', pcCons && pcCons.peak ? U.money(-pcCons.peak.value) : '฿0', pcCons && pcCons.peak ? `Conservative · ${U.month(pcCons.peak.ym)}` : 'Conservative', pcCons && pcCons.peak ? 'warning' : null)}
-            ${kpi('สุทธิ 12 เดือนข้างหน้า', PM.signedMoney(pcBase.next12In - pcBase.next12Out), `รับ ${U.money(pcBase.next12In)} · จ่าย ${U.money(pcBase.next12Out)}`, pcBase.next12In - pcBase.next12Out < 0 ? 'critical' : 'good')}
-          </div>
-          <div class="pres-card"><h3>เงินสดสะสมทั้งแผนก — Conservative / Base / Optimistic</h3><div class="chart" id="p-cash"></div></div>`,
-        draw: () => {
-          const lines = PM.portfolioCashflowLines(cfProjects, 'base');
-          PM.charts.lines(document.getElementById('p-cash'), {
-            labels: lines.months.map(U.month), marker: lines.months.indexOf(now), markerLabel: 'วันนี้', height: fillH('p-cash', 260),
-            fmt: PM.signedMoney, axisFmt: PM.signedMoney, label: 'Department cumulative cash', series: lines.series,
-          });
-        },
-      });
-    }
-
     // 4 · Purchase Orders
     const po = PM.poStats(db.pos || [], T);
     const watch = po.late.concat(po.soon).sort((a, b) => (PM.poDaysLate(b, T) - PM.poDaysLate(a, T)) || String(a.deliveryDue).localeCompare(String(b.deliveryDue))).slice(0, 6);

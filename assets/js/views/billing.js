@@ -1,8 +1,9 @@
 /* billing.js — project tab "งวดเงิน" (progress billing & collection)
    Invoices to the client: advance · progress claims (by % work done) · retention release · other.
    Net = amount − advance recovery − retention. Status: draft → issued (วางบิลแล้ว) → paid (รับเงินแล้ว); issued past its due date = overdue.
-   Compares money received with the Cash Flow plan, shows work done but not billed yet, outstanding and retention held.
-   Data: p.invoices = [{ id, no, type, title, date, dueDate, progress, amount, advance, retention, status, paidDate, paidAmount, note }] */
+   Compares money billed with money received, shows work done but not billed yet, outstanding and retention held.
+   Data: p.invoices = [{ id, no, type, title, date, dueDate, progress, amount, advance, retention, status, paidDate, paidAmount, note }]
+         p.billingTerms = { advance %, retention %, creditDays } — the defaults for a new invoice */
 (function () {
   const U = PM.ui, esc = U.esc;
   PM.INV_TYPES = [
@@ -48,7 +49,25 @@
     const max = (p.invoices || []).reduce((mx, i) => { const n = parseInt(String(i.no || '').replace(/^.*?(\d+)$/, '$1'), 10); return isNaN(n) ? mx : Math.max(mx, n); }, 0);
     return `INV-${String(p.code).replace(/^PJ-/, '')}-${String(max + 1).padStart(2, '0')}`;
   };
-  const terms = (p) => { const cf = PM.cashflowSaved ? PM.cashflowSaved(p) : null; return cf ? cf.a : { advance: 10, retention: 5, recvLag: 1 }; };
+  /* contract payment terms of the project: advance % · retention % · client credit (days) — p.billingTerms */
+  const TERMS_DEFAULT = { advance: 10, retention: 5, creditDays: 30 };
+  const terms = (p) => Object.assign({}, TERMS_DEFAULT, p.billingTerms);
+  function termsForm(p, done) {
+    const t = terms(p);
+    U.modal({
+      title: `เงื่อนไขการชำระเงิน — ${p.code}`, submitLabel: 'บันทึกเงื่อนไข',
+      body: `<p class="full muted" style="margin:0">ใช้ตั้งยอดหักให้อัตโนมัติเมื่อวางบิลงวดใหม่ — งวดที่วางบิลไปแล้วไม่เปลี่ยน</p>
+        ${U.field('เงินล่วงหน้า (%)', 'advance', t.advance, { type: 'number', min: 0, max: 50, step: 'any', hint: 'รับตอนเริ่มงาน แล้วหักคืนจากทุกงวดผลงาน' })}
+        ${U.field('Retention (%)', 'retention', t.retention, { type: 'number', min: 0, max: 20, step: 'any', hint: 'หักจากทุกงวด คืนหลังจบงาน' })}
+        ${U.field('เครดิตลูกค้า (วัน)', 'creditDays', t.creditDays, { type: 'number', min: 0, max: 365, step: 1, hint: 'วันครบกำหนดชำระ = วันวางบิล + จำนวนวันนี้' })}`,
+      onSubmit: (f) => {
+        p.billingTerms = { advance: Math.max(0, num(f.advance)), retention: Math.max(0, num(f.retention)), creditDays: Math.max(0, Math.round(num(f.creditDays))) };
+        PM.upsert('projects', p);
+        U.toast('บันทึกเงื่อนไขการชำระเงินแล้ว');
+        done();
+      },
+    });
+  }
 
   PM.billingTab = function (el, p, m, rerender) {
     const canEdit = PM.can('billing.edit');
@@ -57,8 +76,8 @@
     const V = PM.common;
     const st = (i) => (PM.invOverdue(i, T) ? { level: 'critical', label: `เกินกำหนด ${PM.diffDays(i.dueDate, T)} วัน` } : PM.INV_STATUS.find((x) => x.key === i.status) || PM.INV_STATUS[0]);
     el.innerHTML = `
-      <div class="row"><p class="muted" style="margin:0">ฐานคิด: มูลค่าสัญญา${s.contract !== num(p.contractValue) ? 'ปรับปรุง (รวม VO อนุมัติ)' : ''} ${U.money(s.contract)} · ไม่รวม VAT · เงื่อนไข: เงินล่วงหน้า ${U.num(terms(p).advance)}% · Retention ${U.num(terms(p).retention)}% (ตั้งได้ที่แท็บ Cash Flow)</p>
-        <span class="spacer"></span>${canEdit ? '<button class="btn primary" data-inv="new">+ วางบิลงวดใหม่</button>' : ''}</div>
+      <div class="row"><p class="muted" style="margin:0">ฐานคิด: มูลค่าสัญญา${s.contract !== num(p.contractValue) ? 'ปรับปรุง (รวม VO อนุมัติ)' : ''} ${U.money(s.contract)} · ไม่รวม VAT · เงื่อนไข: เงินล่วงหน้า ${U.num(terms(p).advance)}% · Retention ${U.num(terms(p).retention)}% · เครดิต ${U.num(terms(p).creditDays)} วัน</p>
+        <span class="spacer"></span>${canEdit ? '<button class="btn" data-inv="terms">เงื่อนไขการชำระเงิน</button> <button class="btn primary" data-inv="new">+ วางบิลงวดใหม่</button>' : ''}</div>
       <div class="grid cols-5">
         ${V.tile({ label: 'วางบิลแล้ว', value: U.money(s.billed), sub: `${U.pct(s.contract ? s.billed / s.contract : null)} ของสัญญา · เบิกผลงานถึง ${U.num(s.claimed, 1)}%`, icon: 'proposal' })}
         ${V.tile({ label: 'รับเงินแล้ว', value: U.money(s.received), sub: `${U.pct(s.contract ? s.received / s.contract : null)} ของสัญญา` })}
@@ -66,7 +85,7 @@
         ${V.tile({ label: 'ผลงานที่ยังไม่ได้วางบิล', tag: 'Unbilled', value: U.money(s.unbilled), sub: `ผลงาน ${U.pct(m.act)} = ${U.money(s.earned)} · เบิกแล้ว ${U.money(s.progressBilled)}`, tip: 'มูลค่าสัญญา × % งานเสร็จ − ยอดวางบิลงวดผลงาน' })}
         ${V.tile({ label: 'Retention ที่ถูกหักไว้', value: U.money(s.retentionHeld), sub: `เงินล่วงหน้าคงเหลือที่ต้องหักคืน ${U.money(s.advanceLeft)}` })}
       </div>
-      <div class="card"><div class="card-h"><h2>เงินรับสะสม — จริง เทียบแผน Cash Flow</h2><p>เส้นประ = แผนรับเงิน (Cash Flow · Base) · เส้นทึบ = รับเงินจริงตามวันที่รับ</p></div><div class="card-b"><div class="chart" id="c-bill"></div></div></div>
+      <div class="card"><div class="card-h"><h2>วางบิลสะสม เทียบ รับเงินสะสม</h2><p>เส้นประ = ยอดสุทธิที่วางบิลแล้วตามวันที่วางบิล · เส้นทึบ = รับเงินจริงตามวันที่รับ — ช่องว่างระหว่างสองเส้น = เงินที่ยังค้างรับ</p></div><div class="card-b"><div class="chart" id="c-bill"></div></div></div>
       <div class="card"><div class="card-h"><h2>งวดเงิน — ${esc(p.code)}</h2><p>${canEdit ? 'คลิกงวดเพื่อแก้ไข · บันทึกวันที่รับเงินเมื่อลูกค้าจ่าย · ' : ''}สุทธิ = ยอดวางบิล − หักเงินล่วงหน้า − หัก Retention</p></div>
         <div class="card-b flush table-wrap">${s.list.length ? `<table class="tbl"><thead><tr><th>เลขที่</th><th>งวด</th><th>วางบิล</th><th>ครบกำหนด</th><th class="num">ยอดวางบิล</th><th class="num">หักล่วงหน้า</th><th class="num">หัก Retention</th><th class="num">สุทธิ</th><th>สถานะ</th></tr></thead><tbody>
           ${s.list.slice().reverse().map((i) => { const x = st(i); return `<tr class="click" data-inv="edit" data-id="${esc(i.id)}">
@@ -79,23 +98,23 @@
           </tbody><tfoot><tr><td></td><td>รวม (ไม่นับร่าง)</td><td></td><td></td><td class="num">${U.money(s.billed)}</td><td></td><td></td><td class="num">${U.money(PM.sum(s.list.filter((i) => i.status !== 'draft'), PM.invNet))}</td><td></td></tr></tfoot></table>`
           : `<p class="empty">ยังไม่มีงวดเงิน${canEdit ? ' — กด "+ วางบิลงวดใหม่" (เริ่มจากเงินล่วงหน้า หรืองวดผลงาน)' : ''}</p>`}</div></div>`;
 
-    // received vs plan
-    const cf = PM.cashflowSaved && PM.cashflowModel(p, PM.cashflowSaved(p), 'base');
+    // billed (net) vs received, cumulative by month — from the project start to this month
+    const billedList = s.list.filter((i) => i.status !== 'draft' && i.date);
     const paid = s.list.filter((i) => i.status === 'paid' && i.paidDate);
-    const first = [cf && cf.months[0], ...paid.map((i) => i.paidDate.slice(0, 7))].filter(Boolean).sort()[0] || T.slice(0, 7);
-    const last = [cf && cf.lastYm, T.slice(0, 7)].filter(Boolean).sort().pop();
-    const months = PM.months(first, last);
-    let acc = 0, pc = 0;
-    const planCum = cf ? months.map((ym) => { const k = cf.months.indexOf(ym); if (k >= 0) pc += cf.cashIn[k]; return pc; }) : null;
-    const actCum = months.map((ym) => { if (ym > T.slice(0, 7)) return null; acc += PM.sum(paid.filter((i) => i.paidDate.slice(0, 7) === ym), (i) => num(i.paidAmount) || PM.invNet(i)); return acc; });
+    const first = [String(p.startDate || '').slice(0, 7), ...billedList.map((i) => i.date.slice(0, 7))].filter(Boolean).sort()[0] || T.slice(0, 7);
+    const months = PM.months(first, T.slice(0, 7));
+    let acc = 0, bc = 0;
+    const billCum = months.map((ym) => (bc += PM.sum(billedList.filter((i) => i.date.slice(0, 7) === ym), PM.invNet)));
+    const actCum = months.map((ym) => (acc += PM.sum(paid.filter((i) => i.paidDate.slice(0, 7) === ym), (i) => num(i.paidAmount) || PM.invNet(i))));
     PM.charts.lines(el.querySelector('#c-bill'), {
-      labels: months.map(U.month), marker: months.indexOf(T.slice(0, 7)), markerLabel: 'วันนี้', fmt: U.money, axisFmt: U.money, label: 'Cumulative cash received',
-      series: (planCum ? [{ name: 'แผน (Cash Flow)', color: 'var(--s1)', dash: true, values: planCum }] : []).concat([{ name: 'รับจริง', color: 'var(--s3)', values: actCum }]),
+      labels: months.map(U.month), fmt: U.money, axisFmt: U.money, label: 'Cumulative billed and received',
+      series: [{ name: 'วางบิลสะสม (สุทธิ)', color: 'var(--s1)', dash: true, values: billCum }, { name: 'รับเงินสะสม', color: 'var(--s3)', values: actCum }],
     });
 
     el.onclick = (e) => {
       const a = e.target.closest('[data-inv]');
       if (!a) return;
+      if (a.dataset.inv === 'terms') termsForm(p, rerender);
       if (a.dataset.inv === 'new') invForm(p, m, null, rerender);
       if (a.dataset.inv === 'edit') invForm(p, m, (p.invoices || []).find((i) => i.id === a.dataset.id), rerender);
     };
@@ -105,7 +124,7 @@
     const canEdit = PM.can('billing.edit');
     if (!inv && !canEdit) return;
     const T = PM.today(), t = terms(p), s = PM.billingSummary(p, m);
-    const lag = Math.max(30, Math.round(num(t.recvLag) * 30));
+    const lag = Math.max(0, Math.round(num(t.creditDays)));
     // a new claim starts as "progress up to today's % done", sized from what was claimed before
     const prog = Math.round(m.act * 1000) / 10;
     const gross = Math.max(0, Math.round(s.contract * (prog - s.claimed) / 100));
@@ -119,7 +138,7 @@
         ${U.field('เลขที่ใบแจ้งหนี้', 'no', i.no, { required: true })}
         ${U.field('ชื่องวด', 'title', i.title, { full: true, placeholder: 'เช่น งวดที่ 3 — งานติดตั้งโครงสร้าง' })}
         ${U.field('วันที่วางบิล', 'date', i.date, { type: 'date', required: true })}
-        ${U.field('ครบกำหนดชำระ', 'dueDate', i.dueDate, { type: 'date', required: true, hint: `เครดิตลูกค้าตาม Cash Flow ≈ ${lag} วัน` })}
+        ${U.field('ครบกำหนดชำระ', 'dueDate', i.dueDate, { type: 'date', required: true, hint: `เครดิตลูกค้า ${lag} วัน (ตั้งที่ "เงื่อนไขการชำระเงิน")` })}
         ${U.field('ผลงานสะสมที่เบิก (%)', 'progress', i.progress, { type: 'number', min: 0, max: 100, step: 0.1, hint: `งานเสร็จจริงตอนนี้ ${U.pct(m.act, 1)} · เบิกไปแล้วถึง ${U.num(s.claimed, 1)}%` })}
         ${U.field('ยอดวางบิล (THB)', 'amount', i.amount, { type: 'number', min: 0, step: 'any', required: true })}
         ${U.field('หักคืนเงินล่วงหน้า (THB)', 'advance', i.advance, { type: 'number', min: 0, step: 'any', hint: `${U.num(t.advance)}% ของยอดวางบิล` })}

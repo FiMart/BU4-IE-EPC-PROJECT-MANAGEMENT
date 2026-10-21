@@ -516,7 +516,7 @@
       ${isNew ? '' : `<label><span>Actual cost — ต้นทุนจริง (THB)</span><input value="${esc(U.num(actualNow))}" disabled><small class="muted">รวมจากรายการในแท็บ "ค่าใช้จ่าย" ของโครงการ</small></label>`}
       ${U.field('Start date', 'startDate', p.startDate, { type: 'date', required: true })}
       ${U.field('Finish date', 'endDate', p.endDate, { type: 'date', required: true })}
-      ${isNew ? '' : '<p class="full muted" style="margin:0">หมายเหตุ: การแก้วันที่โครงการไม่เปลี่ยนแผนของแต่ละ phase — แก้ได้ที่ตาราง EPC Phases</p>'}`;
+      ${isNew ? '' : '<p class="full muted" style="margin:0">หมายเหตุ: การแก้วันที่โครงการไม่เปลี่ยนแผนของแต่ละ phase — แก้ได้ที่การ์ดขั้นงาน → อัปเดตความคืบหน้า</p>'}`;
     const form = U.modal({
       title: isNew ? (fromBid ? `Create project from ${fromBid.code}` : 'New project') : `Edit ${p.code}`, body,
       onDelete: isNew ? null : () => {

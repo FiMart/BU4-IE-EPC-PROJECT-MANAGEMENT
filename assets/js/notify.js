@@ -58,6 +58,14 @@
         if (x.status === 'return') add({ id: `ret-${x.id}-${x.rev || ''}`, level: 'warning', icon: 'layers', title: `ลูกค้าส่งกลับแก้ไข: ${x.no} ${x.name}`, sub: `${p.code} · Rev. ${x.rev || '–'}${x.comment ? ' · ' + x.comment : ''}`, href: at(), mine: mineX });
         else if (PM.itemLate && PM.itemLate(x, T)) add({ id: `pil-${x.id}`, level: 'warning', icon: 'layers', title: `${cfg ? cfg.noun : 'รายการ'}เลยกำหนด: ${x.no} ${x.name}`, sub: `${p.code} · กำหนด ${U.date(x.due)} (เลย ${PM.diffDays(x.due, T)} วัน)`, href: at(), mine: mineX, date: x.due });
       });
+      // punch list: category A (must be fixed before handover) past its date (punch.js)
+      (db.punch || []).filter((x) => x.projectId === p.id && x.category === 'A' && PM.punchLate && PM.punchLate(x, T))
+        .forEach((x) => add({ id: `pl-${x.id}`, level: 'warning', icon: 'tasks', title: `Punch A เลยกำหนด: ${x.no} ${x.location}`, sub: `${p.code} · ${x.description} · ${x.owner || '–'}`, href: at('punch'), mine: mine || (I.name && PM.normName(x.owner || '') === I.name), date: x.due }));
+      // meeting actions past their date (meetings.js) — mine = my name in "ผู้รับผิดชอบ"
+      if (PM.openActions) PM.openActions(p.id).filter(({ a }) => PM.actionLate(a, T)).forEach(({ a, mt }) => {
+        const mineA = !!I.name && PM.normName(a.owner || '').includes(I.name);
+        add({ id: `act-${a.id}`, level: 'warning', icon: 'people', title: `Action เลยกำหนด: ${a.text}`, sub: `${p.code} · ${mt.no} · ${a.owner || '–'} · กำหนด ${U.date(a.due)}`, href: at('meetings'), mine: mine || mineA, date: a.due });
+      });
       // daily site report missing for the last working day (projects that keep daily reports — daily.js)
       const dm = PM.dailyMissing && PM.dailyMissing(p, T);
       if (dm) add({ id: `daily-${p.id}-${dm}`, level: 'info', icon: 'calendar', title: `${p.code} ยังไม่มีรายงานประจำวัน ${U.date(dm)}`, sub: `${p.name} — เขียนที่แท็บรายงานประจำวัน`, href: at('daily'), mine, date: dm });
@@ -65,6 +73,20 @@
         .forEach((n) => add({ id: `ncr-${n.id}`, level: 'critical', icon: 'quality', title: `NCR ระดับวิกฤต: ${n.no}`, sub: `${p.code} · ${n.description || ''}`, href: at('quality'), mine, date: n.date }));
     });
 
+    // approvals (approvals.js): approvers see what waits · the requester sees what was returned
+    if (PM.approvalsPending) {
+      const pend = PM.approvalsPending();
+      const pc = (id) => { const p = PM.find('projects', id); return p ? p.code : ''; };
+      if (PM.can('approve.spend')) {
+        pend.pos.forEach((x) => add({ id: `apr-po-${x.id}-${x.approval.requestedAt}`, level: 'warning', icon: 'truck', title: `รออนุมัติ PO ${x.poNo} ${U.money(x.amount)}`, sub: `${pc(x.projectId)} · ${x.supplier || ''} · ขอโดย ${x.approval.requestedByName || '–'}`, href: '#/pos', mine: true, date: x.approval.requestedAt }));
+        pend.costs.forEach((x) => add({ id: `apr-c-${x.id}-${x.approval.requestedAt}`, level: 'warning', icon: 'coins', title: `รออนุมัติค่าใช้จ่าย ${U.money(x.amount)}`, sub: `${pc(x.projectId)} · ${x.description} · ขอโดย ${x.approval.requestedByName || '–'}`, href: `#/projects/${x.projectId}/cost`, mine: true, date: x.approval.requestedAt }));
+      }
+      const uid = PM.myUid && PM.myUid();
+      (db.pos || []).concat(db.costs || []).filter((x) => x.approval && x.approval.status === 'rejected' && uid && x.approval.requestedBy === uid).forEach((x) => {
+        const isPo = !!x.poNo;
+        add({ id: `apr-no-${x.id}-${x.approval.at}`, level: 'warning', icon: isPo ? 'truck' : 'coins', title: `ไม่อนุมัติ: ${isPo ? 'PO ' + x.poNo : x.description}`, sub: `${x.approval.byName || ''}${x.approval.note ? ' — ' + x.approval.note : ''} · แก้ไขแล้วบันทึกเพื่อขอใหม่`, href: isPo ? '#/pos' : `#/projects/${x.projectId}/cost`, mine: true, date: x.approval.at });
+      });
+    }
     // purchase orders
     const po = PM.poStats(db.pos || [], T);
     const poMine = (x) => mineProject(PM.find('projects', x.projectId));
@@ -166,6 +188,8 @@
     document.body.classList.add('nt-open');
     document.getElementById('bell-btn').setAttribute('aria-expanded', 'true');
   }
+  N.open = open; // the Dashboard's "ต้องดำเนินการวันนี้" bar opens this panel
+  N.list = () => { try { return build(); } catch (e) { return []; } };
   N.close = function () {
     const panel = document.getElementById('nt-panel');
     if (panel) panel.hidden = true;

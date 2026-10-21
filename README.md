@@ -168,6 +168,9 @@ assets/js/notify.js          กระดิ่งแจ้งเตือน (�
 assets/js/i18n.js            แสดงป้าย / หัวตาราง / สถานะเป็นภาษาไทย (พจนานุกรม PM.i18n.dict — เพิ่มคำแปลได้ที่นี่) + ⓘ อธิบายศัพท์ตัวชี้วัด
 assets/js/views/phase-items.js  รายการย่อยของขั้นงาน EPC (เอกสารออกแบบ · แพ็กเกจจัดซื้อ · งานก่อสร้าง · เอกสารส่งมอบ) + Transmittal — แก้รายการมาตรฐานที่ PM.PHASE_ITEMS
 assets/js/views/daily.js     รายงานประจำวันหน้างาน (collection dailies) + พิมพ์ PDF
+assets/js/views/punch.js     Punch List (collection punch) + พิมพ์รายการค้าง
+assets/js/views/meetings.js  บันทึกการประชุม MOM + Action (collection meetings) + พิมพ์ PDF
+assets/js/approvals.js       อนุมัติ PO / ค่าใช้จ่ายที่ถึงวงเงิน (วงเงินใน collection settings id 'approval')
 assets/js/version.js         เวอร์ชัน + ประวัติการแก้ไข (หน้า About)
 assets/js/config.js          Supabase URL + anon key (ต้องกรอก)
 assets/js/auth.js            login / register / reset password (Supabase Auth)
@@ -178,5 +181,5 @@ supabase/data.sql            SQL สร้างตาราง app_records ส�
 assets/img/flowlab-logo.png  โลโก้บริษัทสำหรับหน้าเว็บ (480 px) · flowlab-logo-full.png = ความละเอียดเต็มสำหรับเอกสาร PDF — เปลี่ยนโลโก้ได้โดยแทนที่ 2 ไฟล์นี้ (ชื่อเดิม)
 assets/js/assist.js          ต้องดำเนินการวันนี้ (PM.attention) · ค้นหาด่วน Ctrl+K · ปุ่ม "+ สร้างใหม่" บนแถบด้านบน
 assets/js/tour.js            คลิปสอนการใช้งาน (Tour เล่นอัตโนมัติบนหน้าจอจริง) — เพิ่ม / แก้ขั้นตอนได้ที่ TOURS ในไฟล์นี้
-assets/js/views/*.js         แต่ละหน้า (weekly.js = Weekly Plan, costs.js = รายการค่าใช้จ่ายโครงการ, timeline.js = Timeline · Gantt Chart ของโครงการ, changes.js = VO งานเพิ่ม-ลด, billing.js = งวดเงิน / วางบิล, risks.js = Risk & Issue register, report.js = รายงานประจำเดือน (PDF), boq.js = BOQ ของโครงการ (ปร.4 · วางจาก Excel · ราคาจาก Price List), cashflow.js = Cash Flow Model (BOQ → S-Curve · Cash In / Out · Peak funding · 3 scenario), bid-stage.js = หน้าแยกของแต่ละขั้น Bidding, help.js = คู่มือวิธีใช้งาน, present.js = โหมดนำเสนอขึ้นจอ)
+assets/js/views/*.js         แต่ละหน้า (weekly.js = Weekly Plan, costs.js = รายการค่าใช้จ่ายโครงการ, timeline.js = Timeline · Gantt Chart ของโครงการ, changes.js = VO งานเพิ่ม-ลด, billing.js = งวดเงิน / วางบิล + เงื่อนไขการชำระเงิน, risks.js = Risk & Issue register, report.js = รายงานประจำเดือน (PDF), boq.js = BOQ ของโครงการ (ปร.4 · วางจาก Excel · ราคาจาก Price List), bid-stage.js = หน้าแยกของแต่ละขั้น Bidding, help.js = คู่มือวิธีใช้งาน, present.js = โหมดนำเสนอขึ้นจอ)
 ```

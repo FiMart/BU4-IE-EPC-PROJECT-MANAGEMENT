@@ -1,8 +1,7 @@
 /* boq.js — project tab "BOQ" (Bill of Quantities, ปร.4 style): sections (หมวดงาน) → items with quantity × (material + labour) rates,
    quantity done for progress. Paste from Excel · rates from the Price List · Export Excel / PDF.
-   Ties into the rest: compare with Plan cost and contract value · set Plan cost from the BOQ · update Phase % from quantity done ·
-   Cash Flow builds its work packages from the BOQ sections (cashflow.js → PM.cashflowDefaultBoq).
-   Data: p.boq = { sections: [{ id, name, phase, start, end, curve }], items: [{ id, section, name, unit, qty, mat, lab, done, priceId, note }] } */
+   Ties into the rest: compare with Plan cost and contract value · set Plan cost from the BOQ · update Phase % from quantity done.
+   Data: p.boq = { sections: [{ id, name, phase, start, end }], items: [{ id, section, name, unit, qty, mat, lab, done, priceId, note }] } */
 (function () {
   const U = PM.ui, esc = U.esc;
   const state = U.keep('boq', { phase: '', q: '' }, ['phase']);
@@ -13,7 +12,6 @@
   const pctDone = (it) => (num(it.qty) ? Math.min(1, num(it.done) / num(it.qty)) : 0);
   const fmt2 = (v) => (v == null || v === '' ? '' : Number(v).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
   const fmtQ = (v) => Number(v || 0).toLocaleString('en-US', { maximumFractionDigits: 3 });
-  const CURVES = [{ value: 's', label: 'S-curve (ช้า–เร็ว–ช้า)' }, { value: 'linear', label: 'เท่ากันทุกเดือน' }, { value: 'front', label: 'หนักช่วงต้น' }, { value: 'back', label: 'หนักช่วงท้าย' }];
   const phaseOf = (p, key) => (p.phases || []).find((x) => x.key === key) || {};
 
   const boqOf = (p) => (p.boq && Array.isArray(p.boq.sections) ? p.boq : { sections: [], items: [] });
@@ -39,7 +37,7 @@
   };
   const newSection = (p, name, phase) => {
     const ph = phaseOf(p, phase);
-    return { id: PM.uid('S'), name, phase, start: ph.planStart || p.startDate, end: ph.planEnd || p.endDate, curve: phase === 'closing' ? 'linear' : 's' };
+    return { id: PM.uid('S'), name, phase, start: ph.planStart || p.startDate, end: ph.planEnd || p.endDate };
   };
 
   /* ---------------- the tab ---------------- */
@@ -237,10 +235,9 @@
       body: `
         ${U.field('ชื่อหมวดงาน', 'name', s.name, { required: true, full: true, placeholder: 'เช่น งานโครงสร้างเหล็ก, งานระบบไฟฟ้า, Equipment' })}
         ${U.field('Phase', 'phase', s.phase, { options: PM.PHASES.map((x) => ({ value: x.key, label: x.label })) })}
-        ${U.field('การกระจายต้นทุน (ใช้ใน Cash Flow)', 'curve', s.curve, { options: CURVES })}
         ${U.field('เริ่ม (แผน)', 'start', s.start, { type: 'date', required: true })}
         ${U.field('เสร็จ (แผน)', 'end', s.end, { type: 'date', required: true })}
-        <p class="full muted" style="margin:0">วันที่และการกระจายต้นทุนใช้สร้าง Cash Flow จาก BOQ${sec && n ? ` · การลบหมวดนี้จะลบ ${n} รายการในหมวดด้วย` : ''}</p>`,
+        ${sec && n ? `<p class="full muted" style="margin:0">การลบหมวดนี้จะลบ ${n} รายการในหมวดด้วย</p>` : ''}`,
       onSubmit: canEdit ? (f) => {
         if (!f.name) { U.alert('กรุณากรอกชื่อหมวดงาน'); return false; }
         if (f.end < f.start) { U.alert('วันเสร็จต้องไม่ก่อนวันเริ่ม'); return false; }

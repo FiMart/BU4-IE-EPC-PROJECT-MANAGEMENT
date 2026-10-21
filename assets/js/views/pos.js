@@ -216,15 +216,15 @@
         const paidPct = po.amount ? (po.paidAmount || 0) / po.amount : null;
         return `<tr class="click" data-po="${esc(po.id)}">
           <td><span class="title">${esc(po.poNo)}</span><small>${esc(po.description)} · ${esc(po.category)}</small></td>
-          ${opt.showProject ? `<td>${esc(projLabel(po.projectId))}</td>` : ''}
+          ${opt.showProject ? `<td class="nowrap">${esc(projLabel(po.projectId))}</td>` : ''}
           <td>${esc(po.supplier)}</td>
           <td class="num">${U.money(po.amount)}</td>
           <td class="num">${U.money(po.paidAmount || 0)}<small>${U.pct(paidPct)}</small></td>
-          <td>${U.date(po.poDate)}</td>
-          <td>${U.date(po.deliveryDue)} ${dueBadge(po, T)}${po.deliveredDate ? `<small>ส่งครบ ${U.date(po.deliveredDate)}</small>` : ''}</td>
+          <td class="nowrap">${U.date(po.poDate)}</td>
+          <td class="nowrap">${U.date(po.deliveryDue)}${dueBadge(po, T) ? `<div>${dueBadge(po, T)}</div>` : ''}${po.deliveredDate ? `<small>ส่งครบ ${U.date(po.deliveredDate)}</small>` : ''}</td>
           <td>${canEdit && !opt.readOnly
             ? `<select class="plan-st po-st st-${esc(po.status)}" data-po-status="${esc(po.id)}" aria-label="สถานะ PO">${PM.PO_STATUS.map((x) => `<option value="${x.key}"${x.key === po.status ? ' selected' : ''}>${esc(x.th)}</option>`).join('')}</select>`
-            : U.badge(s.level, s.th)}</td>
+            : U.badge(s.level, s.th)}${PM.approvalBlocked(po) ? `<div>${PM.approvalBadge(po)}</div>` : ''}</td>
           <td class="num">${(po.files || []).length ? `<span class="po-clip" title="${esc(po.files.map((f) => f.name).join('\n'))}">📎 ${po.files.length}</span>` : '–'}</td>
         </tr>`;
       }).join('')}</tbody></table>`;
@@ -236,6 +236,12 @@
     if (!sel || !PM.can('po.edit')) return false;
     const po = PM.find('pos', sel.dataset.poStatus);
     if (!po) return true;
+    // waiting for (or refused) approval: stays Draft — only cancelling is allowed (approvals.js)
+    if (PM.approvalBlocked(po) && !['draft', 'cancelled'].includes(sel.value)) {
+      sel.value = po.status;
+      U.alert(`${po.poNo} ${PM.approvalPending(po) ? 'ยังรออนุมัติ' : 'ไม่ได้รับอนุมัติ'} — ออก PO ได้หลังอนุมัติแล้ว (ยอด ${U.money(po.amount)} ถึงวงเงิน ${U.money(PM.approvalLimits().po)})`, { title: 'ต้องอนุมัติก่อน' });
+      return true;
+    }
     po.status = sel.value;
     if ((po.status === 'delivered' || po.status === 'closed') && !po.deliveredDate) po.deliveredDate = PM.today();
     if (po.status === 'closed') po.paidAmount = po.amount;
@@ -288,9 +294,11 @@
         ${U.field('สถานะ', 'status', x.status, { options: PM.PO_STATUS.map((s) => ({ value: s.key, label: `${s.th} (${s.label})` })) })}
         ${U.field('วันที่ส่งของครบ', 'deliveredDate', x.deliveredDate, { type: 'date' })}
         ${U.field('หมายเหตุ', 'note', x.note, { type: 'textarea', full: true, rows: 2 })}
+        ${PM.approvalFormHtml('po', x)}
         ${F.boxHtml(canEdit, 'ไฟล์แนบ')}`,
     });
     const files = F.box(form, x.files, canEdit);
+    PM.approvalFormBind(form, 'po', x, done); // approve / return buttons for an approver (approvals.js)
 
     if (!canEdit) { // view only — files can still be opened
       form.querySelectorAll('input, select, textarea').forEach((i) => { i.disabled = true; });
@@ -311,13 +319,16 @@
         status: f.status, deliveredDate: f.deliveredDate, note: f.note,
       });
       if (f.projectId) x.projectId = f.projectId;
+      // at / over the approval limit: stays Draft until approved — the chosen status is applied on approval (approvals.js)
+      const appr = PM.approvalOnSave('po', x, x.status === 'draft' ? '' : x.status);
+      if (appr === 'pending' || (x.approval && x.approval.status === 'rejected')) { if (x.status !== 'cancelled') x.status = 'draft'; }
       if ((x.status === 'delivered' || x.status === 'closed') && !x.deliveredDate) x.deliveredDate = T;
       if (isNew) { const u = PM.auth.user; x.createdBy = u ? u.id : ''; x.createdByName = u ? PM.auth.displayName(u) : ''; }
       const { files: kept, problems } = await files.commit(`${x.projectId}/${x.id}`, btn);
       x.files = kept;
       PM.upsert('pos', x);
       U.closeModal();
-      U.toast(problems.length ? 'บันทึก PO แล้ว แต่ไฟล์บางไฟล์มีปัญหา' : 'บันทึก PO แล้ว');
+      U.toast(problems.length ? 'บันทึก PO แล้ว แต่ไฟล์บางไฟล์มีปัญหา' : appr === 'pending' ? `บันทึกแล้ว — ส่งขออนุมัติ (ยอดถึงวงเงิน ${U.money(PM.approvalLimits().po)}) · PO เป็น Draft จนกว่าจะอนุมัติ` : 'บันทึก PO แล้ว', 4000);
       if (problems.length) U.alert('ไฟล์ที่ไม่สำเร็จ:\n' + problems.join('\n'));
       done();
     });
@@ -350,6 +361,7 @@
         <span class="spacer"></span>
         ${canEdit ? '<button class="btn primary fab" data-action="new-po" aria-label="New PO"><span class="fab-i">+</span><span class="fab-t">New PO</span></button>' : ''}
       </div>
+      ${PM.approvalsCard(['po'], state.project || null)}
       ${PM.poTiles(st)}
       <div class="card">
         <div class="card-h"><h2>Purchase Orders</h2><p>คลิกที่ PO เพื่อดูรายละเอียดและไฟล์แนบ${canEdit ? ' · เปลี่ยนสถานะได้จากตาราง' : ''}</p></div>
@@ -381,6 +393,7 @@
       PM.poHandleChange(e, rerender);
     };
     el.onclick = (e) => {
+      if (PM.approvalsHandle(e, rerender)) return; // approve / return a PO (approvals.js)
       const seg = e.target.closest('[data-seg]');
       if (seg) { state[seg.dataset.seg] = seg.dataset.val; rerender(); return; }
       if (e.target.closest('select, input')) return;

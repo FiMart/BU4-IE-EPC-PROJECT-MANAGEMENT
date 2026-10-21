@@ -7,13 +7,14 @@
     { key: 'timeline', label: 'Timeline · Gantt', icon: 'calendar', group: 'แผนและความคืบหน้า' },
     { key: 'boq', label: 'BOQ', icon: 'layers', group: 'ต้นทุนและการเงิน' },
     { key: 'cost', label: 'ค่าใช้จ่าย', icon: 'coins', group: 'ต้นทุนและการเงิน' },
-    { key: 'cashflow', label: 'Cash Flow', icon: 'scurve', group: 'ต้นทุนและการเงิน' },
     { key: 'po', label: 'PO', icon: 'truck', group: 'ต้นทุนและการเงิน' },
     { key: 'changes', label: 'VO งานเพิ่ม-ลด', icon: 'wrench', group: 'ต้นทุนและการเงิน' },
     { key: 'billing', label: 'งวดเงิน', icon: 'proposal', group: 'ต้นทุนและการเงิน' },
     { key: 'risks', label: 'ความเสี่ยง', icon: 'alert', group: 'หน้างานและทีม' },
     { key: 'quality', label: 'Quality · NCR', icon: 'quality', group: 'หน้างานและทีม' },
     { key: 'daily', label: 'รายงานประจำวัน', icon: 'calendar', group: 'หน้างานและทีม' },
+    { key: 'meetings', label: 'ประชุม (MOM)', icon: 'people', group: 'หน้างานและทีม' },
+    { key: 'punch', label: 'Punch List', icon: 'tasks', group: 'หน้างานและทีม' },
     { key: 'safety', label: 'Safety', icon: 'safety', group: 'หน้างานและทีม' },
     { key: 'team', label: 'ทีม & ชั่วโมง', icon: 'people', group: 'หน้างานและทีม' },
   ];
@@ -74,15 +75,15 @@
           <dt>Sales</dt><dd>${esc(V.salesName(p))}</dd>
         </dl>
         ${costStrip(m, PM.poStats(PM.db.pos.filter((po) => po.projectId === p.id)), PM.projectCosts(p.id).length)}
-      </div></div>
-      ${phaseFlow(p, m, sel)}
-      ${PM.phaseItemsCard(p, sel)}` : compactHeader(p, m, h)}
+      </div></div>` : compactHeader(p, m, h)}
       ${tabsNav(p, tab)}
-      <div id="tab"></div>`;
+      <div id="tab" class="prj-tab"></div>`;
 
     const tabEl = el.querySelector('#tab');
     const rerender = () => PM.views.project(el, params);
-    ({ overview, timeline: timelineTab, boq: boqTab, changes: (...a) => PM.changesTab(...a), billing: (...a) => PM.billingTab(...a), risks: (...a) => PM.risksTab(...a), daily: (...a) => PM.dailyTab(...a), cost: costTab, cashflow: cashflowTab, quality, safety, team, po: poTab }[tab] || overview)(tabEl, p, m, rerender);
+    ({ overview, timeline: timelineTab, boq: boqTab, changes: (...a) => PM.changesTab(...a), billing: (...a) => PM.billingTab(...a), risks: (...a) => PM.risksTab(...a), daily: (...a) => PM.dailyTab(...a), meetings: (...a) => PM.meetingsTab(...a), punch: (...a) => PM.punchTab(...a), cost: costTab, quality, safety, team, po: poTab }[tab] || overview)(tabEl, p, m, rerender);
+    // the tab bar sits right under the header on every tab; the EPC phase cards and their line items open the Overview tab
+    if (full) tabEl.insertAdjacentHTML('afterbegin', `${phaseFlow(p, m, sel)}${PM.phaseItemsCard(p, sel)}`);
 
     el.onchange = (e) => { if (full) PM.phaseItemsHandle(e, p, rerender); };
     el.onclick = (e) => {
@@ -96,7 +97,6 @@
       if (act === 'bid-files') { const b = PM.find('bids', id); if (b && PM.canSeeBidPrice(b)) PM.poFiles.showList(`ไฟล์แนบของ ${b.code} (ใบเสนอราคา / Inquiry)`, b.files); }
       if (act === 'edit-costs') costForm(p, rerender);
       if (act === 'new-cost') PM.costEntryForm(p, null, rerender);
-      if (act === 'edit-phase') phaseForm(p, id, rerender);
       if (act === 'phase') phaseForm(p, a.dataset.key, rerender);
       if (act === 'new-ncr') ncrForm(p, null, rerender);
       if (act === 'edit-ncr') ncrForm(p, PM.find('ncrs', id), rerender);
@@ -106,9 +106,8 @@
     };
   };
 
-  /* expense ledger tab lives in costs.js · Timeline / Gantt tab in timeline.js · Cash Flow tab in cashflow.js */
+  /* expense ledger tab lives in costs.js · Timeline / Gantt tab in timeline.js */
   const costTab = (...args) => PM.costTab(...args);
-  const cashflowTab = (...args) => PM.cashflowTab(...args);
   const boqTab = (...args) => PM.boqTab(...args); // boq.js
   const timelineTab = (...args) => PM.timelineTab(...args);
 
@@ -190,7 +189,7 @@
         big: U.pct(ph.actualPct),
         meta: `<div class="pbar-wrap" style="margin:6px 0">${U.progress(ph.actualPct, ph.plannedPct)}</div>Plan ${U.pct(ph.plannedPct)} · ${st}
           <div class="pi-count">${it ? `${esc(c.noun)} ${c.steps.done.split(' (')[0]} ${it.done} / ${it.total}${it.late ? ` · <b class="neg">เลยกำหนด ${it.late}</b>` : ''}` : `ยังไม่มีรายการ${esc(c.noun)}`}</div>`,
-        tip: `${def.label} (weight ${ph.weight}%)\nPlan ${U.date(ph.planStart)} – ${U.date(ph.planEnd)}\nActual ${U.date(ph.actStart)} – ${U.date(ph.actEnd)}\nคลิกเพื่อดูรายการ${c.noun}ของขั้นนี้`,
+        tip: `${def.label} (น้ำหนัก ${ph.weight}%)\nแผน ${U.date(ph.planStart)} – ${U.date(ph.planEnd)}\nจริง ${U.date(ph.actStart)} – ${ph.actEnd ? U.date(ph.actEnd) : ph.actStart ? 'กำลังทำ' : '–'}\nปริมาณงาน ${U.num(ph.qtyDone)} / ${U.num(ph.qtyPlan)} ${ph.qtyUnit || ''}\nต้นทุนตามแผน ${U.money(ph.budget)} · จริง ${U.money(ph.actualCost)} · คงเหลือ ${U.money((ph.budget || 0) - (ph.actualCost || 0))}\nSPI ${U.ratio(ph.spi)} · CPI ${U.ratio(ph.cpi)}\nคลิกเพื่อดูรายการ${c.noun}ของขั้นนี้`,
       };
     }));
   }
@@ -210,28 +209,6 @@
       <div class="grid cols-2">
         <div class="card"><div class="card-h"><h2>S-Curve</h2><p>Cumulative progress — Planned vs Actual (weighted by phase)</p></div><div class="card-b"><div class="chart" id="c-scurve"></div></div></div>
         <div class="card"><div class="card-h"><h2>Cost by phase</h2><p>Plan cost vs Earned value vs Actual cost</p></div><div class="card-b"><div class="chart" id="c-cost"></div></div></div>
-      </div>
-      <div class="card">
-        <div class="card-h"><h2>EPC Phases</h2><p>อัปเดตความคืบหน้า, ปริมาณงาน และต้นทุนจริงของแต่ละ phase (บันทึก snapshot สำหรับ S-curve อัตโนมัติ)</p></div>
-        <div class="card-b flush table-wrap"><table class="tbl"><thead><tr>
-          <th>Phase</th><th class="num">Weight</th><th>Plan</th><th>Actual</th><th style="min-width:150px">Progress</th>
-          <th class="num">Quantity</th><th class="num">Plan cost</th><th class="num">Actual cost</th><th class="num">คงเหลือ</th><th class="num">SPI</th><th class="num">CPI</th><th></th></tr></thead><tbody>
-          ${m.phases.map((ph) => `<tr>
-            <td><span class="title">${esc(U.phaseLabel(ph.key))}</span></td>
-            <td class="num">${ph.weight}%</td>
-            <td>${U.date(ph.planStart)} – ${U.date(ph.planEnd)}</td>
-            <td>${U.date(ph.actStart)} – ${ph.actEnd ? U.date(ph.actEnd) : ph.actStart ? 'ongoing' : '–'}</td>
-            <td><div class="pbar-wrap">${U.progress(ph.actualPct, ph.plannedPct)}<span class="num">${U.pct(ph.actualPct)}</span></div></td>
-            <td class="num">${U.num(ph.qtyDone)} / ${U.num(ph.qtyPlan)}<small>${esc(ph.qtyUnit)}</small></td>
-            <td class="num">${U.money(ph.budget)}</td><td class="num">${U.money(ph.actualCost)}</td>
-            <td class="num${(ph.budget || 0) - (ph.actualCost || 0) < 0 ? ' neg' : ''}">${U.money((ph.budget || 0) - (ph.actualCost || 0))}</td>
-            <td class="num">${U.ratio(ph.spi)}</td><td class="num">${U.ratio(ph.cpi)}</td>
-            <td><button class="btn sm" data-action="edit-phase" data-id="${ph.key}">Update</button></td></tr>`).join('')}
-          </tbody><tfoot><tr><td>Total</td><td class="num">${PM.sum(m.phases, (x) => x.weight)}%</td><td></td><td></td>
-            <td><div class="pbar-wrap">${U.progress(m.act, m.plan)}<span class="num">${U.pct(m.act)}</span></div></td><td></td>
-            <td class="num">${U.money(m.bac)}</td><td class="num">${U.money(m.ac)}</td>
-            <td class="num${m.bac - m.ac < 0 ? ' neg' : ''}">${U.money(m.bac - m.ac)}</td><td class="num">${U.ratio(m.spi)}</td><td class="num">${U.ratio(m.cpi)}</td><td></td></tr></tfoot>
-        </table></div>
       </div>`;
 
     /* S-curve */

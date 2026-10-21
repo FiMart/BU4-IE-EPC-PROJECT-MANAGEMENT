@@ -161,15 +161,15 @@
               </tbody></table><p class="muted" style="margin:6px 0 0;font-size:12.5px">แบ่งค่า OT ของแต่ละวันตามสัดส่วนชั่วโมงที่ลงในแต่ละโครงการวันนั้น</p>` : '<p class="empty">ไม่มี OT ในช่วงนี้</p>'}</div>
         </div>
       </div>
-      <div class="card-b flush table-wrap"><table class="tbl"><thead><tr><th>ชื่อ</th><th>Level</th><th>สิทธิ์ OT</th><th class="num">จ.–ศ. หลัง ${PM.OT_START}</th><th class="num">ไม่ได้พักเที่ยง</th><th class="num">เสาร์ – อาทิตย์ / วันหยุด</th><th class="num">รวม OT (ชม.)</th><th class="num">วันที่มี OT</th><th class="num">อัตรา (บาท/ชม.)</th><th class="num">ค่า OT</th></tr></thead><tbody>
+      <div class="card-b flush table-wrap"><table class="tbl"><thead><tr><th>ชื่อ</th><th>Level</th><th class="num">จ.–ศ. หลัง ${PM.OT_START}</th><th class="num">ไม่ได้พักเที่ยง</th><th class="num">เสาร์ – อาทิตย์ / วันหยุด</th><th class="num">รวม OT (ชม.)</th><th class="num">วันที่มี OT</th><th class="num">อัตรา (บาท/ชม.)</th><th class="num">ค่า OT</th></tr></thead><tbody>
         ${rows.length ? rows.map((x) => `<tr>
-          <td><span class="title">${esc(x.r.name)}</span></td><td>${esc(PM.levelName(x.r.level))}</td><td><small>${esc(x.rule.text)}</small></td>
+          <td class="nowrap"><span class="title">${esc(x.r.name)}</span></td><td class="nowrap" data-tip="${esc(x.rule.text)}">${esc(PM.levelName(x.r.level))}</td>
           <td class="num">${x.rule.weekday ? h(x.after) : '<span class="muted">ไม่มีสิทธิ์</span>'}</td>
           <td class="num">${x.rule.lunch ? h(x.lunch) : '<span class="muted">ไม่มีสิทธิ์</span>'}</td>
           <td class="num">${h(x.weekend)}</td><td class="num"><b>${U.num(x.total, 1)}</b></td><td class="num">${x.days || '–'}</td>
           <td class="num">${U.num(x.rate)}</td><td class="num"><b>${x.cost ? U.money(x.cost) : '<span class="muted">–</span>'}</b></td></tr>`).join('')
-          : '<tr><td colspan="10" class="empty">ไม่มีพนักงานที่มีสิทธิ์ OT</td></tr>'}
-      </tbody><tfoot><tr><td colspan="6">รวม</td><td class="num">${U.num(ot.total.total, 1)}</td><td></td><td></td><td class="num">${U.money(ot.total.cost)}</td></tr></tfoot></table></div>`;
+          : '<tr><td colspan="9" class="empty">ไม่มีพนักงานที่มีสิทธิ์ OT</td></tr>'}
+      </tbody><tfoot><tr><td colspan="5">รวม</td><td class="num">${U.num(ot.total.total, 1)}</td><td></td><td></td><td class="num">${U.money(ot.total.cost)}</td></tr></tfoot></table></div>`;
   }
 
   /* public holidays + OT pay multipliers (PM.otSettings — collection 'settings', id 'ot') */

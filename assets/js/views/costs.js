@@ -34,7 +34,8 @@
   /* ---------------- project tab ---------------- */
   PM.costTab = function (el, p, m, rerender) {
     const T = PM.today();
-    const all = PM.projectCosts(p.id);
+    const all = PM.projectCosts(p.id); // counted as Actual cost (approved / no approval needed)
+    const entries = PM.projectCostsAll(p.id); // the ledger list also shows what waits for approval
     const canEdit = PM.can('cost.edit');
     const total = PM.sum(all, (c) => Number(c.amount) || 0);
     const thisM = PM.sum(all.filter((c) => monthOf(c.date) === T.slice(0, 7)), (c) => c.amount);
@@ -47,12 +48,13 @@
     const ov = PM.costOverrun(m, p.status === 'closed');
 
     const q = state.q.toLowerCase();
-    const list = all.filter((c) => (!state.phase || c.phase === state.phase) && (!state.cat || c.category === state.cat)
+    const list = entries.filter((c) => (!state.phase || c.phase === state.phase) && (!state.cat || c.category === state.cat)
       && (!q || [c.description, c.vendor, c.ref, poNo(c.poId), c.note].join(' ').toLowerCase().includes(q)))
       .sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : String(b.id).localeCompare(String(a.id))));
     const cats = PM.COST_CATEGORIES.concat(all.some((c) => c.category === PM.COST_OPENING) ? [PM.COST_OPENING] : []);
 
     el.innerHTML = `
+      ${PM.approvalsCard(['cost'], p.id)}
       ${mismatch ? `<div class="callout warn">ยอดรวมรายการ (${U.money(total)}) ไม่ตรงกับ Actual cost ของโครงการ (${U.money(m.ac)}) — มักเกิดเมื่อรายการค่าใช้จ่ายยังไม่ขึ้น Cloud (Admin ต้องรัน supabase/data.sql อีกครั้ง)
         ${canEdit ? ' · <button type="button" class="link-btn" data-action="recalc">คำนวณ Actual cost จากรายการใหม่</button>' : ''}</div>` : ''}
       ${ov.status === 'over' ? `<div class="callout warn"><b>Cost overrun — เกินงบแล้ว ${U.money(ov.amount)}</b> · Actual cost ${U.money(m.ac)} เกิน Plan cost ${U.money(m.bac)} (${U.pct(ov.used)})${ov.closed ? ' · โครงการปิดแล้ว (ต้นทุนสุดท้าย)' : ` · คาดการณ์เมื่อจบ (EAC) เกิน ${U.money(ov.forecast)}`}</div>`
@@ -117,6 +119,7 @@
       state.t = setTimeout(() => { rerender(); const i = document.getElementById('cl-q'); if (i) { i.focus(); i.setSelectionRange(i.value.length, i.value.length); } }, 250);
     });
     el.onclick = (e) => {
+      if (PM.approvalsHandle(e, rerender)) return; // approve / return an expense (approvals.js)
       const a = e.target.closest('[data-action]');
       if (a && a.dataset.action === 'new-cost') { e.stopPropagation(); PM.costEntryForm(p, null, rerender); return; }
       if (a && a.dataset.action === 'recalc' && canEdit) { e.stopPropagation(); PM.applyLedger(p); PM.upsert('projects', p); U.toast('คำนวณ Actual cost ใหม่แล้ว'); rerender(); return; }
@@ -129,15 +132,15 @@
   function ledgerTable(list, canEdit) {
     if (!list.length) return `<p class="empty">${state.phase || state.cat || state.q ? 'ไม่พบรายการตามตัวกรอง' : canEdit ? 'ยังไม่มีรายการค่าใช้จ่าย — กด "+ บันทึกค่าใช้จ่าย" เพื่อเพิ่ม' : 'ยังไม่มีรายการค่าใช้จ่าย'}</p>`;
     return `<table class="tbl ledger"><thead><tr><th>วันที่</th><th>รายการ</th><th>Phase</th><th>หมวด</th><th>เลขที่เอกสาร / PO</th><th class="num">จำนวนเงิน</th><th>บันทึกโดย</th></tr></thead><tbody>
-      ${list.map((c) => `<tr class="click" data-cost="${esc(c.id)}">
+      ${list.map((c) => `<tr class="click${PM.approvalBlocked(c) ? ' cost-blocked' : ''}" data-cost="${esc(c.id)}">
         <td class="nowrap">${U.date(c.date)}</td>
-        <td><span class="title">${esc(c.description)}</span>${c.vendor ? `<small>${esc(c.vendor)}</small>` : ''}</td>
+        <td><span class="title">${esc(c.description)}</span> ${PM.approvalBadge(c)}${c.vendor ? `<small>${esc(c.vendor)}</small>` : ''}</td>
         <td>${esc(U.phaseLabel(c.phase))}</td>
         <td>${c.category === PM.COST_OPENING ? `<span class="chip">${esc(c.category)}</span>` : esc(c.category)}</td>
         <td>${esc(c.ref || '–')}${c.poId ? `<small>${esc(poNo(c.poId) || 'PO (ลบแล้ว)')}</small>` : ''}</td>
         <td class="num${c.amount < 0 ? ' neg' : ''}">${U.money(c.amount)}</td>
         <td>${esc(c.createdByName || '–')}</td></tr>`).join('')}
-      </tbody><tfoot><tr><td>รวม</td><td>${U.num(list.length)} รายการ</td><td></td><td></td><td></td><td class="num">${U.money(PM.sum(list, (c) => c.amount))}</td><td></td></tr></tfoot></table>`;
+      </tbody><tfoot><tr><td>รวม</td><td>${U.num(list.length)} รายการ</td><td></td><td></td><td></td><td class="num">${U.money(PM.sum(list.filter(PM.costCounts), (c) => c.amount))}${list.some(PM.approvalBlocked) ? '<small>ไม่รวมที่รออนุมัติ / ไม่อนุมัติ</small>' : ''}</td><td></td></tr></tfoot></table>`;
   }
 
   function exportCsv(p, list) {
@@ -185,18 +188,21 @@
         ${U.field('อ้างอิง PO (ถ้ามี)', 'poId', c.poId, { options: pos.map((po) => ({ value: po.id, label: `${po.poNo} · ${po.supplier}` })), placeholder: '— ไม่ผูกกับ PO —' })}
         <span></span>
         ${U.field('หมายเหตุ', 'note', c.note, { type: 'textarea', full: true, rows: 2 })}
+        ${PM.approvalFormHtml('cost', c)}
         ${c.createdByName ? `<p class="full muted" style="margin:0">บันทึกโดย ${esc(c.createdByName)}${c.createdAt ? ' · ' + esc(new Date(c.createdAt).toLocaleString('en-GB')) : ''}</p>` : ''}`,
       onSubmit: canEdit ? (f) => {
         if (!f.amount) { U.alert('กรุณากรอกจำนวนเงิน'); return false; }
         Object.assign(c, f, isNew ? creatorStamp() : {});
+        const appr = PM.approvalOnSave('cost', c); // at / over the limit → waits for approval (not Actual cost yet)
         const i = PM.db.costs.findIndex((x) => x.id === c.id);
         if (i >= 0) PM.db.costs[i] = c; else PM.db.costs.push(c);
         PM.applyLedger(p);
         PM.upsert('projects', p); // saves the entry and the project's new Actual cost together
-        U.toast(isNew ? `บันทึกค่าใช้จ่าย ${U.money(c.amount)} แล้ว` : 'บันทึกแล้ว');
+        U.toast(appr === 'pending' ? `บันทึกแล้ว — รออนุมัติ (ยอดถึงวงเงิน ${U.money(PM.approvalLimits().cost)}) ยังไม่นับใน Actual cost` : isNew ? `บันทึกค่าใช้จ่าย ${U.money(c.amount)} แล้ว` : 'บันทึกแล้ว', 4000);
         done();
       } : null,
     });
+    PM.approvalFormBind(form, 'cost', c, done); // approve / return buttons for an approver (approvals.js)
     if (!canEdit) { form.querySelectorAll('input, select, textarea').forEach((i) => { i.disabled = true; }); return; }
     // picking a PO fills in the vendor, category and phase
     form.poId.addEventListener('change', () => {

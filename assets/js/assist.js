@@ -78,18 +78,6 @@
     return out.sort((a, b) => RANK[a.level] - RANK[b.level]);
   };
 
-  PM.attentionHtml = function (list) {
-    if (!list.length) return `<div class="att-ok">${PM.illus.icon('check')}<div><b>ไม่มีเรื่องที่ต้องรีบดำเนินการ</b><small>ทุกโครงการ PO และ Milestone อยู่ในเกณฑ์ปกติ ณ วันนี้</small></div></div>`;
-    const label = { critical: 'ด่วน', warning: 'ติดตาม', info: 'แจ้งให้ทราบ' };
-    return `<div class="att-list">${list.map((a) => `
-      <a class="att att-${a.level}" href="${esc(a.href)}"${a.jump ? ` data-jump="${esc(a.jump)}"` : ''}>
-        ${PM.illus.icon(a.icon, 'att-ic')}
-        <span class="att-n">${U.num(a.count)}</span>
-        <span class="att-t"><b>${esc(a.title)}</b><small>${esc(a.sub || '')}</small></span>
-        <span class="att-lv">${label[a.level]}</span>
-      </a>`).join('')}</div>`;
-  };
-
   /* ---------- quick search (Ctrl / ⌘ + K) ---------- */
   let pal = null, sel = 0, hits = [];
   function pages() {
