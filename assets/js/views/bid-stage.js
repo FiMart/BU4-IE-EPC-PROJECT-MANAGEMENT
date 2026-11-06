@@ -17,7 +17,7 @@
     ],
     submit: [
       ['ยื่นเมื่อ', (b) => U.date(b.dates.submit)],
-      ['ตรงเวลา', (b) => (!b.dueDate ? '–' : b.dates.submit <= b.dueDate ? U.badge('good', 'On time') : U.badge('critical', `Late ${PM.diffDays(b.dueDate, b.dates.submit)}d`))],
+      ['ตรงเวลา', (b) => (!b.dueDate || b.submitAssumed ? '–' : b.dates.submit <= b.dueDate ? U.badge('good', 'On time') : U.badge('critical', `Late ${PM.diffDays(b.dueDate, b.dates.submit)}d`))],
     ],
   };
 
@@ -102,7 +102,7 @@
       inquiry: () => { const n = now.filter((b) => !PM.salesKey(b)).length; return V.tile({ label: 'ยังไม่ระบุ Sales', value: n, sub: n ? U.badge('warning', 'ควรระบุผู้รับผิดชอบ') : U.badge('good', 'ครบทุกงาน'), icon: 'people' }); },
       estimate: () => V.tile({ label: 'ประมาณราคาเสร็จ / ตรวจแล้ว', value: `${now.filter((b) => ['done', 'reviewed'].includes((b.estimate || {}).status)).length} <small>/ ${now.length}</small>`, sub: `BOQ ${U.num(PM.sum(now, (b) => b.boqItems))} รายการ · ไม่มี Estimator ${now.filter((b) => !b.estimator).length} งาน`, icon: 'layers' }),
       proposal: () => {
-        if (!PM.seesBidPrices()) return V.tile({ label: 'Status: Complete', value: `${now.filter((b) => PM.propOf(b).work === 'complete').length} <small>/ ${now.length}</small>`, sub: 'งานในขั้น Proposal ที่เสร็จแล้ว', icon: 'proposal' });
+        if (!PM.seesBidPrices()) return V.tile({ label: 'Status: In Progress', value: `${now.filter((b) => PM.propOf(b).work === 'in_progress').length} <small>/ ${now.length}</small>`, sub: 'งานในขั้นนี้ที่กำลังทำ · งาน Complete ย้ายไป Submit แล้ว', icon: 'proposal' });
         const m = now.filter((b) => PM.canSeeBidPrice(b) && b.margin != null);
         return V.tile({ label: 'Margin เฉลี่ย', value: m.length ? U.num(PM.sum(m, (b) => b.margin) / m.length, 1) + '%' : '–', sub: `มูลค่ารวม ${V.bidSum(now)}${PM.myRole() === 'sales' ? ' · เฉพาะงานของคุณ' : ''}`, icon: 'coins' });
       },

@@ -90,6 +90,14 @@
         if (isFinite(n)) return `<c r="${ref}" s="${style}"><v>${n}</v></c>`;
       }
       if (type === 'date') { const d = serial(v); if (d != null) return `<c r="${ref}" s="${style}"><v>${d}</v></c>`; }
+      // \uE000 … \uE001 = struck-through words (billed payment lines on the project list)
+      const str = String(v);
+      if (str.includes('\uE000')) {
+        const runs = str.split(/(\uE000[^\uE001]*\uE001)/).filter(Boolean).map((part) => (part[0] === '\uE000'
+          ? `<r><rPr><strike/><sz val="10"/><rFont val="Tahoma"/></rPr><t xml:space="preserve">${xml(part.slice(1, -1))}</t></r>`
+          : `<r><rPr><sz val="10"/><rFont val="Tahoma"/></rPr><t xml:space="preserve">${xml(part)}</t></r>`)).join('');
+        return `<c r="${ref}" s="${style}" t="inlineStr"><is>${runs}</is></c>`;
+      }
       return `<c r="${ref}" s="${style}" t="inlineStr"><is><t xml:space="preserve">${xml(v)}</t></is></c>`;
     };
     rows.push(`<row r="1">${cell(1, 0, sh.title || sh.name, 'text', S.title)}</row>`);

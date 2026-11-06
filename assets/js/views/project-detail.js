@@ -74,6 +74,10 @@
           <dt>Finish</dt><dd>${U.date(p.endDate)}</dd>
           <dt>Time elapsed</dt><dd>${U.pct(Math.max(0, Math.min(1, PM.diffDays(p.startDate, PM.today()) / (PM.diffDays(p.startDate, p.endDate) || 1))))}</dd>
           <dt>Sales</dt><dd>${esc(V.salesName(p))}</dd>
+          <dt>PO ลูกค้า</dt><dd>${esc(String(p.clientPo || '–').trim().replace(/\s*\n\s*/g, ', '))}${p.jobNo ? `<small class="muted" style="display:block">Job ${esc(p.jobNo)}</small>` : ''}</dd>
+          <dt>Plant / Contact</dt><dd>${esc(p.plant || '–')}</dd>
+          <dt>Eng / Tech</dt><dd>${esc(p.engTech || '–')}</dd>
+          <dt>Payment Term</dt><dd>${(p.payTerms || []).length ? `<a href="#/projects/${esc(p.id)}/billing">${esc(PM.paySummary(p))}</a>` : `<a href="#/projects/${esc(p.id)}/billing">ยังไม่ได้ตั้ง</a>`}</dd>
         </dl>
         ${costStrip(m, PM.poStats(PM.db.pos.filter((po) => po.projectId === p.id)), PM.projectCosts(p.id).length)}
       </div></div>` : compactHeader(p, m, h)}
@@ -84,7 +88,7 @@
     const rerender = () => PM.views.project(el, params);
     ({ overview, timeline: timelineTab, boq: boqTab, changes: (...a) => PM.changesTab(...a), billing: (...a) => PM.billingTab(...a), risks: (...a) => PM.risksTab(...a), daily: (...a) => PM.dailyTab(...a), meetings: (...a) => PM.meetingsTab(...a), punch: (...a) => PM.punchTab(...a), avl: (...a) => PM.avlTab(...a), cost: costTab, quality, safety, team, po: poTab }[tab] || overview)(tabEl, p, m, rerender);
     // the tab bar sits right under the header on every tab; the EPC phase cards and their line items open the Overview tab
-    if (full) tabEl.insertAdjacentHTML('afterbegin', `${phaseFlow(p, m, sel)}${PM.phaseItemsCard(p, sel)}`);
+    if (full) tabEl.insertAdjacentHTML('afterbegin', `${PM.projectUpdateCard(p)}${phaseFlow(p, m, sel)}${PM.phaseItemsCard(p, sel)}`);
 
     el.onchange = (e) => { if (full) PM.phaseItemsHandle(e, p, rerender); };
     el.onclick = (e) => {
@@ -94,6 +98,7 @@
       const act = a.dataset.action, id = a.dataset.id;
       if (act === 'pick-phase') { phaseSel[p.id] = a.dataset.key; rerender(); return; }
       if (act === 'edit-project') V.projectForm(p, null, rerender);
+      if (act === 'pu-edit') PM.projectUpdateForm(p, rerender);
       if (act === 'report') PM.projectReport(p); // report.js
       if (act === 'bid-files') { const b = PM.find('bids', id); if (b && PM.canSeeBidPrice(b)) PM.poFiles.showList(`ไฟล์แนบของ ${b.code} (ใบเสนอราคา / Inquiry)`, b.files); }
       if (act === 'edit-costs') costForm(p, rerender);

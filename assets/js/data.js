@@ -66,6 +66,28 @@
       deliverables: p.deliverables != null ? p.deliverables : checks.map((k) => OLD_CHECKS[k]).join(', '),
     };
   };
+  /* Status Complete counts as handed in. The real date is not known, so: the due date (never in the future, never before the earlier steps).
+     b.submitAssumed marks that date: it shows as "ยื่นแล้ว", and is left out of on-time and cycle-time figures */
+  PM.assumedSubmit = (due, earliest) => { const T = PM.today(); const d = due && due < T ? due : T; return earliest && earliest > d ? earliest : d; };
+  const latestStep = (d) => [d.inquiry, d.estimate, d.proposal].filter(Boolean).sort().pop() || '';
+  /* jobs already marked Complete: nothing runs on a clock, so whoever opens the site brings them in line (every browser gets the same result) */
+  PM.ensureCompleteSubmitted = function () {
+    let changed = 0;
+    (PM.db.bids || []).forEach((b) => {
+      if (!b.dates || b.result === 'nobid' || PM.propOf(b).work !== 'complete') return;
+      if (!b.dates.submit) {
+        b.dates.submit = PM.assumedSubmit((b.result !== 'pending' && b.resultDate) || b.dueDate, latestStep(b.dates));
+        b.submitAssumed = true;
+        b.stage = 'submit';
+        changed++;
+      } else if (b.submitAssumed === undefined && (b.proposal || {}).listNo && b.dates.submit === PM.max(b.dueDate || '', b.dates.proposal || b.dates.inquiry)) {
+        b.submitAssumed = true; // imported before v1.74 under the same rule: the date was never a real one
+        changed++;
+      }
+    });
+    if (changed) PM.save();
+    return changed;
+  };
   PM.propStatusInfo = (key) => PM.PROP_STATUS.find((s) => s.key === key) || { key, label: 'No-bid', level: 'neutral' };
   /* the list in the order things came in: "No." is the place in the whole list, whatever a filter hides */
   PM.proposalList = () => (PM.db.bids || []).slice()
@@ -526,8 +548,9 @@
       return { key: s.key, label: next ? s.label : 'Submit → Award', avg: avg(vals), n: vals.length };
     });
     const submitted = list.filter((b) => b.dates.submit);
-    const onTime = submitted.filter((b) => !b.dueDate || b.dates.submit <= b.dueDate).length;
-    const cycles = submitted.map((b) => PM.diffDays(b.dates.inquiry, b.dates.submit));
+    const dated = submitted.filter((b) => !b.submitAssumed); // a date we assumed says nothing about timing
+    const onTime = dated.filter((b) => !b.dueDate || b.dates.submit <= b.dueDate).length;
+    const cycles = dated.map((b) => PM.diffDays(b.dates.inquiry, b.dates.submit));
     const won = list.filter((b) => b.result === 'won');
     const lost = list.filter((b) => b.result === 'lost');
     const pending = list.filter((b) => b.result === 'pending');
@@ -536,7 +559,8 @@
       list, reached, stageDays,
       total: list.length,
       submitted: submitted.length,
-      onTimeRate: submitted.length ? onTime / submitted.length : null,
+      assumedSubmit: submitted.length - dated.length,
+      onTimeRate: dated.length ? onTime / dated.length : null,
       avgCycle: avg(cycles),
       won: won.length, lost: lost.length,
       nobid: list.filter((b) => b.result === 'nobid').length,
@@ -811,6 +835,7 @@
       if (PM.buildSamplePhaseItems) p.phaseItems = PM.buildSamplePhaseItems(p); // documents / packages under each phase (phase-items.js)
       return p;
     });
+    if (PM.buildSampleProjectInfo) db.projects.forEach((p, i) => PM.buildSampleProjectInfo(p, i)); // PO · Plant · team · update · Payment Term (project-update.js)
 
     /* bids */
     let bidNo = 0;

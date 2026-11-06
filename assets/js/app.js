@@ -57,6 +57,7 @@
       el.innerHTML = skeleton(`ยังโหลดข้อมูลจาก Cloud ไม่ได้ — กำลังลองใหม่อัตโนมัติ <button type="button" class="btn sm" data-sync-retry>ลองใหม่ตอนนี้</button>`);
       return;
     }
+    PM.ensureCompleteSubmitted(); // Status Complete = handed in (data.js)
     if (PM.ensureRecurring) PM.ensureRecurring(); // recurring tasks: nothing runs on a clock, so whoever opens the site creates what is due (weekly.js)
     PM.views[route[1]](el, match.slice(1));
     if (hash !== lastAnimated) { // animate on navigation only, not on resize / data refresh

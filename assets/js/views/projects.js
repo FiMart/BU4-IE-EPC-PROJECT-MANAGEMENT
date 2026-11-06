@@ -2,7 +2,8 @@
 (function () {
   const U = PM.ui, V = PM.common, esc = U.esc;
   // sales / pm: '' = everyone, '-' = not set · health: good | warning | critical | onhold · q = search (not remembered)
-  const state = U.keep('projects', { status: 'active', phase: '', sales: '', pm: '', health: '', q: '' }, ['status', 'phase', 'sales', 'pm', 'health']);
+  // view: kpi = health and charts · update = the team's Project list form (project-update.js)
+  const state = U.keep('projects', { view: 'kpi', status: 'active', phase: '', sales: '', pm: '', health: '', q: '' }, ['view', 'status', 'phase', 'sales', 'pm', 'health']);
 
   /* the same health the table shows: closed / on hold, else the worse of SPI and CPI */
   const healthOf = (r) => (r.p.status === 'closed' ? 'closed' : r.p.status === 'onhold' ? 'onhold' : U.worst(U.health(r.m.spi), U.health(r.m.cpi)));
@@ -18,9 +19,9 @@
     if (state.sales && !salesIds.includes(state.sales)) state.sales = '';
     if (state.pm && !pmIds.includes(state.pm)) state.pm = '';
 
-    // search: project no., name, client, PM, Sales, bid no.
+    // search: project no., name, client, customer PO, plant, team, PM, Sales, bid no.
     const q = state.q.trim().toLowerCase();
-    const text = (p) => { const b = p.bidId && PM.find('bids', p.bidId); return [p.code, p.name, p.client, V.pmName(p), V.salesName(p), b && b.code].join(' ').toLowerCase(); };
+    const text = (p) => { const b = p.bidId && PM.find('bids', p.bidId); return [p.code, p.jobNo, p.name, p.client, p.clientPo, p.plant, p.engTech, V.pmName(p), V.salesName(p), b && b.code].join(' ').toLowerCase(); };
     const byStatus = all.filter((r) => state.status === 'all' || (state.status === 'active' ? r.p.status !== 'closed' : r.p.status === 'closed'));
     const rows = byStatus.filter((r) => (!state.phase || (r.m.current && r.m.current.key === state.phase))
       && (!state.sales || keyOf(r.p) === state.sales)
@@ -35,8 +36,9 @@
 
     el.innerHTML = `
       <div class="row">
-        ${V.seg('status', [{ key: 'active', label: 'Active' }, { key: 'closed', label: 'Closed' }, { key: 'all', label: 'All' }], state.status)}
-        <input type="search" id="prj-q" placeholder="ค้นหา Project No. / ชื่อโครงการ / ลูกค้า / PM / Sales…" value="${esc(state.q)}" aria-label="ค้นหาโครงการ" style="width:300px">
+        ${V.seg('view', [{ key: 'kpi', label: 'ภาพรวม KPI' }, { key: 'update', label: 'Progress Update' }], state.view)}
+        ${V.seg('status', [{ key: 'active', label: `ดำเนินการอยู่ ${activeRows.length}` }, { key: 'closed', label: `ปิดแล้ว ${all.length - activeRows.length}` }, { key: 'all', label: `ทั้งหมด ${all.length}` }], state.status)}
+        <input type="search" id="prj-q" placeholder="ค้นหา Project No. / ชื่อ / ลูกค้า / PO / Plant / ทีมงาน…" value="${esc(state.q)}" aria-label="ค้นหาโครงการ" style="width:300px">
         <span class="spacer"></span>
         ${PM.can('project.import') ? '<button class="btn" data-action="import" title="ลากไฟล์ Excel มาวาง หรือวางเซลล์ที่คัดลอกจาก Excel">⬆ นำเข้า Excel</button>' : ''}
         <button class="btn primary fab" data-action="new" aria-label="New project"><span class="fab-i">+</span><span class="fab-t">New project</span></button>
@@ -48,7 +50,13 @@
         <select id="prj-sales" aria-label="Sales" style="width:auto">${opt('', 'Sales: ทุกคน', state.sales)}${salesIds.map((k) => opt(k, salesLabel(k), state.sales)).join('')}</select>
         ${filtered ? '<button class="btn sm" data-action="clear-filters">ล้างตัวกรอง ✕</button>' : ''}
       </div>
-      ${V.flow(PM.PHASES.map((ph) => {
+      ${state.view === 'update' ? `<div class="card">
+        <div class="card-h pu-head"><h2>Project list — Progress Update</h2><span class="chip" id="prj-count">${filtered ? `พบ ${rows.length} จาก ${byStatus.length} โครงการ` : `${rows.length} โครงการ`}</span><span class="spacer"></span>
+          <button class="btn sm" data-action="list-print">🖨 พิมพ์ / PDF</button><button class="btn sm" data-action="list-excel">⬇ Excel</button>
+          <p>คอลัมน์ตามฟอร์ม FLS-F-IE-EPC-004 · คลิกแถวเพื่อเปิดโครงการ · Payment ที่ขีดฆ่า = วางบิลแล้ว · ไฟล์ Excel ที่ส่งออก แก้แล้วนำเข้ากลับได้</p></div>
+        <div class="card-b flush table-wrap">${PM.projectListTable(rows, filtered)}</div>
+      </div>` : ''}
+      ${state.view === 'update' ? '' : `${state.status === 'closed' ? '' /* a closed project is in no phase: the cards would count other projects than the table below */ : V.flow(PM.PHASES.map((ph) => {
         const inPh = activeRows.filter((r) => r.m.current && r.m.current.key === ph.key);
         const avgAct = activeRows.length ? PM.sum(activeRows, (r) => r.m.phases.find((x) => x.key === ph.key).actualPct) / activeRows.length : null;
         return { label: ph.label, th: ph.th, big: `${inPh.length} <small class="muted" style="font-size:12px">โครงการ</small>`,
@@ -66,10 +74,10 @@
       <div class="grid cols-2">
         <div class="card"><div class="card-h"><h2>สุขภาพโครงการ — SPI × CPI</h2><p>แต่ละจุด = 1 โครงการ · แกนนอน SPI (เวลา) · แกนตั้ง CPI (ต้นทุน) · เส้น 1.0 = ตามแผน / ตามงบ · สีจุด = Health</p></div><div class="card-b"><div class="chart" id="c-health"></div></div></div>
         <div class="card"><div class="card-h"><h2>Progress จริง เทียบแผน</h2><p>ส่วนต่าง % งานเสร็จจริง − ตามแผน ณ วันนี้ · ขวา = เร็วกว่าแผน · ซ้าย = ช้ากว่าแผน</p></div><div class="card-b"><div class="chart" id="c-gap"></div></div></div>
-      </div>`;
+      </div>`}`;
 
     // both ratios of a project on one plot, judged against 1.0 — reads "late and over budget" at a glance
-    PM.charts.quadrant(document.getElementById('c-health'), {
+    if (state.view !== 'update') PM.charts.quadrant(document.getElementById('c-health'), {
       label: 'SPI × CPI by project', xName: 'SPI (เวลา)', yName: 'CPI (ต้นทุน)',
       quads: { tr: 'เร็วกว่าแผน · ต่ำกว่างบ', tl: 'ช้ากว่าแผน · ต่ำกว่างบ', br: 'เร็วกว่าแผน · เกินงบ', bl: 'ช้ากว่าแผน · เกินงบ' },
       points: rows.filter((r) => r.p.status !== 'closed').map((r) => {
@@ -79,7 +87,7 @@
       }),
     });
     // ahead of / behind plan, in progress points — a diverging bar around 0
-    PM.charts.diverging(document.getElementById('c-gap'), {
+    if (state.view !== 'update') PM.charts.diverging(document.getElementById('c-gap'), {
       neg: { label: 'ช้ากว่าแผน', color: 'var(--s2)' }, pos: { label: 'เร็วกว่าแผน', color: 'var(--s1)' },
       items: rows.filter((r) => r.p.status !== 'closed' && r.m.plan != null).map((r) => {
         const gap = (r.m.act - r.m.plan) * 100;
@@ -97,6 +105,7 @@
       clearTimeout(state.t);
       state.t = setTimeout(() => { rerender(); const i = el.querySelector('#prj-q'); i.focus(); i.setSelectionRange(i.value.length, i.value.length); }, 250);
     });
+    if (PM.can('project.import')) PM.sheetImport.dropOn(el, (file) => PM.sheetImport.openProjects(rerender, file));
     el.onclick = (e) => {
       const seg = e.target.closest('[data-seg]');
       if (seg) { state[seg.dataset.seg] = seg.dataset.val; rerender(); return; }
@@ -104,6 +113,10 @@
       if (a) {
         const act = a.dataset.action;
         if (act === 'new') V.projectForm(null, null, (p) => (location.hash = '#/projects/' + p.id));
+        if (act === 'import') PM.sheetImport.openProjects(rerender);
+        if (act === 'list-print') PM.projectListPrint(rows);
+        if (act === 'list-excel') PM.projectListExcel(rows);
+        if (act === 'pu-edit') PM.projectUpdateForm(PM.find('projects', a.dataset.id), rerender);
         if (act === 'clear-filters') { Object.assign(state, { phase: '', sales: '', pm: '', health: '', q: '' }); rerender(); }
         if (act.startsWith('phase:')) { const k = act.slice(6); state.phase = state.phase === k ? '' : k; rerender(); }
         return;
@@ -127,7 +140,7 @@
       ${rows.map(({ p, m }) => {
         const h = p.status === 'closed' ? 'neutral' : U.worst(U.health(m.spi), U.health(m.cpi));
         return `<tr class="click" data-id="${esc(p.id)}">
-          <td class="prj-name"><span class="title">${esc(p.code)}</span><small>${esc(p.name)}</small></td>
+          <td class="prj-name"><span class="title">${esc(p.code)}</span><small>${esc(p.name)}</small>${p.clientPo ? `<small>PO: ${esc(String(p.clientPo).trim().replace(/\s*\n\s*/g, ', '))}</small>` : ''}</td>
           <td class="prj-health" data-tip="${esc(`SPI ${U.ratio(m.spi)} (Time) · CPI ${U.ratio(m.cpi)} (Cost)\n≥ 0.95 On track · 0.90–0.95 At risk · < 0.90 Off track`)}">${p.status === 'closed' ? U.badge('neutral', 'Closed') : p.status === 'onhold' ? U.badge('warning', 'On hold') : U.badge(h, U.healthLabel[h])}
             <small>${ratio('SPI', m.spi)} · ${ratio('CPI', m.cpi)}</small></td>
           <td class="nowrap">${m.current ? `<span class="chip">${esc(U.phaseLabel(m.current.key))}</span>` : '<span class="chip">Closed</span>'}<small>จบ ${U.date(p.endDate)}</small></td>
@@ -136,7 +149,7 @@
             <small>Plan ${U.money(m.bac)}</small><small class="${m.ac > m.bac ? 'neg' : ''}">Actual ${U.money(m.ac)} · ${U.pct(m.bac ? m.ac / m.bac : null)}</small></td>
           <td class="num">${m.ncrOpen} <small style="display:inline">/ ${m.ncrTotal}</small></td>
           <td class="num">${U.num(m.ltifr, 2)}</td>
-          <td class="prj-client">${esc(p.client)}<small>PM: ${esc(V.pmName(p))}</small><small>Sales: ${esc(V.salesName(p))}</small></td></tr>`;
+          <td class="prj-client">${esc(p.client)}${p.plant && p.plant !== p.client ? `<small>Plant: ${esc(p.plant)}</small>` : ''}<small>PM: ${esc(V.pmName(p))}</small><small>Sales: ${esc(V.salesName(p))}</small>${p.engTech ? `<small>ทีม: ${esc(p.engTech)}</small>` : ''}</td></tr>`;
       }).join('')}</tbody></table>`;
   }
 })();

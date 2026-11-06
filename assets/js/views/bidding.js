@@ -43,7 +43,7 @@
         ${V.tile({ label: 'Inquiries received', tag: 'Quantity', value: bs.total, sub: `${bs.pipeline} ยังอยู่ระหว่างดำเนินการ` })}
         ${V.tile({ label: 'Proposals submitted', tag: 'Quantity', value: bs.submitted, sub: `Submit ratio ${U.pct(bs.total ? bs.submitted / bs.total : null)}` })}
         ${V.tile({ label: 'Avg cycle time', tag: 'Time', value: `${U.num(bs.avgCycle, 1)} <small>days</small>`, sub: 'Inquiry → Submit' })}
-        ${V.tile({ label: 'On-time submission', tag: 'Time', value: U.pct(bs.onTimeRate), sub: 'ยื่นก่อน / ตรง due date' })}
+        ${V.tile({ label: 'On-time submission', tag: 'Time', value: U.pct(bs.onTimeRate), sub: `ยื่นก่อน / ตรง due date${bs.assumedSubmit ? ` · ไม่นับ ${bs.assumedSubmit} งานที่ไม่มีวันยื่นจริง` : ''}` })}
         ${V.tile({ label: 'Win rate', value: U.pct(bs.winRate), sub: `${bs.won} won / ${bs.won + bs.lost} decided` })}
         ${PM.seesBidPrices()
           ? V.tile({ label: 'Won value', value: U.money(bs.wonValue), sub: `Pipeline ${U.money(bs.pipelineValue)}${PM.myRole() === 'sales' ? ' · เฉพาะงานของคุณ' : ''}` })
@@ -51,7 +51,7 @@
       </div>
       <div class="card">
         <div class="card-h"><h2>${state.mode === 'kanban' ? 'Bid board' : 'Bid register'}</h2><p>${state.mode === 'kanban'
-          ? (PM.can('bid.edit') ? `คลิกการ์ดเพื่อแก้ไข · ปุ่ม → เลื่อนไปขั้นถัดไป (บันทึกวันที่ = วันนี้)${PM.myRole() === 'sales' ? ' · เลื่อนขั้น / Won / Lost ได้เฉพาะงานของคุณ' : ''}` : 'คลิกการ์ดเพื่อดูรายละเอียด · เลื่อนขั้นและบันทึกผล Won / Lost ทำได้เฉพาะ Admin · Project Manager · Engineer และ Sales ผู้รับผิดชอบงาน')
+          ? (PM.can('bid.edit') ? `งานเร่งด่วนอยู่บนสุด · คลิกการ์ดเพื่อแก้ไข · ปุ่มท้ายการ์ดเลื่อนขั้น (บันทึกวันที่ = วันนี้) · Status Complete = ยื่นแล้ว${PM.myRole() === 'sales' ? ' · เลื่อนขั้น / Won / Lost ได้เฉพาะงานของคุณ' : ''}` :'คลิกการ์ดเพื่อดูรายละเอียด · เลื่อนขั้นและบันทึกผล Won / Lost ทำได้เฉพาะ Admin · Project Manager · Engineer และ Sales ผู้รับผิดชอบงาน')
           : 'รายการ Bid ทั้งหมดในช่วงเวลาที่เลือก + งานที่ยังดำเนินการ'}</p></div>
         <div class="card-b">${state.mode === 'kanban' ? kanban(cols, hoursBy) : table(bids.filter((b) => match(b) && (b.result === 'pending' || inPeriod(b.dates.inquiry))), hoursBy)}</div>
       </div>
@@ -124,26 +124,46 @@
     };
   };
 
+  /* what needs attention comes first: open work by due date (none last), results newest first */
+  const boardOrder = (a, b) => (a.result === 'pending'
+    ? String(a.dueDate || '9999').localeCompare(String(b.dueDate || '9999'))
+    : String(b.resultDate || '').localeCompare(String(a.resultDate || '')));
   function kanban(cols, hoursBy) {
     return `<div class="kanban">${cols.map((c) => `
-      <div class="kcol">
-        <div class="kcol-h" style="flex-wrap:wrap">${PM.illus.icon(c.key, 'kc-ic')}<a class="kcol-link" href="#/bidding/${c.key === 'won' || c.key === 'lost' ? 'award' : c.key}" title="เปิดหน้า ${esc(c.label)}">${esc(c.label)} →</a><span class="count">${c.items.length}</span><span class="sum">${esc(c.th)}${V.bidSum(c.items) ? ' · ' + V.bidSum(c.items) : ''}</span></div>
-        ${c.items.map((b, k) => card(b, c.key, hoursBy, k)).join('') || '<p class="empty">—</p>'}
-      </div>`).join('')}</div>`;
+      <section class="kcol${c.items.length ? '' : ' is-empty'}">
+        <div class="kcol-h">${PM.illus.icon(c.key, 'kc-ic')}<a class="kcol-link" href="#/bidding/${c.key === 'won' || c.key === 'lost' ? 'award' : c.key}" title="เปิดหน้า ${esc(c.label)}">${esc(c.label)}</a><span class="count">${c.items.length}</span>
+          <span class="sum"><span class="th">${esc(c.th)}</span>${c.items.length && V.bidSum(c.items) ? `<b>${V.bidSum(c.items)}</b>` : ''}</span></div>
+        <div class="kcol-body">${c.items.slice().sort(boardOrder).map((b, k) => card(b, c.key, hoursBy, k)).join('') || '<p class="empty">ไม่มีงาน</p>'}</div>
+      </section>`).join('')}</div>`;
   }
 
+  const initials = (name) => {
+    const w = String(name || '').replace(/^(คุณ|นาย|นาง(สาว)?|p['’]?\s)/i, '').trim().split(/\s+/).filter(Boolean);
+    return (w.length > 1 ? w[0][0] + w[1][0] : (w[0] || '?').slice(0, 2)).toUpperCase();
+  };
   function card(b, col, hoursBy, k) {
-    const actions = V.bidButtons(b);
+    const actions = V.bidButtons(b, { compact: true });
+    const pending = b.result === 'pending';
     const age = PM.diffDays(b.dates[b.stage], PM.today());
     const flash = state.flash === b.id ? ' flash' : '';
-    return `<div class="kcard${flash}" style="--k:${k}" data-bid="${b.id}">
-      <div class="code">${esc(b.code)} · ${esc(b.sector)}</div>
-      <div class="name">${esc(b.name)}</div>
+    // the card's edge says how urgent it is, only while it is still waiting to go out
+    const left = pending && !b.dates.submit && b.dueDate ? PM.diffDays(PM.today(), b.dueDate) : null;
+    const urgency = left == null ? '' : left < 0 ? ' kc-late' : left <= 5 ? ' kc-soon' : '';
+    const sales = V.salesName(b), hasSales = !!PM.salesKey(b);
+    const est = b.estimator ? U.resourceName(b.estimator) : '';
+    const money = !PM.canSeeBidPrice(b) ? V.LOCK_PRICE : b.value ? U.money(b.value) : '<span class="muted" title="ไม่ระบุมูลค่า">—</span>';
+    return `<article class="kcard${urgency}${flash}" style="--k:${k}" data-bid="${b.id}">
+      <div class="kc-top"><span class="code" title="${esc(b.code)}${b.sector ? ` · ${esc(b.sector)}` : ''}">${esc(b.code)}</span></div>
+      <div class="name" title="${esc(b.name)}">${esc(b.name)}</div>
       <div class="client">${esc(b.client)}</div>
-      <div class="foot"><span class="v">${V.bidMoney(b)}</span>${PM.canSeeBidPrice(b) ? PM.poFiles.clip(b.files, `data-action="bid-files" data-id="${esc(b.id)}"`) : ''}${V.dueBadge(b)}</div>
-      <div class="foot muted">Sales ${esc(V.salesName(b))} · Est. ${esc(U.resourceName(b.estimator))}${hoursBy[b.id] ? ` · ${U.num(hoursBy[b.id])} h` : ''}${b.result === 'pending' ? ` · ${age}d in stage` : ''}</div>
+      <div class="kc-meta"><span class="v">${money}</span>${PM.canSeeBidPrice(b) ? PM.poFiles.clip(b.files, `data-action="bid-files" data-id="${esc(b.id)}"`) : ''}${V.dueBadge(b)}</div>
+      <div class="kc-people">
+        <span class="kc-av${hasSales ? '' : ' none'}" aria-hidden="true">${hasSales ? esc(initials(sales)) : '–'}</span>
+        <span class="kc-who" title="Sales ${esc(sales)}${est ? ` · Estimator ${esc(est)}` : ''}${hoursBy[b.id] ? ` · ${U.num(hoursBy[b.id])} ชั่วโมงจาก Timesheet` : ''}">${hasSales ? esc(sales) : 'ไม่ระบุ Sales'}${est ? `<small>Est. ${esc(est)}</small>` : ''}</span>
+        ${pending && age > 0 && !b.submitAssumed ? `<span class="kc-tag" title="อยู่ในขั้นนี้มาแล้ว ${age} วัน">ค้าง ${age} วัน</span>` : ''}
+      </div>
       ${actions ? `<div class="actions">${actions}</div>` : ''}
-    </div>`;
+    </article>`;
   }
 
   function table(list, hoursBy) {

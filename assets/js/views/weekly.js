@@ -2,8 +2,20 @@
 (function () {
   const U = PM.ui, V = PM.common, esc = U.esc;
   // the week always opens on the current one; filters and view are remembered
-  const state = U.keep('weekly', { week: null, project: '', person: '', mode: 'calendar', group: 'day', q: '', stFilter: '', lineScope: 'week', lineGroup: 'day', lineDetail: 'full', shotLayout: '' },
-    ['project', 'person', 'mode', 'group', 'stFilter', 'lineScope', 'lineGroup', 'lineDetail', 'shotLayout']);
+  const state = U.keep('weekly', { week: null, month: '', project: '', person: '', mode: 'calendar', group: 'month', q: '', stFilter: '', lineScope: 'week', lineGroup: 'day', lineDetail: 'full', shotLayout: '', monthSeen: false },
+    ['project', 'person', 'mode', 'group', 'stFilter', 'lineScope', 'lineGroup', 'lineDetail', 'shotLayout', 'monthSeen']);
+  /* the month calendar became the default in v1.72: people who had saved another view get it once */
+  if (!state.monthSeen) { state.group = 'month'; state.mode = 'calendar'; state.shotLayout = ''; state.monthSeen = true; }
+  const shiftMonth = (ym, n) => { const [y, m] = ym.split('-').map(Number); return PM.iso(new Date(y, m - 1 + n, 1)).slice(0, 7); };
+  const thMonth = (ym) => PM.parse(`${ym}-01`).toLocaleDateString('th-TH', { month: 'long', year: 'numeric' });
+  /* the week other views and tools work on while a month is open: this week in the current month, else the month's first Monday */
+  /* a month has tasks still ahead: PPC counts only those whose date has come, or the first days of a month would always look bad */
+  const duePpc = (tasks, T) => { const due = tasks.filter((p) => p.dueDate <= T); return due.length ? due.filter((p) => p.status === 'done').length / due.length : null; };
+  const weekOfMonth = (ym, T) => {
+    if (T.slice(0, 7) === ym) return PM.monday(T);
+    const first = `${ym}-01`, mon = PM.monday(first);
+    return mon < first ? PM.addDays(mon, 7) : mon;
+  };
   const ST_FILTERS = [{ value: 'open', label: 'ยังไม่เสร็จ' }, { value: 'late', label: 'เลยกำหนด' }, { value: 'done', label: 'เสร็จแล้ว' }, { value: 'not_done', label: 'ไม่เสร็จ' }, { value: 'notready', label: 'ยังเตรียมไม่พร้อม' }];
   const isLate = (p, T) => p.status !== 'done' && p.status !== 'not_done' && p.dueDate < T;
   const LOOK_WEEKS = 4; // look-ahead: the chosen week and the next three. Recurring tasks are created this far ahead too
@@ -94,9 +106,13 @@
         (state.project === '__bids' ? p.kind === 'bid'
           : state.project === '__overhead' ? p.kind === 'overhead'
             : p.kind === 'project' && p.refId === state.project));
+    const isMonth = state.mode === 'calendar' && state.group === 'month';
+    if (!state.month) state.month = T.slice(0, 7);
     const weekAll = db.plans.filter((p) => p.week === week);
-    const list = weekAll.filter(match).sort((a, b) => (a.dueDate < b.dueDate ? -1 : a.dueDate > b.dueDate ? 1 : a.title.localeCompare(b.title)));
+    const monthAll = isMonth ? db.plans.filter((p) => String(p.dueDate).slice(0, 7) === state.month) : [];
+    const list = (isMonth ? monthAll : weekAll).filter(match).sort((a, b) => (a.dueDate < b.dueDate ? -1 : a.dueDate > b.dueDate ? 1 : a.title.localeCompare(b.title)));
     const st = PM.planStats(list);
+    if (isMonth) st.ppc = duePpc(list, T);
     // search and status narrow what is shown; the tiles and PPC keep counting the whole plan
     const q = state.q.trim().toLowerCase();
     const viewMatch = (p) => (!q || [p.title, itemLabel(p), peopleText(p), p.note].join(' ').toLowerCase().includes(q))
@@ -106,7 +122,7 @@
     const me = myResource();
     const lookWeeks = Array.from({ length: LOOK_WEEKS }, (_, i) => PM.addDays(week, 7 * i));
     const lookRows = db.plans.filter((p) => lookWeeks.includes(p.week) && match(p) && viewMatch(p)).sort(byDue);
-    const out = { week, T, full: (p) => match(p) && viewMatch(p), narrowed, stats: st, note: filterNote(), lookWeeks, lookRows };
+    const out = { week, T, full: (p) => match(p) && viewMatch(p), narrowed, stats: st, note: filterNote(), lookWeeks, lookRows, isMonth, month: isMonth ? state.month : PM.addDays(week, 3).slice(0, 7) };
     if (state.mode === 'team' || state.mode === 'lookahead') pick.on = false; // ticking works on the calendar and the task list
     if (pick.on) { const here = new Set(shown.map((p) => p.id)); pick.ids.forEach((id) => { if (!here.has(id)) pick.ids.delete(id); }); } else pick.ids.clear();
     const edit = canEdit && !pick.on, status = canStatus && !pick.on;
@@ -134,7 +150,7 @@
     const projects = db.projects.filter((p) => p.status !== 'closed');
     el.innerHTML = `
       <div class="row">
-        ${V.weekNav(week)}
+        ${isMonth ? monthNav(state.month, T) : V.weekNav(week)}
         <span class="spacer"></span>
         <details class="wp-menu"><summary class="btn">ส่งแผนงาน ▾</summary><div class="wp-menu-p">
           <button type="button" data-action="line">คัดลอกส่ง LINE</button>
@@ -160,13 +176,13 @@
         <select id="wp-status" aria-label="กรองสถานะ" style="width:auto">${U.options(ST_FILTERS, state.stFilter, 'ทุกสถานะ')}</select>
         <input type="search" id="wp-q" placeholder="ค้นหางาน / คน / โครงการ…" value="${esc(state.q)}" style="width:200px">
         ${V.seg('mode', [{ key: 'calendar', label: 'ปฏิทิน' }, { key: 'tasks', label: 'รายการงาน' }, { key: 'team', label: 'ภาระงานรายคน' }, { key: 'lookahead', label: `ล่วงหน้า ${LOOK_WEEKS} สัปดาห์` }], state.mode)}
-        ${state.mode === 'calendar' ? V.seg('group', [{ key: 'day', label: 'รายวัน' }, { key: 'person', label: 'แยกตามคน' }], state.group) : ''}
+        ${state.mode === 'calendar' ? V.seg('group', [{ key: 'month', label: 'รายเดือน' }, { key: 'day', label: 'รายสัปดาห์' }, { key: 'person', label: 'แยกตามคน' }], state.group) : ''}
       </div>
       <div class="grid cols-5">
         ${V.tile({ label: 'งานในแผน', tag: 'Tasks', value: st.total, sub: `${st.planned} planned · ${st.inProgress} กำลังทำ` })}
         ${V.tile({ label: 'เสร็จแล้ว', tag: 'Done', value: st.done, sub: st.notDone ? U.badge('critical', `${st.notDone} ไม่เสร็จ`) : U.badge('good', 'ไม่มีงานค้าง') })}
-        ${V.tile({ label: 'PPC', tag: 'Plan complete', value: U.pct(st.ppc), sub: U.badge(ppcLevel(st.ppc), `เป้าหมาย ${U.pct(PPC_TARGET)}`), tip: 'PPC (Percent Plan Complete) = งานที่เสร็จ ÷ งานทั้งหมดในแผนสัปดาห์' })}
-        ${V.tile({ label: 'ชั่วโมงตามแผน', tag: 'Hours', value: `${U.num(st.hours)} <small>h</small>`, sub: `ทีมใช้ ${U.pct(teamCap ? teamPlanned / teamCap : null)} ของ capacity` })}
+        ${V.tile({ label: 'PPC', tag: 'Plan complete', value: U.pct(st.ppc), sub: U.badge(ppcLevel(st.ppc), `เป้าหมาย ${U.pct(PPC_TARGET)}`), tip: isMonth ? 'PPC ของเดือนนี้ = งานที่เสร็จ ÷ งานที่ถึงกำหนดแล้ว · งานที่ยังไม่ถึงกำหนดไม่นับ' : 'PPC (Percent Plan Complete) = งานที่เสร็จ ÷ งานทั้งหมดในแผนสัปดาห์' })}
+        ${V.tile({ label: 'ชั่วโมงตามแผน', tag: 'Hours', value: `${U.num(st.hours)} <small>h</small>`, sub: isMonth ? `ทั้งเดือน${thMonth(state.month)}` : `ทีมใช้ ${U.pct(teamCap ? teamPlanned / teamCap : null)} ของ capacity` })}
         ${V.tile({ label: 'สาเหตุหลักที่ไม่เสร็จ', value: st.notDone ? `${reasons[topReason]} <small>งาน</small>` : '–', sub: topReason ? esc(topReason) : 'ยังไม่มี' })}
       </div>
       ${pick.on ? `<div class="wp-pickbar" data-pickbar role="group" aria-label="อัปเดตหลายงาน">
@@ -178,14 +194,14 @@
         <button class="btn sm ghost" data-action="pick">ยกเลิก</button>
       </div>` : ''}
       <div class="card">
-        <div class="card-h"><h2>${{ calendar: 'ปฏิทินงานประจำสัปดาห์', tasks: 'งานประจำสัปดาห์', team: 'ภาระงานรายคน', lookahead: `แผนล่วงหน้า ${LOOK_WEEKS} สัปดาห์ (Look-ahead)` }[state.mode]}</h2>
+        <div class="card-h"><h2>${{ calendar: isMonth ? `ปฏิทินงานเดือน${thMonth(state.month)}` : 'ปฏิทินงานประจำสัปดาห์', tasks: 'งานประจำสัปดาห์', team: 'ภาระงานรายคน', lookahead: `แผนล่วงหน้า ${LOOK_WEEKS} สัปดาห์ (Look-ahead)` }[state.mode]}</h2>
           <p>${state.mode === 'lookahead' ? lookSummary(lookRows, T) : pick.on ? 'คลิกงานเพื่อเลือก แล้วกดสถานะที่แถบด้านบน' : state.mode === 'calendar'
             ? (canEdit ? 'ลากการ์ดไปวันอื่นเพื่อเลื่อนกำหนด' + (state.group === 'person' ? ' หรือไปแถวคนอื่นเพื่อเปลี่ยนผู้รับผิดชอบ' : '') + ' · กด ＋ เพื่อเพิ่มงานในวันนั้น · คลิกการ์ดเพื่อแก้ไข' : 'อัปเดตสถานะได้จากการ์ด')
             : state.mode === 'tasks'
               ? (canStatus ? 'อัปเดตสถานะได้ทันทีจากตาราง' : '') + (canEdit ? ' · คลิกที่งานเพื่อแก้ไขรายละเอียด' : '')
               : 'ชั่วโมงตามแผนเทียบกับ capacity (หักวันลา) และชั่วโมงจริงจาก Timesheet · คลิกชื่อเพื่อดูงานของคนนั้น'}${narrowed && state.mode !== 'team' && state.mode !== 'lookahead' ? ` · <b>แสดง ${shown.length} จาก ${list.length} งานตามตัวกรอง</b>` : ''}</p></div>
         ${state.mode === 'lookahead' ? lookahead(lookWeeks, lookRows, T, canEdit, canStatus) : state.mode === 'calendar'
-          ? `<div class="card-b cal-wrap">${state.group === 'person' ? calendarByPerson(shown, week, T, edit) : calendarByDay(shown, week, T, edit, status)}</div>`
+          ? `<div class="card-b cal-wrap">${isMonth ? calendarByMonth(state.month, out.full, T, edit) : state.group === 'person' ? calendarByPerson(shown, week, T, edit) : calendarByDay(shown, week, T, edit, status)}</div>`
           : `<div class="card-b flush table-wrap">${state.mode === 'tasks' ? tasksTable(shown, T, edit, status) : teamTable(loading)}</div>`}
       </div>
       <div class="grid cols-2">
@@ -265,7 +281,16 @@
     };
     el.onclick = (e) => {
       const seg = e.target.closest('[data-seg]');
-      if (seg) { state[seg.dataset.seg] = seg.dataset.val; rerender(); return; }
+      if (seg) {
+        state[seg.dataset.seg] = seg.dataset.val;
+        // opening the month view on the week being looked at
+        if (state.mode === 'calendar' && state.group === 'month') {
+          const wk = state.week, ym = state.month;
+          if (wk.slice(0, 7) !== ym && PM.addDays(wk, 6).slice(0, 7) !== ym) state.month = PM.addDays(wk, 3).slice(0, 7);
+        }
+        rerender();
+        return;
+      }
       const bulk = e.target.closest('[data-bulk]');
       if (bulk) { bulkUpdate(bulk.dataset.bulk, Array.from(pick.ids).map(findPlan).filter(Boolean), rerender); return; }
       if (pick.on && !e.target.closest('[data-action], .wp-menu')) {
@@ -279,9 +304,16 @@
       const a = e.target.closest('[data-action]');
       if (a) {
         const act = a.dataset.action;
+        if (isMonth && (act === 'prev' || act === 'next' || act === 'this')) {
+          state.month = act === 'this' ? T.slice(0, 7) : shiftMonth(state.month, act === 'prev' ? -1 : 1);
+          state.week = weekOfMonth(state.month, T);
+          rerender();
+          return;
+        }
         if (act === 'prev') { state.week = PM.addDays(state.week, -7); rerender(); }
         if (act === 'next') { state.week = PM.addDays(state.week, 7); rerender(); }
         if (act === 'this' && state.week !== PM.monday(T)) { state.week = PM.monday(T); rerender(); }
+        if (act === 'day-more') dayDialog(a.dataset.day, out, rerender);
         if (act === 'new' && canEdit) planForm(null, rerender);
         if (act === 'edit' && canEdit) planForm(findPlan(a.dataset.id), rerender);
         if (act === 'carry' && canEdit) carryOver(rerender);
@@ -299,7 +331,10 @@
       const person = e.target.closest('tr[data-person]');
       if (person) { state.person = person.dataset.person; state.mode = 'tasks'; rerender(); return; }
       const row = e.target.closest('[data-plan]');
-      if (row && canEdit) planForm(findPlan(row.dataset.plan), rerender);
+      if (row && canEdit) { planForm(findPlan(row.dataset.plan), rerender); return; }
+      // on a phone the month shows a count per day: tapping the day lists its tasks
+      const cell = isMonth && window.innerWidth <= 640 && e.target.closest('.mcal-day[data-drop-day]');
+      if (cell) dayDialog(cell.dataset.dropDay, out, rerender);
     };
     el.onkeydown = (e) => {
       const card = e.target.closest && e.target.closest('.cal-card[data-plan]');
@@ -386,10 +421,10 @@
 
   /* ---------- copy for LINE: plain text, no table, short lines so it reads well on a phone ---------- */
   const LINE_ICON = { planned: '⬜', in_progress: '🔄', done: '✅', not_done: '❌' };
-  const LINE_SCOPES = [{ key: 'week', label: 'ทั้งสัปดาห์' }, { key: 'today', label: 'วันนี้' }, { key: 'tomorrow', label: 'พรุ่งนี้' }, { key: 'late', label: 'เลยกำหนด' }];
+  const LINE_SCOPES = [{ key: 'month', label: 'ทั้งเดือน' }, { key: 'week', label: 'ทั้งสัปดาห์' }, { key: 'today', label: 'วันนี้' }, { key: 'tomorrow', label: 'พรุ่งนี้' }, { key: 'late', label: 'เลยกำหนด' }];
   function lineTasks(scope, ctx) {
     const all = PM.db.plans.filter(ctx.full), { T, week } = ctx;
-    const hit = { week: (p) => p.week === week, today: (p) => p.dueDate === T, tomorrow: (p) => p.dueDate === PM.addDays(T, 1), late: (p) => p.week === week && isLate(p, T) }[scope];
+    const hit = { month: (p) => String(p.dueDate).slice(0, 7) === ctx.month, week: (p) => p.week === week, today: (p) => p.dueDate === T, tomorrow: (p) => p.dueDate === PM.addDays(T, 1), late: (p) => p.week === week && isLate(p, T) }[scope];
     return all.filter(hit).sort(byDue);
   }
   function lineTaskText(p, by, oneDay, detail, T) {
@@ -403,10 +438,10 @@
   function lineText(ctx) {
     const scope = state.lineScope, by = state.lineGroup, detail = state.lineDetail, { T, week } = ctx;
     const tasks = lineTasks(scope, ctx), oneDay = scope === 'today' || scope === 'tomorrow';
-    const title = { week: `📋 แผนงานสัปดาห์ ${thRange(week)}`, today: `📋 งานวันนี้ · ${thDay(T)}`, tomorrow: `📋 งานพรุ่งนี้ · ${thDay(PM.addDays(T, 1))}`, late: `⚠️ งานเลยกำหนด · สัปดาห์ ${thRange(week)}` }[scope];
+    const title = { month: `📋 แผนงานเดือน${thMonth(ctx.month)}`, week: `📋 แผนงานสัปดาห์ ${thRange(week)}`, today: `📋 งานวันนี้ · ${thDay(T)}`, tomorrow: `📋 งานพรุ่งนี้ · ${thDay(PM.addDays(T, 1))}`, late: `⚠️ งานเลยกำหนด · สัปดาห์ ${thRange(week)}` }[scope];
     const s = PM.planStats(tasks);
     const counts = `งาน ${s.total} · เสร็จ ${s.done} · กำลังทำ ${s.inProgress} · ยังไม่เริ่ม ${s.planned}${s.notDone ? ` · ไม่เสร็จ ${s.notDone}` : ''}`;
-    const head = [title, ctx.note, tasks.length ? (scope === 'late' ? `${s.total} งาน` : counts + (scope === 'week' && !ctx.narrowed ? ` · PPC ${U.pct(s.ppc)}` : '')) : ''].filter(Boolean).join('\n');
+    const head = [title, ctx.note, tasks.length ? (scope === 'late' ? `${s.total} งาน` : counts + ((scope === 'week' || scope === 'month') && !ctx.narrowed ? ` · PPC ${U.pct(scope === 'month' ? duePpc(tasks, T) : s.ppc)}` : '')) : ''].filter(Boolean).join('\n');
     if (!tasks.length) return `${head}\nไม่มีงาน`;
     const body = oneDay && by !== 'person'
       ? tasks.map((p) => lineTaskText(p, by, oneDay, detail, T)).join('\n')
@@ -464,24 +499,33 @@
   }
 
   /* ---------- Screenshot: the plan as a PNG (drawn by weekly-shot.js) to paste or share in a chat ---------- */
-  const SHOT_LAYOUTS = [{ key: 'cal', label: 'ปฏิทิน 7 วัน' }, { key: 'day', label: 'รายการตามวัน' }, { key: 'person', label: 'รายการแยกตามคน' }];
+  const SHOT_LAYOUTS = [{ key: 'month', label: 'ปฏิทินเดือน' }, { key: 'cal', label: 'ปฏิทิน 7 วัน' }, { key: 'day', label: 'รายการตามวัน' }, { key: 'person', label: 'รายการแยกตามคน' }];
   function shotData(ctx) {
-    const { T, week } = ctx, cal = state.shotLayout === 'cal', scope = cal ? 'week' : state.lineScope;
+    const { T, week } = ctx, cal = state.shotLayout === 'cal', calMonth = state.shotLayout === 'month', scope = calMonth ? 'month' : cal ? 'week' : state.lineScope;
     const tasks = lineTasks(scope, ctx), s = PM.planStats(tasks), by = state.shotLayout === 'person' ? 'person' : 'day';
     const oneDay = scope === 'today' || scope === 'tomorrow';
     const task = (p, group) => ({
       title: p.title, status: p.status, statusLabel: statusInfo(p.status).th, late: isLate(p, T), reason: p.status === 'not_done' ? p.reason : '',
       lines: [itemLabel(p), group === 'person' ? (oneDay ? '' : thShortDay(p.dueDate)) : peopleText(p), [hoursText(p), p.qtyPlan ? `ปริมาณ ${U.num(p.qtyDone || 0)}/${U.num(p.qtyPlan)}` : ''].filter(Boolean).join(' · ')],
     });
-    const whole = scope === 'week' && !ctx.narrowed;
+    const whole = (scope === 'week' || scope === 'month') && !ctx.narrowed;
     const d = {
       company: PM.COMPANY, note: ctx.note, stamp: `ข้อมูล ณ ${new Date().toLocaleString('th-TH', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}`,
-      title: { week: 'แผนงานรายสัปดาห์', today: 'งานวันนี้', tomorrow: 'งานพรุ่งนี้', late: 'งานเลยกำหนด' }[scope],
-      sub: scope === 'today' ? thDay(T) : scope === 'tomorrow' ? thDay(PM.addDays(T, 1)) : `สัปดาห์ ${thRange(week)}`,
+      title: { month: 'แผนงานรายเดือน', week: 'แผนงานรายสัปดาห์', today: 'งานวันนี้', tomorrow: 'งานพรุ่งนี้', late: 'งานเลยกำหนด' }[scope],
+      sub: scope === 'month' ? thMonth(ctx.month) : scope === 'today' ? thDay(T) : scope === 'tomorrow' ? thDay(PM.addDays(T, 1)) : `สัปดาห์ ${thRange(week)}`,
       kpis: [{ label: 'งาน', value: String(s.total), sub: `ยังไม่เริ่ม ${s.planned}` }, { label: 'เสร็จ', value: String(s.done), sub: `กำลังทำ ${s.inProgress}`, level: 'good' }, { label: 'ไม่เสร็จ', value: String(s.notDone), level: s.notDone ? 'critical' : '' }]
-        .concat(whole ? [{ label: 'PPC', value: U.pct(s.ppc), sub: `เป้าหมาย ${U.pct(PPC_TARGET)}`, level: ppcLevel(s.ppc) }] : [{ label: 'ชั่วโมงคน', value: U.num(s.hours, 1) }]),
+        .concat(whole ? [{ label: 'PPC', value: U.pct(scope === 'month' ? duePpc(tasks, T) : s.ppc), sub: scope === 'month' ? 'เทียบงานที่ถึงกำหนดแล้ว' : `เป้าหมาย ${U.pct(PPC_TARGET)}`, level: ppcLevel(scope === 'month' ? duePpc(tasks, T) : s.ppc) }] : [{ label: 'ชั่วโมงคน', value: U.num(s.hours, 1) }]),
     };
-    if (cal) {
+    if (calMonth) {
+      d.layout = 'month';
+      const first = `${ctx.month}-01`, start = PM.monday(first), stop = PM.addDays(PM.monday(PM.monthEnd(ctx.month)), 6);
+      d.heads = ['จันทร์', 'อังคาร', 'พุธ', 'พฤหัส', 'ศุกร์', 'เสาร์', 'อาทิตย์'];
+      d.cells = [];
+      for (let x = start; x <= stop; x = PM.addDays(x, 1)) {
+        const hol = PM.holidayOf(x);
+        d.cells.push({ num: PM.parse(x).getDate(), out: x.slice(0, 7) !== ctx.month, today: x === T, weekend: weekdayOf(x) > 4, holiday: hol ? hol.name : '', tasks: tasks.filter((p) => p.dueDate === x).map((p) => ({ title: p.title, status: p.status, late: isLate(p, T) })) });
+      }
+    } else if (cal) {
       d.layout = 'cal';
       // Saturday and Sunday only when something is planned on them, so the working days stay readable
       d.days = weekDays(week).filter((x, i) => i < 5 || tasks.some((p) => p.dueDate === x)).map((x) => {
@@ -495,7 +539,7 @@
     return d;
   }
   function shotDialog(ctx) {
-    if (!state.shotLayout) state.shotLayout = window.innerWidth > 900 ? 'cal' : 'day';
+    if (!state.shotLayout) state.shotLayout = window.innerWidth > 900 ? 'month' : 'day';
     if (state.lineScope === 'prep') state.lineScope = 'week'; // a choice of the LINE text only
     const form = U.modal({
       title: 'Screenshot แผนงาน', wide: true, submitLabel: 'คัดลอกรูป',
@@ -512,11 +556,11 @@
     const img = form.querySelector('[data-shot-box] img'), wait = form.querySelector('[data-shot-wait]'), size = form.querySelector('[data-shot-size]');
     const submit = form.querySelector('[type=submit]'), save = form.querySelector('[data-shot-save]'), share = form.querySelector('[data-shot-share]');
     const scopeSeg = form.querySelector('[data-seg-of="lineScope"]');
-    const fileName = () => `weekly-plan-${ctx.week}.png`;
+    const fileName = () => (state.shotLayout === 'month' ? `monthly-plan-${ctx.month}.png` : `weekly-plan-${ctx.week}.png`);
     let blob = null, url = '', turn = 0;
     const draw = async () => {
       const mine = ++turn;
-      scopeSeg.hidden = state.shotLayout === 'cal'; // the calendar always shows the whole week
+      scopeSeg.hidden = state.shotLayout === 'cal' || state.shotLayout === 'month'; // a calendar always shows the whole week or month
       submit.disabled = true; save.disabled = true;
       wait.hidden = false;
       let r = null;
@@ -576,8 +620,8 @@
         <td>${U.badge(st.level, st.th)}</td><td>${esc([p.status === 'not_done' ? p.reason : '', p.note].filter(Boolean).join(' · '))}</td></tr>`;
     };
     P.write(win, {
-      title: `Weekly Plan ${week}`, bar: `แผนงานรายสัปดาห์ — ${thRange(week)}`, doc: 'weekly',
-      head: { title: `<h1>แผนงานรายสัปดาห์</h1><p><b>Weekly Plan</b> · ${esc(thRange(week))}</p>${ctx.note ? `<p>${esc(ctx.note)}</p>` : ''}`, meta: `${esc(PM.COMPANY)}<br>ข้อมูล ณ ${U.date(T)}<br>${by === 'person' ? 'แยกตามคน' : 'เรียงตามวัน'}` },
+      title: ctx.isMonth ? `Monthly Plan ${ctx.month}` : `Weekly Plan ${week}`, bar: ctx.isMonth ? `แผนงานเดือน${thMonth(ctx.month)}` : `แผนงานรายสัปดาห์ — ${thRange(week)}`, doc: 'weekly',
+      head: { title: ctx.isMonth ? `<h1>แผนงานรายเดือน</h1><p><b>Monthly Plan</b> · ${esc(thMonth(ctx.month))}</p>${ctx.note ? `<p>${esc(ctx.note)}</p>` : ''}` : `<h1>แผนงานรายสัปดาห์</h1><p><b>Weekly Plan</b> · ${esc(thRange(week))}</p>${ctx.note ? `<p>${esc(ctx.note)}</p>` : ''}`, meta: `${esc(PM.COMPANY)}<br>ข้อมูล ณ ${U.date(T)}<br>${by === 'person' ? 'แยกตามคน' : 'เรียงตามวัน'}` },
       body: `<style>@page { size: A4 landscape; } main { max-width: 275mm; } .kpis { margin-bottom: 10px; }
           tr.grp td { background: #dfe8f5; color: #0b2f6b; font-weight: 700; font-size: 11px; border-bottom: 1px solid #c0ccdc; } tr.grp small { display: inline; margin-left: 8px; font-weight: 400; color: #3f5068; font-size: 10px; }</style>
         <section class="kpis">${P.kpi('งานในแผน', s.total)}${P.kpi('เสร็จ', s.done, `กำลังทำ ${s.inProgress} · ไม่เสร็จ ${s.notDone}`)}${ctx.narrowed ? P.kpi('ยังไม่เริ่ม', s.planned) : P.kpi('PPC', U.pct(s.ppc), `เป้าหมาย ${U.pct(PPC_TARGET)}`, ppcLevel(s.ppc))}${P.kpi('ชั่วโมงคน', U.num(s.hours, 1))}</section>
@@ -868,6 +912,58 @@
     });
     return out;
   };
+
+  /* ---------- month calendar: Monday-first weeks, up to four tasks a day, the rest behind "+ อีก n งาน" ---------- */
+  const MONTH_CHIPS = 4;
+  function monthNav(ym, T) {
+    const chev = (d) => `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="${d}"/></svg>`, cur = ym === T.slice(0, 7);
+    return `<div class="week-nav" role="group" aria-label="เลือกเดือน">
+        <button class="wk-btn" type="button" data-action="prev" aria-label="เดือนก่อนหน้า" title="เดือนก่อนหน้า">${chev('M15 6l-6 6 6 6')}</button>
+        <div class="wk-label"><b>${esc(thMonth(ym))}</b><small>${cur ? '<span class="now">เดือนนี้</span>' : `${Math.abs((+ym.slice(0, 4) - +T.slice(0, 4)) * 12 + (+ym.slice(5) - +T.slice(5, 7)))} เดือน${ym < T ? 'ก่อน' : 'ข้างหน้า'}`}</small></div>
+        <button class="wk-btn" type="button" data-action="next" aria-label="เดือนถัดไป" title="เดือนถัดไป">${chev('M9 6l6 6-6 6')}</button>
+      </div>
+      <button class="btn wk-today${cur ? ' is-current' : ''}" type="button" data-action="this" ${cur ? 'aria-pressed="true" title="กำลังดูเดือนนี้"' : 'title="กลับไปเดือนปัจจุบัน"'}>
+        <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="5" width="17" height="15.5" rx="2"/><path d="M3.5 9.5h17M8 3v4M16 3v4"/><circle cx="12" cy="15" r="1.6" fill="currentColor" stroke="none"/></svg>
+        เดือนนี้</button>`;
+  }
+  function monthChip(p, T, canEdit) {
+    const late = isLate(p, T), s = statusInfo(p.status);
+    return `<article class="cal-card mchip st-${esc(p.status)}${late ? ' late' : ''}${pick.ids.has(p.id) ? ' picked' : ''}" data-plan="${esc(p.id)}" draggable="${canEdit ? 'true' : 'false'}" ${canEdit ? 'tabindex="0" role="button"' : ''}
+        data-tip="${esc(`${p.title}\n${itemLabel(p)}\nผู้รับผิดชอบ: ${peopleText(p)}\n${hoursText(p)}\nสถานะ: ${s.th}${late ? ' · เลยกำหนด' : ''}${p.reason ? ' — ' + p.reason : ''}${prepOpen(p).length ? `\nยังเตรียมไม่ครบ ${prepOpen(p).length} รายการ` : ''}`)}">${p.ruleId ? '<span class="cal-rule">🔁</span>' : ''}<span class="mchip-t">${esc(p.title)}</span>${late ? '<b class="mchip-late" title="เลยกำหนด">!</b>' : ''}</article>`;
+  }
+  function calendarByMonth(ym, keep, T, canEdit) {
+    const first = `${ym}-01`, start = PM.monday(first), stop = PM.addDays(PM.monday(PM.monthEnd(ym)), 6);
+    const rows = PM.db.plans.filter((p) => p.dueDate >= start && p.dueDate <= stop && keep(p)).sort(byDue);
+    const cells = [];
+    for (let d = start; d <= stop; d = PM.addDays(d, 1)) {
+      const mine = rows.filter((p) => p.dueDate === d), hol = PM.holidayOf(d), wd = weekdayOf(d), more = mine.length - MONTH_CHIPS;
+      cells.push(`<section class="mcal-day${d.slice(0, 7) !== ym ? ' out' : ''}${d === T ? ' today' : ''}${wd > 4 ? ' weekend' : ''}${hol ? ' hol' : ''}" data-drop-day="${d}">
+        <header><span class="mcal-num">${PM.parse(d).getDate()}</span>${hol ? `<small class="mcal-hol" title="${esc(hol.name)}">${esc(hol.name)}</small>` : ''}
+          ${canEdit ? `<button class="mcal-add" type="button" data-action="new-on" data-day="${d}" aria-label="เพิ่มงานวันที่ ${U.date(d)}">＋</button>` : ''}</header>
+        <div class="mcal-list">${mine.slice(0, more > 0 ? MONTH_CHIPS - 1 : MONTH_CHIPS).map((p) => monthChip(p, T, canEdit)).join('')}
+          ${more > 0 ? `<button type="button" class="mcal-more" data-action="day-more" data-day="${d}">+ อีก ${more + 1} งาน</button>` : ''}</div>
+        ${mine.length ? `<span class="mcal-n" aria-hidden="true">${mine.length}${mine.some((p) => isLate(p, T)) ? ' !' : ''}</span>` : ''}
+      </section>`);
+    }
+    return `<div class="mcal"><div class="mcal-heads">${WEEKDAYS.map((w) => `<b>${w}</b>`).join('')}</div><div class="mcal-grid">${cells.join('')}</div></div>
+      <div class="mcal-legend">${PM.PLAN_STATUS.map((s) => `<span><i class="st-${s.key}"></i>${esc(s.th)}</span>`).join('')}<span><b class="mchip-late">!</b>เลยกำหนด</span></div>`;
+  }
+  /* every task of one day: the way in when a day has more than fits, and on phones */
+  function dayDialog(d, ctx, done) {
+    const T = ctx.T, canEdit = PM.can('plan.edit'), tasks = PM.db.plans.filter((p) => p.dueDate === d && ctx.full(p)).sort(byDue);
+    const hol = PM.holidayOf(d);
+    const form = U.modal({
+      title: thDay(d),
+      body: `${hol ? `<p class="full muted" style="margin:0">วันหยุด: ${esc(hol.name)}</p>` : ''}
+        <div class="full day-list">${tasks.map((p) => { const s = statusInfo(p.status); return `<${canEdit ? 'button type="button"' : 'div'} class="day-item st-${esc(p.status)}" data-open-plan="${esc(p.id)}"><span><b>${p.ruleId ? '🔁 ' : ''}${esc(p.title)}</b><small>${esc(itemLabel(p))} · ${esc(peopleText(p))} · ${esc(hoursText(p))}</small></span><span class="day-st">${isLate(p, T) ? U.badge('critical', 'เลยกำหนด') : ''}${U.badge(s.level, s.th)}</span></${canEdit ? 'button' : 'div'}>`; }).join('') || '<p class="empty">ไม่มีงานในวันนี้</p>'}</div>
+        ${canEdit ? `<div class="full"><button type="button" class="btn sm" data-day-add>+ เพิ่มงานวันนี้</button></div>` : ''}`,
+    });
+    form.addEventListener('click', (e) => {
+      const it = e.target.closest('button[data-open-plan]');
+      if (it) { U.closeModal(); planForm(PM.find('plans', it.dataset.openPlan), done); return; }
+      if (e.target.closest('[data-day-add]')) { U.closeModal(); planForm(null, done, { dueDate: d, resourceIds: state.person ? [state.person] : null }); }
+    });
+  }
 
   /* ---------- calendar views ---------- */
   const weekDays = (week) => [0, 1, 2, 3, 4, 5, 6].map((i) => PM.addDays(week, i));

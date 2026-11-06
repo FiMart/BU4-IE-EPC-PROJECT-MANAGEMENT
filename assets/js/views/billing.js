@@ -51,7 +51,8 @@
   };
   /* contract payment terms of the project: advance % · retention % · client credit (days) — p.billingTerms */
   const TERMS_DEFAULT = { advance: 10, retention: 5, creditDays: 30 };
-  const terms = (p) => Object.assign({}, TERMS_DEFAULT, p.billingTerms);
+  // a project with its own Payment Term milestones has no advance or retention to deduct unless someone sets them
+  const terms = (p) => Object.assign({}, TERMS_DEFAULT, (p.payTerms || []).length ? { advance: 0, retention: 0 } : null, p.billingTerms);
   function termsForm(p, done) {
     const t = terms(p);
     U.modal({
@@ -85,6 +86,7 @@
         ${V.tile({ label: 'ผลงานที่ยังไม่ได้วางบิล', tag: 'Unbilled', value: U.money(s.unbilled), sub: `ผลงาน ${U.pct(m.act)} = ${U.money(s.earned)} · เบิกแล้ว ${U.money(s.progressBilled)}`, tip: 'มูลค่าสัญญา × % งานเสร็จ − ยอดวางบิลงวดผลงาน' })}
         ${V.tile({ label: 'Retention ที่ถูกหักไว้', value: U.money(s.retentionHeld), sub: `เงินล่วงหน้าคงเหลือที่ต้องหักคืน ${U.money(s.advanceLeft)}` })}
       </div>
+      ${PM.payTermsCard(p, s.contract, canEdit)}
       <div class="card"><div class="card-h"><h2>วางบิลสะสม เทียบ รับเงินสะสม</h2><p>เส้นประ = ยอดสุทธิที่วางบิลแล้วตามวันที่วางบิล · เส้นทึบ = รับเงินจริงตามวันที่รับ — ช่องว่างระหว่างสองเส้น = เงินที่ยังค้างรับ</p></div><div class="card-b"><div class="chart" id="c-bill"></div></div></div>
       <div class="card"><div class="card-h"><h2>งวดเงิน — ${esc(p.code)}</h2><p>${canEdit ? 'คลิกงวดเพื่อแก้ไข · บันทึกวันที่รับเงินเมื่อลูกค้าจ่าย · ' : ''}สุทธิ = ยอดวางบิล − หักเงินล่วงหน้า − หัก Retention</p></div>
         <div class="card-b flush table-wrap">${s.list.length ? `<table class="tbl"><thead><tr><th>เลขที่</th><th>งวด</th><th>วางบิล</th><th>ครบกำหนด</th><th class="num">ยอดวางบิล</th><th class="num">หักล่วงหน้า</th><th class="num">หัก Retention</th><th class="num">สุทธิ</th><th>สถานะ</th></tr></thead><tbody>
@@ -115,12 +117,23 @@
       const a = e.target.closest('[data-inv]');
       if (!a) return;
       if (a.dataset.inv === 'terms') termsForm(p, rerender);
+      if (a.dataset.inv === 'pt-edit') PM.payTermsForm(p, rerender);
+      if (a.dataset.inv === 'pt-bill') {
+        const t = (p.payTerms || []).find((x) => x.id === a.dataset.id);
+        if (t) invForm(p, m, null, rerender, { payTermId: t.id, title: `งวด ${U.num(t.pct, t.pct % 1 ? 1 : 0)}% — ${t.text || ''}`.replace(/ — $/, ''), progress: num(a.dataset.cum), amount: Math.round(s.contract * num(t.pct) / 100), advance: 0, retention: 0 });
+      }
       if (a.dataset.inv === 'new') invForm(p, m, null, rerender);
       if (a.dataset.inv === 'edit') invForm(p, m, (p.invoices || []).find((i) => i.id === a.dataset.id), rerender);
     };
+    el.onchange = (e) => {
+      const id = e.target.dataset.ptDone;
+      const t = id && (p.payTerms || []).find((x) => x.id === id);
+      if (t) { t.done = e.target.checked; PM.upsert('projects', p); rerender(); }
+    };
   };
 
-  function invForm(p, m, inv, done) {
+  /* preset: a new invoice started from a Payment Term milestone */
+  function invForm(p, m, inv, done, preset) {
     const canEdit = PM.can('billing.edit');
     if (!inv && !canEdit) return;
     const T = PM.today(), t = terms(p), s = PM.billingSummary(p, m);
@@ -128,8 +141,8 @@
     // a new claim starts as "progress up to today's % done", sized from what was claimed before
     const prog = Math.round(m.act * 1000) / 10;
     const gross = Math.max(0, Math.round(s.contract * (prog - s.claimed) / 100));
-    const i = inv || { id: PM.uid('INV'), no: nextNo(p), type: 'progress', title: `งวดผลงาน ${U.month(T.slice(0, 7))}`, date: T, dueDate: PM.addDays(T, lag), progress: prog, amount: gross,
-      advance: Math.round(gross * num(t.advance) / 100), retention: Math.round(gross * num(t.retention) / 100), status: 'draft', paidDate: '', paidAmount: '', note: '' };
+    const i = inv || Object.assign({ id: PM.uid('INV'), no: nextNo(p), type: 'progress', title: `งวดผลงาน ${U.month(T.slice(0, 7))}`, date: T, dueDate: PM.addDays(T, lag), progress: prog, amount: gross,
+      advance: Math.round(gross * num(t.advance) / 100), retention: Math.round(gross * num(t.retention) / 100), status: 'draft', paidDate: '', paidAmount: '', note: '' }, preset);
     const form = U.modal({
       title: inv ? `${i.no} · ${i.title || typeLabel(i.type)}` : `วางบิลงวดใหม่ — ${p.code}`, wide: true,
       onDelete: inv && canEdit ? () => { p.invoices = (p.invoices || []).filter((x) => x.id !== i.id); PM.upsert('projects', p); U.toast('ลบงวดแล้ว'); done(); } : null,
@@ -155,6 +168,8 @@
         Object.assign(i, f);
         p.invoices = p.invoices || [];
         if (!p.invoices.includes(i)) p.invoices.push(i);
+        const term = i.payTermId && (p.payTerms || []).find((x) => x.id === i.payTermId);
+        if (term) term.invoiceId = i.id;
         PM.upsert('projects', p);
         U.toast(inv ? 'บันทึกงวดแล้ว' : 'เพิ่มงวดแล้ว');
         done();
@@ -164,7 +179,7 @@
     const net = form.querySelector('#inv-net');
     const upd = () => { const v = num(form.amount.value) - num(form.advance.value) - num(form.retention.value); net.textContent = U.money(v); net.className = v < 0 ? 'neg' : ''; };
     // changing the claimed % or the amount re-sizes the deductions; a new type fills its own defaults
-    let auto = !inv;
+    let auto = !inv && !preset;
     form.addEventListener('input', (e) => {
       if (e.target.name === 'progress' && auto) form.amount.value = Math.max(0, Math.round(s.contract * (num(form.progress.value) - s.claimed) / 100));
       if ((e.target.name === 'progress' || e.target.name === 'amount') && form.type.value === 'progress' && auto) {

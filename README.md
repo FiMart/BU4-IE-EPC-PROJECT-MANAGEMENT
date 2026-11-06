@@ -174,6 +174,8 @@ assets/js/views/punch.js     Punch List (collection punch) + พิมพ์ร�
 assets/js/views/avl.js       AVL รายชื่อผู้ขายที่ลูกค้าอนุมัติของแต่ละโครงการ (collection avl) + ตรวจ PO นอก AVL + พิมพ์
 assets/js/views/meetings.js  บันทึกการประชุม MOM + Action (collection meetings) + พิมพ์ PDF
 assets/js/approvals.js       อนุมัติ PO / ค่าใช้จ่ายที่ถึงวงเงิน (วงเงินใน collection settings id 'approval')
+assets/js/views/sheet-import.js  นำเข้า Proposal / โครงการจาก Excel: อ่าน .xlsx / .ods / .csv ในเบราว์เซอร์ · วางเซลล์จาก Excel · จับคู่คอลัมน์ · แสดงผลก่อนบันทึก · ยกเลิกรอบนำเข้า · รับฟอร์ม Project list
+assets/js/views/project-update.js  หัวข้อตามฟอร์ม FLS-F-IE-EPC-004: PO ลูกค้า · Plant · Eng/Tech · Progress Update · Payment Term · ตาราง Project list พร้อมพิมพ์ / Excel
 assets/js/views/iso.js       ISO 9001: ทะเบียนบันทึกของระบบคุณภาพ (collection qms) · หลักฐานตามข้อกำหนด · ประวัติการแก้ไข (ตาราง app_audit ใน data.sql)
 assets/js/purge.js           ลบถาวร: โครงการ · งานประมูล · บุคลากร · PO พร้อมข้อมูลและไฟล์ที่เกี่ยวข้อง (ฝั่งฐานข้อมูล: trigger app_records_cascade ใน data.sql)
 assets/js/version.js         เวอร์ชัน + ประวัติการแก้ไข (หน้า About)

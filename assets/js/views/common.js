@@ -89,22 +89,32 @@
   V.bidSum = (list) => (PM.seesBidPrices() ? U.money(PM.sum(list.filter(PM.canSeeBidPrice), (b) => b.value || 0)) : '');
 
   /* buttons on a bid (card, row): moving on and Won / Lost only for the Sales who owns it (and Admin) */
-  V.bidButtons = function (b) {
+  V.bidButtons = function (b, o = {}) {
     const i = PM.BID_STAGES.findIndex((s) => s.key === b.stage);
     const id = esc(b.id);
     const mine = PM.canEditBid(b);
-    if (b.result === 'pending' && i < PM.BID_STAGES.length - 1) return mine ? `<button class="btn sm" data-action="next" data-id="${id}">→ ${PM.BID_STAGES[i + 1].label}</button>` : '';
-    if (b.result === 'pending') return mine ? `<button class="btn sm good" data-action="won" data-id="${id}">✓ Won</button><button class="btn sm" data-action="lost" data-id="${id}">✕ Lost</button>` : '';
+    const prev = V.bidPrevStage(b);
+    // compact (board card): the arrow alone, so the forward actions fit on one line
+    const back = mine && b.result === 'pending' && prev ? `<button class="btn sm ghost${o.compact ? ' kb-back' : ''}" data-action="back" data-id="${id}" title="ย้อนกลับไปขั้น ${esc(prev.label)}" aria-label="ย้อนกลับไปขั้น ${esc(prev.label)}">${o.compact ? '←' : `← ${esc(prev.label)}`}</button>` : '';
+    const reopen = mine ? `<button class="btn sm ghost" data-action="reopen" data-id="${id}" title="ยกเลิกผลการประมูล กลับไปรอผล">↩ ยกเลิกผล</button>` : '';
+    if (b.result === 'pending' && i < PM.BID_STAGES.length - 1) return mine ? `${back}<button class="btn sm" data-action="next" data-id="${id}">→ ${PM.BID_STAGES[i + 1].label}</button>` : '';
+    if (b.result === 'pending') return mine ? `${back}<button class="btn sm good" data-action="won" data-id="${id}">✓ Won</button><button class="btn sm" data-action="lost" data-id="${id}">✕ Lost</button>` : '';
     if (b.result === 'won') return b.projectId && PM.find('projects', b.projectId)
       ? `<button class="btn sm" data-action="open-project" data-id="${id}">Open project →</button>`
-      : `<button class="btn sm primary" data-action="convert" data-id="${id}">+ Create project</button>`;
-    return '';
+      : `${o.compact && mine ? `<button class="btn sm ghost kb-back" data-action="reopen" data-id="${id}" title="ยกเลิกผลการประมูล กลับไปรอผล" aria-label="ยกเลิกผลการประมูล">↩</button>` : reopen}<button class="btn sm primary" data-action="convert" data-id="${id}">+ Create project</button>`;
+    return reopen;
+  };
+  /* the stage a bid goes back to: the latest earlier one it really went through (an imported bid may have skipped Estimate) */
+  V.bidPrevStage = (b) => {
+    const i = PM.BID_STAGES.findIndex((s) => s.key === b.stage);
+    for (let k = i - 1; k > 0; k--) if (b.dates[PM.BID_STAGES[k].key]) return PM.BID_STAGES[k];
+    return i > 0 ? PM.BID_STAGES[0] : null;
   };
   V.bidAction = function (a, b, done) {
     if (!b) return false;
     const T = PM.today();
     // same rules as the buttons (and the database for the price): Sales who owns the bid, or Admin
-    if (['next', 'won', 'lost', 'nobid'].includes(a) && !PM.canEditBid(b)) { U.toast('เฉพาะ Admin · Project Manager · Engineer หรือ Sales ผู้รับผิดชอบงานนี้'); return true; }
+    if (['next', 'back', 'reopen', 'won', 'lost', 'nobid'].includes(a) && !PM.canEditBid(b)) { U.toast('เฉพาะ Admin · Project Manager · Engineer หรือ Sales ผู้รับผิดชอบงานนี้'); return true; }
     if (a === 'bid-files' && !PM.canSeeBidPrice(b)) return true;
     if (a === 'bid-files') { // 📎 on a card / row: open the attachments list (one file → open it directly)
       if ((b.files || []).length === 1) PM.poFiles.open(b.files[0].path);
@@ -116,10 +126,38 @@
       const nx = PM.BID_STAGES[i + 1];
       if (!nx) return true;
       b.dates[nx.key] = PM.max(T, b.dates[b.stage]);
+      if (nx.key === 'submit') b.submitAssumed = false;
       b.stage = nx.key;
       PM.upsert('bids', b);
       U.toast(`${b.code} → ${nx.label}`);
       done();
+      return true;
+    }
+    if (a === 'back') {
+      const prev = V.bidPrevStage(b), cur = PM.BID_STAGES.find((s) => s.key === b.stage);
+      if (!prev) return true;
+      // Complete means handed in, so a job taken back from Submit is no longer Complete
+      const reopenWork = b.stage === 'submit' && PM.propOf(b).work === 'complete';
+      U.confirm(`ย้อน ${b.code} จาก ${cur.label} กลับไป ${prev.label}?\n\nวันที่เข้าขั้น ${cur.label} (${U.date(b.dates[b.stage])}) จะถูกล้าง${reopenWork ? ' · Status เปลี่ยนจาก Complete เป็น In Progress' : ''} · ข้อมูลอื่นของงานและชั่วโมง Timesheet ยังอยู่`, { title: 'ย้อนกลับขั้นก่อนหน้า', ok: 'ย้อนกลับ', tone: 'question' }).then((ok) => {
+        if (!ok) return;
+        if (reopenWork) { b.proposal = Object.assign({}, b.proposal, { status: 'in_progress' }); delete b.submitAssumed; }
+        b.dates[b.stage] = '';
+        b.stage = V.stageOf(b);
+        PM.upsert('bids', b);
+        U.toast(`${b.code} ← ${prev.label}`);
+        done();
+      });
+      return true;
+    }
+    if (a === 'reopen') {
+      if (b.projectId && PM.find('projects', b.projectId)) { U.alert('งานนี้สร้างโครงการแล้ว ยกเลิกผลไม่ได้'); return true; }
+      U.confirm(`ยกเลิกผล ${PM.BID_RESULTS[b.result]} ของ ${b.code}?\n\nงานจะกลับไปอยู่ขั้น ${PM.bidStageLabel(b.stage)} และ Win rate จะคำนวณใหม่`, { title: 'ยกเลิกผลการประมูล', ok: 'ยกเลิกผล', cancel: 'ไม่ยกเลิก', tone: 'question' }).then((ok) => {
+        if (!ok) return;
+        b.result = 'pending'; b.resultDate = '';
+        PM.upsert('bids', b);
+        U.toast(`${b.code} กลับมารอผลแล้ว`);
+        done();
+      });
       return true;
     }
     if (a === 'won' || a === 'lost' || a === 'nobid') {
@@ -146,6 +184,7 @@
   };
   V.dueBadge = (b) => {
     if (!b.dueDate) return '';
+    if (b.dates.submit && b.submitAssumed) return U.badge('good', 'ยื่นแล้ว'); // Status Complete: no real date to judge by
     if (b.dates.submit) return b.dates.submit <= b.dueDate ? U.badge('good', 'On time') : U.badge('critical', `Late ${PM.diffDays(b.dueDate, b.dates.submit)}d`);
     if (b.result !== 'pending') return '';
     const left = PM.diffDays(PM.today(), b.dueDate);
@@ -180,6 +219,7 @@
     };
     if (isNew && !canPrice) { b.value = null; b.margin = null; } // no price on the shared bid record (cloud.js sends price only via bidprices)
     const est = b.estimate || {}, prop = PM.propOf(b);
+    let autoSubmit = ''; // the submit date this form filled in by itself
     // the fields the Proposal Status List shares with other tabs: one value, shown in both places (see "mirror" below)
     const MIRRORS = { m_code: 'code', m_client: 'client', m_name: 'name', m_due: 'dueDate', m_sales: 'salesName' };
     const propStatus0 = prop.status === 'win' || prop.status === 'lose' ? prop.status : prop.work;
@@ -265,7 +305,7 @@
       ${U.field('หมายเหตุ', 'prop_notes', prop.notes, { type: 'textarea', full: true, rows: 2 })}`, 'no-i18n')}
       ${pane('submit', `
       <div class="sub-h">ยื่นใบเสนอราคา (Submit)</div>
-      ${U.field('Submitted', 'd_submit', b.dates.submit, { type: 'date' })}
+      ${U.field('Submitted', 'd_submit', b.dates.submit, { type: 'date', hint: 'Status Complete ถือว่ายื่นแล้ว ถ้าไม่มีวันที่ระบบใช้ Due Date · แก้เป็นวันยื่นจริงได้' })}
       <span></span>
       <div class="sub-h">ทบทวนก่อนยื่น (ISO 9001 ข้อ 8.2.3)</div>
       <label><span>ผู้ทบทวนข้อกำหนดลูกค้า</span>${V.pmSelect('prop_reviewer', prop.reviewer, '')}</label>
@@ -289,6 +329,7 @@
           U.alert(`Bid No. ${f.code} ถูกใช้แล้ว`).then(toCode); return false;
         }
         const dates = { inquiry: f.d_inquiry, estimate: f.d_estimate, proposal: f.d_proposal, submit: f.d_submit };
+        if (!dates.submit && ['complete', 'win', 'lose'].includes(f.prop_status)) dates.submit = autoSubmit = assumedNow(); // Status Complete = handed in
         const order = PM.BID_STAGES.map((s) => dates[s.key]).filter(Boolean);
         if (order.some((d, i) => i && d < order[i - 1])) { U.alert('วันที่แต่ละขั้นต้องเรียงตามลำดับ Inquiry → Estimate → Proposal → Submit (วันที่อยู่ในแท็บของแต่ละขั้น)'); return false; }
         save(f, dates, frm);
@@ -351,6 +392,13 @@
       if (name === 'prop_status') res.value = st.value === 'win' ? 'won' : st.value === 'lose' ? 'lost' : ['won', 'lost'].includes(res.value) ? 'pending' : res.value;
       if (name === 'result') st.value = res.value === 'won' ? 'win' : res.value === 'lost' ? 'lose' : ['win', 'lose'].includes(st.value) ? 'complete' : st.value;
     };
+    /* Status Complete = handed in: the date fills in as soon as the status is chosen, and goes again if the choice changes */
+    const assumedNow = () => PM.assumedSubmit(el('dueDate').value, [el('d_inquiry').value, el('d_estimate').value, el('d_proposal').value].filter(Boolean).sort().pop());
+    const syncSubmit = () => {
+      const finished = ['complete', 'win', 'lose'].includes(el('prop_status').value), box = el('d_submit');
+      if (finished && !box.value) box.value = autoSubmit = assumedNow();
+      else if (!finished && autoSubmit && box.value === autoSubmit) { box.value = ''; autoSubmit = ''; }
+    };
     const drawDeliv = () => {
       const has = new Set(V.delivTokens(el('prop_deliv').value).map((x) => x.toLowerCase()));
       form.querySelectorAll('[data-deliv]').forEach((c) => c.classList.toggle('on', has.has(c.dataset.deliv.toLowerCase())));
@@ -373,7 +421,7 @@
       if (/^est_|^value$|^m_value$/.test(name)) drawCost();
       drawMarks();
     });
-    form.addEventListener('change', (e) => { syncResult(e.target.name); drawMarks(); });
+    form.addEventListener('change', (e) => { syncResult(e.target.name); syncSubmit(); drawMarks(); });
     drawCost();
     drawMarks();
     drawDeliv();
@@ -399,6 +447,9 @@
         owner: f.prop_owner, ownerName: f.prop_owner ? '' : prop.ownerName, deliverables: f.prop_deliv, notes: f.prop_notes, listNo: (b.proposal || {}).listNo,
         reviewer: f.prop_reviewer, reviewDate: f.prop_reviewer ? f.prop_reviewDate || T : f.prop_reviewDate,
       };
+      // still the date we assumed, or one someone typed in?
+      const keptAssumed = b.submitAssumed && b.dates && dates.submit === b.dates.submit;
+      b.submitAssumed = !!dates.submit && (dates.submit === autoSubmit || !!keptAssumed);
       Object.assign(b, {
         code: f.code, name: f.name, client: f.client, sector: f.sector,
         estimator: f.estimator, boqItems: f.boqItems, dueDate: f.dueDate, dates, result: f.result,
@@ -579,11 +630,16 @@
       ${U.field('ลูกค้า (Client)', 'client', p.client, { required: true, full: true })}
       <label class="full"><span>Project Manager <small class="muted">— จาก Resource Utilization</small></span>${V.pmSelect('pm', p.pm, p.pmName, p.id)}<small class="muted" id="pm-info">${esc(V.pmInfo(V.pmResourceId(p.pm), p.id))}</small></label>
       <label><span>Sales ผู้รับผิดชอบ</span>${V.salesInput(p)}<small class="muted">${fromBid && PM.salesKey(fromBid) ? `จาก ${esc(fromBid.code)} — Sales ที่หางานนี้มา` : 'พิมพ์ชื่อได้เลย หรือเลือกจากรายชื่อที่ขึ้นมา'}</small></label>
+      ${U.field('Job No. (Odoo)', 'jobNo', p.jobNo || '', { placeholder: 'เช่น JB26-PROJ-0002', hint: 'ใช้จับคู่กับไฟล์ Monitor WIP/Accrued' })}
+      ${U.field('PO ลูกค้า (PO No.)', 'clientPo', p.clientPo || '', { type: 'textarea', rows: 2, hint: 'มีหลายเลขใส่บรรทัดละเลข' })}
+      ${U.field('Plant / Contact', 'plant', p.plant || '', { placeholder: 'เช่น MOC, ROC, TPC', hint: 'โรงงานหรือหน้างานของลูกค้า และผู้ติดต่อ' })}
+      ${U.field('Eng / Tech — ทีมงาน', 'engTech', p.engTech || '', { full: true, placeholder: "เช่น P'Pong / Montree / Phet" })}
       ${U.field('มูลค่าสัญญา (THB)', 'contractValue', p.contractValue, { type: 'number', min: 0, step: 'any' })}
       ${U.field('Plan cost — งบประมาณต้นทุน (THB)', 'budget', planNow, { type: 'number', min: 0, step: 'any', hint: isNew ? 'ระบบแบ่งให้ E / P / C / Closing อัตโนมัติ (แก้รายละเอียดได้ที่ "ต้นทุน Plan / Actual")' : 'ถ้าเปลี่ยน ระบบปรับงบของแต่ละ phase ตามสัดส่วนเดิม' })}
       ${isNew ? '' : `<label><span>Actual cost — ต้นทุนจริง (THB)</span><input value="${esc(U.num(actualNow))}" disabled><small class="muted">รวมจากรายการในแท็บ "ค่าใช้จ่าย" ของโครงการ</small></label>`}
       ${U.field('Start date', 'startDate', p.startDate, { type: 'date', required: true })}
       ${U.field('Finish date', 'endDate', p.endDate, { type: 'date', required: true })}
+      ${p.datesEstimated ? '<p class="full neg" style="margin:0">ไฟล์ที่นำเข้าไม่มีวันที่ครบ ระบบตั้งวันที่นี้ชั่วคราว — แก้ให้ถูกแล้วบันทึก</p>' : ''}
       ${isNew ? '' : '<p class="full muted" style="margin:0">หมายเหตุ: การแก้วันที่โครงการไม่เปลี่ยนแผนของแต่ละ phase — แก้ได้ที่การ์ดขั้นงาน → อัปเดตความคืบหน้า</p>'}`;
     const form = U.modal({
       title: isNew ? (fromBid ? `Create project from ${fromBid.code}` : 'New project') : `Edit ${p.code}`, body,
@@ -602,6 +658,7 @@
         const planChanged = p.phases && Math.round(f.budget) !== Math.round(planNow);
         // names are kept next to the ids so they still show offline
         const names = Object.assign({ pmName: V.personLabel(f.pm, p.pm, p.pmName) }, V.resolveSales(f.salesName, p));
+        if (p.datesEstimated && (f.startDate !== p.startDate || f.endDate !== p.endDate)) delete p.datesEstimated; // someone has now set the real dates
         Object.assign(p, f, names);
         if (!p.phases) { p.phases = PM.buildPhases(p.startDate, p.endDate, p.budget); Object.assign(p, PM.buildTimeline(p)); }
         else if (planChanged) PM.rescaleBudgets(p, f.budget);

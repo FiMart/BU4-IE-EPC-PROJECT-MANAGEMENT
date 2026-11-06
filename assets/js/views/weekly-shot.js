@@ -188,7 +188,49 @@
     return { width: W, height: footer(ctx, d, W, bottom + 6), bottom };
   }
 
-  const paint = (ctx, d, known) => (d.layout === 'cal' ? drawCal(ctx, d, known) : drawList(ctx, d));
+  /* ---------- month: a grid, the task names only ---------- */
+  function drawMonth(ctx, d) {
+    const W = 1400, pad = 24, gap = 6, cw = (W - pad * 2 - gap * 6) / 7, MAX = 5, lineH = 22;
+    let y = kpis(ctx, d, W, heading(ctx, d, W)) + 18;
+    d.heads.forEach((h, i) => say(ctx, h, pad + i * (cw + gap) + cw / 2, y + 12, font(13, 700), C.navy, 'center'));
+    y += 24;
+    for (let wk = 0; wk < d.cells.length / 7; wk++) {
+      const row = d.cells.slice(wk * 7, wk * 7 + 7);
+      const rows = Math.max(3, ...row.map((c) => Math.min(c.tasks.length, MAX)));
+      const h = 34 + rows * lineH + 6;
+      row.forEach((c, i) => {
+        const x = pad + i * (cw + gap);
+        box(ctx, x, y, cw, h, 7, c.today ? C.today : c.out ? '#f4f7fb' : c.weekend || c.holiday ? '#eef2f8' : C.white, c.today ? C.todayLine : C.line);
+        say(ctx, String(c.num), x + 8, y + 21, font(14, 700), c.out ? '#a3afc0' : c.today ? '#174f94' : C.ink);
+        if (c.holiday) { ctx.font = font(10); say(ctx, wrap(ctx, c.holiday, cw - 40, 1)[0], x + 30, y + 20, font(10), ST.not_done.fg); }
+        const shown = c.tasks.length > MAX ? c.tasks.slice(0, MAX - 1) : c.tasks;
+        shown.forEach((t, k) => {
+          const st = ST[t.status] || ST.planned, ty = y + 30 + k * lineH;
+          box(ctx, x + 5, ty, cw - 10, lineH - 3, 4, c.out ? '#edf2f9' : st.bg);
+          box(ctx, x + 5, ty, 3, lineH - 3, 1.5, st.bar);
+          ctx.font = font(11.5, 500);
+          say(ctx, wrap(ctx, t.title, cw - 26 - (t.late ? 12 : 0), 1)[0], x + 12, ty + 14, font(11.5, 500), c.out ? C.muted : C.ink);
+          if (t.late) say(ctx, '!', x + cw - 12, ty + 14, font(12, 700), ST.not_done.fg, 'right');
+        });
+        if (c.tasks.length > MAX) say(ctx, `+ อีก ${c.tasks.length - MAX + 1} งาน`, x + 12, y + 30 + (MAX - 1) * lineH + 14, font(11.5, 600), C.ink2);
+      });
+      y += h + gap;
+    }
+    // what the colours mean
+    y += 6;
+    let lx = pad;
+    [['planned', 'วางแผน'], ['in_progress', 'กำลังทำ'], ['done', 'เสร็จ'], ['not_done', 'ไม่เสร็จ']].forEach(([k, t]) => {
+      box(ctx, lx, y, 12, 12, 3, ST[k].bar);
+      say(ctx, t, lx + 18, y + 11, font(12), C.ink2);
+      ctx.font = font(12);
+      lx += 18 + ctx.measureText(t).width + 18;
+    });
+    say(ctx, '!', lx + 4, y + 11, font(13, 700), ST.not_done.fg);
+    say(ctx, 'เลยกำหนด', lx + 14, y + 11, font(12), C.ink2);
+    return { width: W, height: footer(ctx, d, W, y + 18) };
+  }
+
+  const paint = (ctx, d, known) => (d.layout === 'month' ? drawMonth(ctx, d) : d.layout === 'cal' ? drawCal(ctx, d, known) : drawList(ctx, d));
   async function fontsReady() {
     try {
       await Promise.all([document.fonts.load(font(16, 400), 'กA'), document.fonts.load(font(16, 600), 'กA'), document.fonts.load(font(16, 700), 'กA')]);

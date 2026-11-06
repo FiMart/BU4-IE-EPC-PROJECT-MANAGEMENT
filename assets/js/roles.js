@@ -33,6 +33,7 @@
     'timesheet.edit': { label: 'กรอก / แก้ไข Timesheet และ OT (คนอื่นดูได้อย่างเดียว — บังคับในฐานข้อมูล)', roles: ['admin', 'project_manager'] },
     'po.edit': { label: 'สร้าง / แก้ไข PO และแนบไฟล์', roles: ['admin', 'dept_manager', 'project_manager', 'engineer'] },
     'project.import': { label: 'นำเข้าโครงการหลายรายการจาก Excel', roles: ['admin', 'dept_manager', 'project_manager'] },
+    'project.update': { label: 'อัปเดตความคืบหน้าโครงการ (Activity · Next · Remark)', roles: ['admin', 'dept_manager', 'project_manager', 'engineer'] },
     'project.delete': { label: 'ลบโครงการ พร้อมข้อมูลทั้งหมดของโครงการ — บังคับในฐานข้อมูล', roles: ['admin', 'dept_manager', 'project_manager'] },
     'avl.edit': { label: 'เพิ่ม / แก้ไข AVL (รายชื่อผู้ขายที่ลูกค้าอนุมัติ) ของโครงการ และแนบเอกสารอนุมัติ', roles: ['admin', 'dept_manager', 'project_manager', 'engineer', 'doc_control'] },
     'price.edit': { label: 'เพิ่ม / แก้ไข Price List (ราคาผู้ขาย) — ทุกคนดูและ Export ได้', roles: ['admin', 'dept_manager', 'project_manager', 'engineer'] },

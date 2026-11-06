@@ -32,7 +32,14 @@
       .slice(0, 8);
     const over = ut.people.filter((p) => p.util > 1.05).length;
     const under = ut.people.filter((p) => p.util != null && p.util < p.target - 0.25).length;
-    const sales = PM.salesStats(from12, T);
+    // bids still to be handed in: overdue, or due within two weeks — what someone can act on today
+    const dueList = db.bids.filter((b) => b.result === 'pending' && !b.dates.submit && b.dueDate && PM.propOf(b).work !== 'complete' && PM.diffDays(T, b.dueDate) <= 14)
+      .sort((a, b) => String(a.dueDate).localeCompare(String(b.dueDate)));
+    const dueTable = dueList.length ? `<table class="tbl"><thead><tr><th>งาน</th><th>ลูกค้า</th><th>Type</th><th>Priority</th><th>กำหนดยื่น</th><th class="num">Progress</th><th>Status</th></tr></thead><tbody>
+      ${dueList.slice(0, 10).map((b) => { const p = PM.propOf(b), st = PM.propStatusInfo(p.status), lv = (PM.PROP_PRIORITY.find((x) => x.key === p.priority) || {}).level; return `<tr class="click" data-bid-link>
+        <td><span class="title">${esc(b.name)}</span><small>${esc(b.code)}</small></td><td>${esc(b.client)}</td><td>${esc(p.type)}</td><td>${lv ? U.badge(lv, p.priority) : '-'}</td>
+        <td class="nowrap">${V.dueBadge(b)}<small>${U.date(b.dueDate)}</small></td><td class="num">${U.num(p.progress)}%</td><td>${U.badge(st.level, st.label)}</td></tr>`; }).join('')}
+      </tbody></table>${dueList.length > 10 ? `<p class="muted dash-more">และอีก ${dueList.length - 10} งาน · <a href="#/bidding/proposal">เปิดหน้า Proposal →</a></p>` : ''}` : '<p class="empty">ไม่มีงานที่ต้องยื่นใน 14 วัน</p>';
 
     const overrun = PM.costOverrunRows(db.projects.map((p) => (p.status === 'closed' ? { p, m: PM.projectMetrics(p) } : rows.find((r) => r.p === p))));
 
@@ -65,15 +72,16 @@
         ${V.tile({ label: 'On-time submission', tag: 'Time', value: U.pct(bs.onTimeRate), sub: U.badge(bs.onTimeRate >= 0.9 ? 'good' : bs.onTimeRate >= 0.75 ? 'warning' : 'critical', 'target 90%') })}
         ${PM.seesBidPrices()
           ? V.tile({ label: 'Pipeline (pending)', value: V.bidSum(allPending), sub: `${allPending.length} bids in progress${PM.myRole() === 'sales' ? ' · มูลค่าเฉพาะงานของคุณ' : ''}` })
-          : V.tile({ label: 'Pipeline (pending)', value: allPending.length, sub: 'bids in progress · มูลค่าเห็นได้เฉพาะ Sales / Admin', icon: 'funnel' })}
+          : V.tile({ label: 'Pipeline (pending)', value: allPending.length, sub: 'bids in progress', icon: 'funnel' })}
       </div>
       <div class="grid cols-2">
         ${chartCard('c-stages', 'งานประมูลในแต่ละขั้นตอนตอนนี้', 'จำนวนงานที่ยังไม่รู้ผล · คลิกแถบเพื่อเปิดขั้นนั้น')}
         ${chartCard('c-inq', 'Inquiries per month', 'จำนวนงานที่เข้ามาแต่ละเดือน แยกตามผล')}
         ${chartCard('c-stage', 'Average days in each stage', 'ระยะเวลาเฉลี่ยของแต่ละขั้นตอน')}
-        ${chartCard('c-sales', 'ผลงาน Sales', 'จำนวนงาน 12 เดือนของแต่ละคน แยกตามผล')}
+        ${chartCard('c-prop-status', 'สถานะ Proposal', 'ทุกงานตาม Proposal Status List · คลิกแถบเพื่อเปิดหน้า Proposal')}
       </div>
-      ${tableBox('ผลงาน Sales', V.salesTable(sales), 'd-sales')}
+      <div class="card"><div class="card-h"><h2>งานที่ใกล้ถึงกำหนดยื่น</h2><p>เลยกำหนด หรือต้องยื่นใน 14 วัน · ยังไม่เสร็จ · ${dueList.length} งาน · คลิกแถวเพื่อเปิดหน้า Proposal</p></div>
+        <div class="card-b flush table-wrap">${dueTable}</div></div>
 
       <div class="section-h" id="sec-exec"><span class="idx">2</span><h2>Execution (EPC)</h2><p>KPI: Quantity · Time · Cost · Quality (NCR) · Safety</p><span class="spacer"></span><a href="#/projects">เปิด Projects →</a></div>
       <div class="grid cols-6">
@@ -135,7 +143,7 @@
       }
       const bar = e.target.closest('.hbar[data-href]');
       if (bar) { location.hash = bar.dataset.href; return; }
-      if (e.target.closest('tr[data-sales]') && !e.target.closest('a')) { location.hash = '#/bidding'; return; }
+      if (e.target.closest('tr[data-bid-link]') && !e.target.closest('a')) { location.hash = '#/bidding/proposal'; return; }
       const poRow = e.target.closest('tr[data-po]');
       if (poRow) { PM.poForm(PM.find('pos', poRow.dataset.po), null, () => PM.views.dashboard(el)); return; }
       const tr = e.target.closest('tr[data-id]');
@@ -162,16 +170,11 @@
     PM.charts.hbars(document.getElementById('c-stage'), {
       items: bs.stageDays.map((s) => ({ label: s.label, value: s.avg || 0, display: U.days(s.avg), tip: `${s.label}\nAvg ${U.days(s.avg)} (n=${s.n})` })),
     });
-    const salesRows = sales.slice().sort((a, b) => (b.bs.total - a.bs.total)).slice(0, 8);
-    const salesName = (x) => (x.id ? V.personName(x.id, x.fallbackName) : 'ไม่ระบุ');
-    if (salesRows.length) PM.charts.columns(document.getElementById('c-sales'), {
-      categories: salesRows.map((x) => salesName(x).split(' ')[0]), tipTitle: salesRows.map(salesName), label: 'Bids by Sales',
-      series: [
-        { name: 'Won', color: 'var(--s1)', values: salesRows.map((x) => x.bs.won) },
-        { name: 'Lost', color: 'var(--s2)', values: salesRows.map((x) => x.bs.lost) },
-        { name: 'In progress', color: 'var(--s-neutral)', values: salesRows.map((x) => x.pipeline) },
-      ],
-    }); else document.getElementById('c-sales').innerHTML = '<p class="empty">ยังไม่มีข้อมูล</p>';
+    const propSum = PM.proposalSummary(PM.proposalList());
+    const STATUS_COLOR = { good: 'var(--good)', warning: 'var(--warning)', critical: 'var(--critical)', neutral: 'var(--s-neutral)' };
+    PM.charts.hbars(document.getElementById('c-prop-status'), {
+      items: propSum.status.map((s) => ({ label: s.label, value: s.n, display: `${s.n} งาน`, sub: propSum.total ? U.pct(s.n / propSum.total) : '', color: STATUS_COLOR[s.level], href: '#/bidding/proposal', tip: `${s.label}: ${s.n} จาก ${propSum.total} งาน` })),
+    });
 
     /* ---------- 2 · execution & cost ---------- */
     PM.charts.hbars(document.getElementById('c-progress'), {

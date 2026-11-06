@@ -97,7 +97,7 @@
 <div class="bar">${PM.xport.backButton()}<b>${esc(bar)}</b><span class="hint">กด "พิมพ์ / บันทึก PDF" แล้วเลือกเครื่องพิมพ์ "บันทึกเป็น PDF"</span><span style="flex:1"></span><button onclick="window.print()">🖨 พิมพ์ / บันทึก PDF</button></div>
 <main>
   <header class="rh"><img class="rlogo" src="${esc(PM.logoUrl(true))}" alt="${esc(PM.COMPANY)}"><div class="rtitle">${head.title}</div><div class="meta">${head.meta}</div></header>
-  ${info ? `<p class="docno">Document: ${esc(info.no)} | Rev: ${esc(info.rev || '–')} | Issue Date: ${esc(U.date(info.issueDate).replace(/ /g, '-'))}${info.preparedBy ? ` | Prepared by: ${esc(info.preparedBy)}` : ''}</p>` : ''}
+  ${info ? `<p class="docno">Document: ${esc(info.no)} | Rev: ${esc(info.rev || '–')}${info.issueDate ? ` | Issue Date: ${esc(U.date(info.issueDate).replace(/ /g, '-'))}` : ''}${info.preparedBy ? ` | Prepared by: ${esc(info.preparedBy)}` : ''}</p>` : ''}
   ${body}
   <footer class="rf">สร้างจาก BU4 IE/EPC Project Management · ${esc(PM.COMPANY)} · ${U.date(PM.today())} · ตัวเลขทั้งหมดคำนวณ ณ วันที่ออกรายงาน</footer>
 </main></body></html>`);

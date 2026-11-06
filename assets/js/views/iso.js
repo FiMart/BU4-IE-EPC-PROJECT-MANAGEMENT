@@ -29,9 +29,9 @@
   ];
   const clauseLabel = (c) => { const x = CLAUSES.find((y) => y[0] === c); return x ? (c === 'culture' ? x[1] : `${c} ${x[1]}`) : c || '–'; };
 
-  /* printed forms that can carry a controlled number; the first keeps the number on the paper form it replaced */
-  const FORMS = [['proposal-list', 'Proposal Status List'], ['ncr', 'ใบ NCR'], ['mom', 'บันทึกการประชุม (MOM)'], ['daily', 'รายงานประจำวัน'], ['avl', 'AVL'], ['transmittal', 'Transmittal'], ['punch', 'Punch List'], ['weekly', 'แผนงานรายสัปดาห์']];
-  const FORM_DEFAULT = { 'proposal-list': { no: 'PS-IE-2026-001', rev: '01', issueDate: '2026-06-25', preparedBy: 'Engineering Department' } };
+  /* printed forms that can carry a controlled number; those in FORM_DEFAULT keep the number on the paper form they replaced */
+  const FORMS = [['proposal-list', 'Proposal Status List'], ['project-list', 'Project list for IE_EPC PROJECT'], ['ncr', 'ใบ NCR'], ['mom', 'บันทึกการประชุม (MOM)'], ['daily', 'รายงานประจำวัน'], ['avl', 'AVL'], ['transmittal', 'Transmittal'], ['punch', 'Punch List'], ['weekly', 'แผนงานรายสัปดาห์']];
+  const FORM_DEFAULT = { 'proposal-list': { no: 'PS-IE-2026-001', rev: '01', issueDate: '2026-06-25', preparedBy: 'Engineering Department' }, 'project-list': { no: 'FLS-F-IE-EPC-004', rev: '0', issueDate: '', preparedBy: '' } };
   const rows = (kind) => (PM.db.qms || []).filter((x) => x.kind === kind);
   PM.docInfo = (key) => {
     const x = rows('doc').find((r) => r.formKey === key && r.status === 'active');
