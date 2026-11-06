@@ -50,9 +50,6 @@
         <a href="#/dashboard" data-route="dashboard">
           <svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="9" rx="1.5"/><rect x="14" y="3" width="7" height="5" rx="1.5"/><rect x="14" y="12" width="7" height="9" rx="1.5"/><rect x="3" y="16" width="7" height="5" rx="1.5"/></svg>
           <span>ภาพรวม (Dashboard)</span></a>
-        <a href="#/present" data-route="present">
-          <svg viewBox="0 0 24 24"><rect x="2.5" y="4" width="19" height="13" rx="2"/><path d="M8 21h8M12 17v4M10 8.5v5l4.5-2.5z"/></svg>
-          <span>โหมดนำเสนอ</span></a>
         <div class="nav-group">ก่อนได้งาน</div>
         <a href="#/bidding" data-route="bidding">
           <svg viewBox="0 0 24 24"><path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><path d="M14 3v6h6M8 13h8M8 17h5"/></svg>
@@ -120,8 +117,6 @@
         <button class="icon-btn bell-btn" id="bell-btn" type="button" aria-haspopup="dialog" aria-expanded="false" aria-label="การแจ้งเตือน" title="การแจ้งเตือน">
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9a6 6 0 0 1 12 0c0 6 2.5 7.5 2.5 7.5h-17S6 15 6 9"/><path d="M10.3 20a1.9 1.9 0 0 0 3.4 0"/></svg>
           <span class="bell-n" hidden></span></button>
-        <a class="icon-btn present-btn" href="#/present" title="โหมดนำเสนอขึ้นจอ (TV / โปรเจกเตอร์)" aria-label="โหมดนำเสนอ">
-          <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="2.5" y="4" width="19" height="13" rx="2"/><path d="M8 21h8M12 17v4M10 8.5v5l4.5-2.5z"/></svg></a>
         <button class="icon-btn hero-toggle" type="button" data-hero-toggle title="แสดง / ซ่อนแถบแนะนำของแต่ละหน้า" aria-label="แสดง / ซ่อนแถบแนะนำ">?</button>
         <button class="icon-btn" id="theme-toggle" title="สลับธีม สว่าง/มืด" aria-label="Toggle theme">◐</button>
       </header>
@@ -159,8 +154,10 @@
   <script src="assets/js/motion.js"></script>
   <script src="assets/js/roles.js"></script>
   <script src="assets/js/approvals.js"></script>
+  <script src="assets/js/purge.js"></script>
   <script src="assets/js/cloud.js"></script>
   <script src="assets/js/views/common.js"></script>
+  <script src="assets/js/views/sheet-import.js"></script>
   <script src="assets/js/views/dashboard.js"></script>
   <script src="assets/js/views/bidding.js"></script>
   <script src="assets/js/views/bid-stage.js"></script>
@@ -176,17 +173,19 @@
   <script src="assets/js/views/phase-items.js"></script>
   <script src="assets/js/views/daily.js"></script>
   <script src="assets/js/views/punch.js"></script>
+  <script src="assets/js/views/avl.js"></script>
+  <script src="assets/js/views/iso.js"></script>
   <script src="assets/js/views/meetings.js"></script>
   <script src="assets/js/views/report.js"></script>
   <script src="assets/js/export.js"></script>
   <script src="assets/js/views/prices.js"></script>
   <script src="assets/js/views/weekly.js"></script>
+  <script src="assets/js/views/weekly-shot.js"></script>
   <script src="assets/js/views/resources.js"></script>
   <script src="assets/js/views/timesheet.js"></script>
   <script src="assets/js/views/settings.js"></script>
   <script src="assets/js/views/about.js"></script>
   <script src="assets/js/views/help.js"></script>
-  <script src="assets/js/views/present.js"></script>
   <script src="assets/js/tour.js"></script>
   <script src="assets/js/assist.js"></script>
   <script src="assets/js/app.js"></script>

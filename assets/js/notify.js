@@ -8,12 +8,27 @@
   const U = PM.ui, esc = U.esc;
   const N = (PM.notify = {});
   const LEVELS = { critical: { label: 'ด่วน', rank: 0 }, warning: { label: 'ติดตาม', rank: 1 }, info: { label: 'แจ้งให้ทราบ', rank: 2 } };
+  /* the panel's sections, in this order. An item's section comes from the first part of its id (or its own `topic`) */
+  const TOPICS = [
+    { key: 'approval', label: 'รออนุมัติ', icon: 'check' },
+    { key: 'schedule', label: 'แผนงาน & เวลา', icon: 'calendar' },
+    { key: 'money', label: 'ต้นทุน & การเงิน', icon: 'coins' },
+    { key: 'purchase', label: 'จัดซื้อ & AVL', icon: 'truck' },
+    { key: 'docs', label: 'เอกสาร', icon: 'proposal' },
+    { key: 'quality', label: 'คุณภาพ & ความเสี่ยง', icon: 'quality' },
+    { key: 'team', label: 'ประชุม & รายงานทีม', icon: 'people' },
+    { key: 'bid', label: 'งานประมูล', icon: 'submit' },
+    { key: 'other', label: 'อื่น ๆ', icon: 'info' },
+  ];
+  const TOPIC_OF = { apr: 'approval', spi: 'schedule', ms: 'schedule', ms7: 'schedule', task: 'schedule', wp: 'schedule', over: 'money', fc: 'money', inv: 'money', vo: 'money',
+    po: 'purchase', po7: 'purchase', avl: 'purchase', ret: 'docs', risk: 'quality', riskd: 'quality', ncr: 'quality', pl: 'quality', act: 'team', daily: 'team', ts: 'team', bid: 'bid', bid3: 'bid' };
+  const topicOf = (x) => x.topic || TOPIC_OF[String(x.id).split('-')[0]] || 'other';
   const view = { tab: 'all' };
   let items = [], timer = null;
 
   /* ---------- per-user state: read ids, ids already seen (for desktop alerts), desktop on/off ---------- */
   const key = () => 'epc-pm-notify-' + ((PM.myUid && PM.myUid()) || 'local');
-  function load() { try { return Object.assign({ read: {}, seen: null, desktop: false }, JSON.parse(localStorage.getItem(key()) || '{}')); } catch (e) { return { read: {}, seen: null, desktop: false }; } }
+  function load() { try { return Object.assign({ read: {}, seen: null, desktop: false, closed: {} }, JSON.parse(localStorage.getItem(key()) || '{}')); } catch (e) { return { read: {}, seen: null, desktop: false, closed: {} }; } }
   function store(s) { try { localStorage.setItem(key(), JSON.stringify(s)); } catch (e) { /* private mode */ } }
 
   /* who "I" am in the data: my account id + employee records with my name */
@@ -56,7 +71,7 @@
         const cfg = PM.PHASE_ITEMS && PM.PHASE_ITEMS[x.phase];
         const mineX = mine || I.ids.has(x.owner);
         if (x.status === 'return') add({ id: `ret-${x.id}-${x.rev || ''}`, level: 'warning', icon: 'layers', title: `ลูกค้าส่งกลับแก้ไข: ${x.no} ${x.name}`, sub: `${p.code} · Rev. ${x.rev || '–'}${x.comment ? ' · ' + x.comment : ''}`, href: at(), mine: mineX });
-        else if (PM.itemLate && PM.itemLate(x, T)) add({ id: `pil-${x.id}`, level: 'warning', icon: 'layers', title: `${cfg ? cfg.noun : 'รายการ'}เลยกำหนด: ${x.no} ${x.name}`, sub: `${p.code} · กำหนด ${U.date(x.due)} (เลย ${PM.diffDays(x.due, T)} วัน)`, href: at(), mine: mineX, date: x.due });
+        else if (PM.itemLate && PM.itemLate(x, T)) add({ id: `pil-${x.id}`, level: 'warning', icon: 'layers', title: `${cfg ? cfg.noun : 'รายการ'}เลยกำหนด: ${x.no} ${x.name}`, sub: `${p.code} · กำหนด ${U.date(x.due)} (เลย ${PM.diffDays(x.due, T)} วัน)`, href: at(), mine: mineX, date: x.due, topic: x.phase === 'procurement' ? 'purchase' : x.phase === 'construction' ? 'schedule' : 'docs' });
       });
       // punch list: category A (must be fixed before handover) past its date (punch.js)
       (db.punch || []).filter((x) => x.projectId === p.id && x.category === 'A' && PM.punchLate && PM.punchLate(x, T))
@@ -66,12 +81,22 @@
         const mineA = !!I.name && PM.normName(a.owner || '').includes(I.name);
         add({ id: `act-${a.id}`, level: 'warning', icon: 'people', title: `Action เลยกำหนด: ${a.text}`, sub: `${p.code} · ${mt.no} · ${a.owner || '–'} · กำหนด ${U.date(a.due)}`, href: at('meetings'), mine: mine || mineA, date: a.due });
       });
+      // approved vendor list (avl.js): POs placed with a vendor the client has not approved · approvals waiting long
+      if (PM.avlStats) {
+        const av = PM.avlStats(p, T);
+        if (av.off.length) add({ id: `avl-po-${p.id}-${av.off.length}`, level: 'warning', icon: 'truck', title: `${p.code} มี PO นอก AVL ${av.off.length} ใบ`, sub: `มูลค่า ${U.money(av.offValue)} · ${av.off.slice(0, 2).map((x) => x.po.supplier).join(', ')}`, href: at('avl'), mine });
+        if (av.waiting) add({ id: `avl-wait-${p.id}-${av.waiting}`, level: 'info', icon: 'check', title: `${p.code} AVL รอลูกค้าอนุมัตินาน ${av.waiting} ราย`, sub: `${p.name} — ส่งขออนุมัติเกิน 14 วัน`, href: at('avl'), mine });
+      }
       // daily site report missing for the last working day (projects that keep daily reports — daily.js)
       const dm = PM.dailyMissing && PM.dailyMissing(p, T);
       if (dm) add({ id: `daily-${p.id}-${dm}`, level: 'info', icon: 'calendar', title: `${p.code} ยังไม่มีรายงานประจำวัน ${U.date(dm)}`, sub: `${p.name} — เขียนที่แท็บรายงานประจำวัน`, href: at('daily'), mine, date: dm });
       (db.ncrs || []).filter((n) => n.projectId === p.id && n.status === 'open' && n.severity === 'Critical')
         .forEach((n) => add({ id: `ncr-${n.id}`, level: 'critical', icon: 'quality', title: `NCR ระดับวิกฤต: ${n.no}`, sub: `${p.code} · ${n.description || ''}`, href: at('quality'), mine, date: n.date }));
+      (db.ncrs || []).filter((n) => n.projectId === p.id && n.status === 'open' && n.severity !== 'Critical' && n.dueDate && n.dueDate < T)
+        .forEach((n) => add({ id: `ncrd-${n.id}`, level: 'warning', icon: 'quality', title: `NCR เลยกำหนด: ${n.no}`, sub: `${p.code} · กำหนด ${U.date(n.dueDate)}`, href: at('quality'), mine, date: n.dueDate, topic: 'quality' }));
     });
+    // ISO 9001 records: calibration, CAR, documents to review, complaints … (iso.js)
+    if (PM.qmsAlerts) PM.qmsAlerts(T, I.name).forEach(add);
 
     // approvals (approvals.js): approvers see what waits · the requester sees what was returned
     if (PM.approvalsPending) {
@@ -106,6 +131,9 @@
       const mine = Array.from(I.ids).some((id) => PM.planHas && PM.planHas(x, id));
       add({ id: `wp-${x.id}`, level: 'warning', icon: 'tasks', title: `งานเลยกำหนด: ${x.title}`, sub: `Weekly Plan · กำหนด ${U.date(x.dueDate)} — อัปเดตสถานะ`, href: '#/weekly', mine, date: x.dueDate });
     });
+
+    // things to prepare for the tasks ahead (weekly.js)
+    if (PM.prepAlerts) PM.prepAlerts(T, I).forEach(add);
 
     // last week's timesheets (people who fill them in)
     if (PM.can('timesheet.edit')) {
@@ -157,21 +185,29 @@
     const mine = items.filter((x) => x.mine), un = unread(s);
     const list = view.tab === 'mine' ? mine : view.tab === 'unread' ? un : items;
     const desktopOk = 'Notification' in window;
+    const prev = panel.querySelector('.nt-list'), scroll = prev ? prev.scrollTop : 0; // opening / closing a section keeps your place
+    const sections = TOPICS.map((t) => ({ t, rows: list.filter((x) => (TOPICS.some((y) => y.key === topicOf(x)) ? topicOf(x) : 'other') === t.key) })).filter((g) => g.rows.length);
+    const allClosed = sections.length && sections.every((g) => s.closed[g.t.key]);
     panel.innerHTML = `
       <header><b>การแจ้งเตือน</b>${un.length ? U.badge('critical', `ใหม่ ${un.length}`) : ''}<span class="spacer"></span>
         ${un.length ? '<button type="button" class="link-btn" data-nt="readall">อ่านทั้งหมด</button>' : ''}
         <button type="button" class="icon-btn" data-nt="close" aria-label="ปิด">✕</button></header>
-      <div class="nt-tabs">${[['all', `ทั้งหมด ${items.length}`], ['mine', `ของฉัน ${mine.length}`], ['unread', `ยังไม่อ่าน ${un.length}`]].map(([k, l]) => `<button type="button" data-nt-tab="${k}" class="${view.tab === k ? 'on' : ''}">${l}</button>`).join('')}</div>
-      <div class="nt-list">${list.length ? Object.keys(LEVELS).map((lv) => {
-        const g = list.filter((x) => x.level === lv);
-        return g.length ? `<div class="nt-group">${LEVELS[lv].label} · ${g.length}</div>${g.map((x) => `
-          <a class="nt-item lv-${lv}${s.read[x.id] ? '' : ' unread'}" href="${esc(x.href)}" data-nt-id="${esc(x.id)}">
+      <div class="nt-tabs">${[['all', `ทั้งหมด ${items.length}`], ['mine', `ของฉัน ${mine.length}`], ['unread', `ยังไม่อ่าน ${un.length}`]].map(([k, l]) => `<button type="button" data-nt-tab="${k}" class="${view.tab === k ? 'on' : ''}">${l}</button>`).join('')}
+        ${sections.length > 1 ? `<button type="button" class="nt-all" data-nt="toggle-all">${allClosed ? 'ขยายทุกหัวข้อ' : 'ยุบทุกหัวข้อ'}</button>` : ''}</div>
+      <div class="nt-list">${list.length ? sections.map(({ t, rows }) => {
+        const open = !s.closed[t.key], crit = rows.filter((x) => x.level === 'critical').length, fresh = rows.filter((x) => !s.read[x.id]).length;
+        return `<section class="nt-sec"><button type="button" class="nt-sec-h" data-nt-sec="${t.key}" aria-expanded="${open}">
+            ${PM.illus.svg(t.icon)}<b>${esc(t.label)}</b><span class="nt-sec-n">${rows.length}</span>
+            ${crit ? `<span class="nt-sec-crit">ด่วน ${crit}</span>` : ''}${!open && fresh ? `<span class="nt-sec-new">ใหม่ ${fresh}</span>` : ''}<i class="nt-chev" aria-hidden="true"></i></button>
+          ${open ? rows.map((x) => `
+          <a class="nt-item lv-${x.level}${s.read[x.id] ? '' : ' unread'}" href="${esc(x.href)}" data-nt-id="${esc(x.id)}">
             ${PM.illus.icon(x.icon, 'nt-ic')}
             <span class="nt-t"><b>${esc(x.title)}</b><small>${esc(x.sub || '')}</small></span>
-            ${x.mine ? '<span class="nt-mine" title="เกี่ยวกับฉัน">ฉัน</span>' : ''}<i class="nt-dot" aria-hidden="true"></i></a>`).join('')}` : '';
+            ${x.level === 'critical' ? `<span class="nt-lv">${LEVELS.critical.label}</span>` : ''}${x.mine ? '<span class="nt-mine" title="เกี่ยวกับฉัน">ฉัน</span>' : ''}<i class="nt-dot" aria-hidden="true"></i></a>`).join('') : ''}</section>`;
       }).join('') : `<p class="nt-empty">${view.tab === 'mine' ? 'ไม่มีเรื่องที่เกี่ยวกับคุณ' : view.tab === 'unread' ? 'อ่านครบทุกเรื่องแล้ว' : 'ไม่มีเรื่องที่ต้องดำเนินการ ณ วันนี้'}</p>`}</div>
       <footer>${desktopOk ? `<label class="nt-desk"><input type="checkbox" data-nt="desktop"${s.desktop && Notification.permission === 'granted' ? ' checked' : ''}> แจ้งเตือนบนเครื่องเมื่อมีเรื่องด่วนใหม่</label>` : ''}
         <a href="#/dashboard" data-nt="dash">ดูภาพรวมที่ Dashboard →</a></footer>`;
+    panel.querySelector('.nt-list').scrollTop = scroll;
   }
   function open() {
     let panel = document.getElementById('nt-panel');
@@ -210,9 +246,17 @@
       return;
     }
     const tab = e.target.closest('[data-nt-tab]');
-    if (tab) { view.tab = tab.dataset.ntTab; draw(); return; }
+    if (tab) { view.tab = tab.dataset.ntTab; draw(); document.querySelector('#nt-panel .nt-list').scrollTop = 0; return; }
+    const sec = e.target.closest('[data-nt-sec]');
+    if (sec) { const k = sec.dataset.ntSec; if (s.closed[k]) delete s.closed[k]; else s.closed[k] = 1; store(s); draw(); return; }
     const a = e.target.closest('[data-nt]');
     if (a && a.dataset.nt === 'close') { N.close(); return; }
+    if (a && a.dataset.nt === 'toggle-all') {
+      const close = !TOPICS.every((t) => s.closed[t.key]);
+      s.closed = {};
+      if (close) TOPICS.forEach((t) => (s.closed[t.key] = 1));
+      store(s); draw(); return;
+    }
     if (a && a.dataset.nt === 'readall') { items.forEach((x) => (s.read[x.id] = PM.today())); store(s); badge(s); draw(); return; }
     if (a && a.dataset.nt === 'dash') { N.close(); return; }
     const it = e.target.closest('[data-nt-id]');

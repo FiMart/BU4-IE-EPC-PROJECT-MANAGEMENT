@@ -314,7 +314,7 @@
     bidding: ['ติดตามงานประมูลจนรู้ผล', 'Inquiry → Estimate → Proposal → Submit → Award · Win rate และผลงาน Sales'],
     'bid-inquiry': ['Inquiry — รับเรื่อง / สอบถาม', 'งานที่ลูกค้าส่งเข้ามา · ที่มาของงาน · Sales และผู้ติดต่อ · กำหนดยื่นราคา'],
     'bid-estimate': ['Estimate — ถอดแบบ / ประมาณราคา', 'ถอดปริมาณ BOQ · Estimator ผู้รับผิดชอบ · ชั่วโมงที่ใช้ประมาณราคา'],
-    'bid-proposal': ['Proposal — จัดทำข้อเสนอ', 'มูลค่าและ Margin · เตรียมเอกสารให้ทันกำหนดยื่น'],
+    'bid-proposal': ['Proposal Status List', 'ทะเบียนข้อเสนอทุกงาน · Type · Priority · Progress · Status · PM · Sales · Deliverables · พิมพ์ / Excel'],
     'bid-submit': ['Submit — ยื่นใบเสนอราคา / รอผล', 'ยื่นตรงเวลาหรือไม่ · รอผลมากี่วัน · บันทึกผล Won / Lost / No-bid'],
     'bid-award': ['Award — ผลการประมูล', 'Won / Lost / No-bid · Win rate · สร้างโครงการจากงานที่ได้'],
     projects: ['โครงการ EPC ทั้งหมด', 'Engineering → Procurement → Construction → Closing · Progress, SPI / CPI และสถานะของแต่ละโครงการ'],
@@ -323,7 +323,7 @@
     weekly: ['วางแผนงานรายสัปดาห์', 'มอบหมายงานให้แต่ละคน อัปเดตสถานะ และวัด PPC (เป้า ≥ 80%)'],
     resources: ['ภาระงานของทีม', 'Utilization ตาม Level · loading รายสัปดาห์ · ใครงานล้น ใครยังรับงานเพิ่มได้'],
     timesheet: ['บันทึกชั่วโมงทำงาน', 'กรอกชั่วโมงรายสัปดาห์ แยก Project / Bid / Overhead / Leave'],
-    settings: ['ตั้งค่าระบบ', 'บัญชีผู้ใช้ · Role และสิทธิ์ · Cloud · Backup & Restore'],
+    settings: ['ตั้งค่าระบบ', 'บัญชีผู้ใช้ · Role และสิทธิ์ · ISO 9001 · Cloud · Backup & Restore'],
     about: ['เวอร์ชันและประวัติการแก้ไข', 'ดูว่ามีอะไรใหม่และอะไรเปลี่ยนไปในแต่ละเวอร์ชัน'],
     help: ['วิธีใช้งาน', 'คู่มือของทุกหน้า — ขั้นตอนทีละข้อ สิทธิ์ตาม Role และวิธีแก้ปัญหาที่พบบ่อย · ค้นหาได้'],
   };

@@ -98,6 +98,49 @@
     const { error } = await storage().remove(paths);
     if (error) throw new Error(storageError(error));
   };
+  /* when a record is deleted its folder goes too — everything in it, also files no record points to any more.
+     The database lists the folder (app_file_paths); `known` = the record's own files, if it cannot yet (data.sql not re-run).
+     A queue in this browser: offline now → tried again when back online. Never rejects, so a delete is not held up. */
+  const TRASH = 'epc-pm-file-trash';
+  const readTrash = () => { try { return JSON.parse(localStorage.getItem(TRASH) || '[]'); } catch (e) { return []; } };
+  const writeTrash = (q) => { try { localStorage.setItem(TRASH, JSON.stringify(q)); } catch (e) { /* private mode: this attempt only */ } };
+  const filesUnder = async (prefix) => {
+    const { data, error } = await PM.auth.client.rpc('app_file_paths', { prefix });
+    if (error) {
+      if (/could not find|does not exist|schema cache|permission denied/i.test(error.message || '')) return null;
+      throw new Error(error.message);
+    }
+    return (data || []).map((r) => (typeof r === 'string' ? r : r.app_file_paths));
+  };
+  async function runTrash() {
+    if (!F.available()) return;
+    for (const job of readTrash()) {
+      try {
+        const listed = await filesUnder(job.prefix);
+        const names = Array.from(new Set((job.paths || []).concat(listed || [])));
+        for (let i = 0; i < names.length; i += 200) {
+          const { error } = await storage().remove(names.slice(i, i + 200));
+          if (error) throw new Error(storageError(error));
+        }
+        const left = listed ? await filesUnder(job.prefix) : [];
+        writeTrash(readTrash().filter((x) => x.id !== job.id));
+        if (left && left.length) U.alert(`ลบไฟล์ ${left.length} ไฟล์ออกจากที่เก็บไฟล์ไม่ได้ (ไม่มีสิทธิ์) — ให้ Admin รัน supabase/data.sql อีกครั้ง แล้วลบซ้ำ`);
+      } catch (e) {
+        console.warn('Deleting files later:', e.message); // kept in the queue
+        return;
+      }
+    }
+  }
+  let trashRun = Promise.resolve();
+  F.drain = () => (trashRun = trashRun.then(runTrash, runTrash));
+  F.trash = (prefix, known) => {
+    if (!F.available()) return Promise.resolve();
+    writeTrash(readTrash().concat({ id: PM.uid('T'), prefix, paths: known || [] }));
+    return F.drain();
+  };
+  window.addEventListener('online', F.drain);
+  setInterval(() => { if (readTrash().length) F.drain(); }, 120000);
+
   const fileSize = (b) => (b >= 1048576 ? (b / 1048576).toFixed(1) + ' MB' : Math.max(1, Math.round(b / 1024)) + ' KB');
   const fileIcon = (name) => { const x = (name.split('.').pop() || '').toLowerCase(); return { pdf: 'PDF', xlsx: 'XLS', xls: 'XLS', csv: 'CSV', docx: 'DOC', doc: 'DOC', zip: 'ZIP' }[x] || 'IMG'; };
 
@@ -217,7 +260,7 @@
         return `<tr class="click" data-po="${esc(po.id)}">
           <td><span class="title">${esc(po.poNo)}</span><small>${esc(po.description)} · ${esc(po.category)}</small></td>
           ${opt.showProject ? `<td class="nowrap">${esc(projLabel(po.projectId))}</td>` : ''}
-          <td>${esc(po.supplier)}</td>
+          <td>${esc(po.supplier)}${PM.avlPoBadge(po) ? `<div>${PM.avlPoBadge(po)}</div>` : ''}</td>
           <td class="num">${U.money(po.amount)}</td>
           <td class="num">${U.money(po.paidAmount || 0)}<small>${U.pct(paidPct)}</small></td>
           <td class="nowrap">${U.date(po.poDate)}</td>
@@ -277,15 +320,14 @@
     const form = U.modal({
       title: isNew ? 'New PO' : `${x.poNo} · ${x.supplier}`, wide: true, submitLabel: canEdit ? 'บันทึก PO' : undefined,
       onSubmit: canEdit ? () => false : null, // saving is async (uploads) — handled below
-      onDelete: !isNew && canEdit ? async () => {
-        try { await F.remove((x.files || []).map((f) => f.path)); } catch (e) { /* files may already be gone */ }
-        PM.remove('pos', x.id); U.toast('ลบ PO แล้ว'); done();
-      } : null,
+      deleteText: () => PM.purge.poText(x),
+      onDelete: !isNew && canEdit ? async () => { await PM.purge.po(x); U.toast('ลบ PO แล้ว'); done(); } : null,
       body: `
         ${U.field('PO No.', 'poNo', x.poNo, { required: true })}
         ${projectId || !isNew ? `<label><span>Project</span><input value="${esc(projLabel(x.projectId))}" disabled></label>` : U.field('Project', 'projectId', x.projectId, { options: projects.map((p) => ({ value: p.id, label: `${p.code} · ${p.name}` })) })}
         ${U.field('Supplier / ผู้ขาย', 'supplier', x.supplier, { required: true })}
         ${U.field('หมวด', 'category', x.category, { options: PM.PO_CATEGORIES })}
+        <div class="full po-avl" id="po-avl" hidden></div>
         ${U.field('รายการ / Description', 'description', x.description, { required: true, full: true })}
         ${U.field('มูลค่า PO (THB)', 'amount', x.amount, { type: 'number', min: 0, step: 'any', required: true })}
         ${U.field('จ่ายแล้ว (THB)', 'paidAmount', x.paidAmount, { type: 'number', min: 0, step: 'any' })}
@@ -299,6 +341,8 @@
     });
     const files = F.box(form, x.files, canEdit);
     PM.approvalFormBind(form, 'po', x, done); // approve / return buttons for an approver (approvals.js)
+    // is the supplier on the project's approved vendor list? checked as you type (avl.js)
+    PM.avlBind(form, { field: 'supplier', box: '#po-avl', project: () => { const s = form.querySelector('select[name="projectId"]'); return s ? s.value : x.projectId; }, readOnly: !canEdit });
 
     if (!canEdit) { // view only — files can still be opened
       form.querySelectorAll('input, select, textarea').forEach((i) => { i.disabled = true; });
@@ -311,6 +355,9 @@
       if (!form.checkValidity()) return;
       const f = U.formData(form);
       if (PM.db.pos.some((y) => y.id !== x.id && String(y.poNo).toUpperCase() === f.poNo.toUpperCase())) { U.alert(`PO No. ${f.poNo} ถูกใช้แล้ว`); return; }
+      // a vendor the client has not approved: ask once — only when the supplier was just entered or changed, not on every later edit
+      const avlAsk = isNew || f.supplier !== x.supplier || f.category !== x.category ? PM.avlWarning(f.projectId || x.projectId, f.supplier, f.category) : '';
+      if (avlAsk && !(await U.confirm(avlAsk, { title: 'ตรวจผู้ขายกับ AVL', ok: 'บันทึก PO ต่อ' }))) { form.supplier.focus(); return; }
       const btn = form.querySelector('[type=submit]');
       btn.disabled = true; btn.classList.add('loading');
       Object.assign(x, {

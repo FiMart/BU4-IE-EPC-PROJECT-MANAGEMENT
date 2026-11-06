@@ -28,30 +28,65 @@
      bid.owner = user id (auth) of the Sales account responsible for the bid. */
   PM.BID_SECRET = ['value', 'margin', 'files'];
   /* Estimate & Proposal work on a bid — public fields (not the price): Engineers / PMs fill them in.
-     b.estimate = { status, reviewer, material, labour, subcon, other, notes } · b.proposal = { status, owner, checks: {key: bool}, notes }
-     b.workFiles = the team's working files (Storage bidwork/<bidId>/… — open to every role, unlike the quotation files) */
+     b.estimate = { status, reviewer, material, labour, subcon, other, notes }
+     b.proposal = { type, priority, progress, status, owner (= PM), ownerName, deliverables, notes, reviewer, reviewDate } — the columns of the
+     Proposal Status List (PS-IE-2026-001); read it through PM.propOf, which also understands bids saved before v1.68 (status + checks) */
+  /* b.workFiles = the team's working files (Storage bidwork/<bidId>/… — open to every role, unlike the quotation files) */
   PM.EST_STATUS = [
     { key: 'todo', label: 'ยังไม่เริ่ม', level: 'neutral' },
     { key: 'takeoff', label: 'กำลังถอดปริมาณ / ประมาณราคา', level: 'info' },
     { key: 'done', label: 'ประมาณราคาเสร็จ', level: 'warning' },
     { key: 'reviewed', label: 'ตรวจแล้ว', level: 'good' },
   ];
+  /* same words and colours as the Proposal Status List: win / lose are the bid's result, the others the work on the proposal */
+  PM.PROP_TYPES = ['Bidding', 'Budget', 'Budgetary', 'Contract'];
+  PM.PROP_PRIORITY = [{ key: 'High', level: 'critical' }, { key: 'Medium', level: 'warning' }, { key: 'Low', level: 'good' }];
   PM.PROP_STATUS = [
-    { key: 'todo', label: 'ยังไม่เริ่ม', level: 'neutral' },
-    { key: 'drafting', label: 'กำลังจัดทำ', level: 'info' },
-    { key: 'review', label: 'รอตรวจ', level: 'warning' },
-    { key: 'ready', label: 'พร้อมยื่น', level: 'good' },
+    { key: 'complete', label: 'Complete', level: 'good' },
+    { key: 'win', label: 'Complete (Win)', level: 'good' },
+    { key: 'lose', label: 'Complete (Lose)', level: 'critical' },
+    { key: 'in_progress', label: 'In Progress', level: 'warning' },
+    { key: 'not_started', label: 'Not Started', level: 'neutral' },
   ];
-  PM.PROP_CHECKS = [
-    { key: 'technical', label: 'Technical proposal / ขอบเขตงาน' },
-    { key: 'method', label: 'Method statement / วิธีการทำงาน' },
-    { key: 'schedule', label: 'แผนงาน (Schedule)' },
-    { key: 'org', label: 'ผังองค์กร / ทีมงาน' },
-    { key: 'compliance', label: 'Compliance / Deviation list' },
-    { key: 'docs', label: 'เอกสารบริษัท / ผลงานอ้างอิง' },
-  ];
+  PM.PROP_DELIVERABLES = ['P&ID', 'GA', 'List eq.', 'BOQ', 'TQ Proposal', 'TBE', 'Technical Prop.', 'Proposal', 'Quotation', 'Project Schedule', 'System Architecture', 'RFQ', 'Site survey', 'Clarify spec', "Vendor's QTY"];
+  const OLD_CHECKS = { technical: 'Technical Prop.', method: 'Method statement', schedule: 'Project Schedule', org: 'Organization chart', compliance: 'Compliance list', docs: 'Company documents' };
+  const OLD_STATUS = { todo: 'not_started', drafting: 'in_progress', review: 'in_progress', ready: 'complete' };
+  PM.propOf = (b) => {
+    const p = (b && b.proposal) || {};
+    const checks = Object.keys(OLD_CHECKS).filter((k) => (p.checks || {})[k]);
+    const left = !!(b && ((b.dates && b.dates.submit) || (b.result && b.result !== 'pending'))); // already handed in
+    const work = OLD_STATUS[p.status] === undefined ? p.status || (left ? 'complete' : 'not_started') : left && p.status === 'todo' ? 'complete' : OLD_STATUS[p.status];
+    const progress = p.progress != null && p.progress !== '' ? Number(p.progress) || 0
+      : work === 'complete' ? 100 : p.checks ? Math.round((checks.length / 6) * 100) : 0;
+    const result = b && b.result;
+    return {
+      type: p.type || 'Bidding', priority: p.priority || '', progress, work,
+      status: result === 'won' ? 'win' : result === 'lost' ? 'lose' : result === 'nobid' ? 'nobid' : work,
+      owner: p.owner || '', ownerName: p.ownerName || '', notes: p.notes || '', reviewer: p.reviewer || '', reviewDate: p.reviewDate || '',
+      deliverables: p.deliverables != null ? p.deliverables : checks.map((k) => OLD_CHECKS[k]).join(', '),
+    };
+  };
+  PM.propStatusInfo = (key) => PM.PROP_STATUS.find((s) => s.key === key) || { key, label: 'No-bid', level: 'neutral' };
+  /* the list in the order things came in: "No." is the place in the whole list, whatever a filter hides */
+  PM.proposalList = () => (PM.db.bids || []).slice()
+    .sort((a, b) => { // an imported list keeps the file's order, and comes before what is added later
+      const x = (a.proposal || {}).listNo, y = (b.proposal || {}).listNo;
+      if (x || y) return (x || Infinity) - (y || Infinity);
+      return String(a.dates && a.dates.inquiry).localeCompare(String(b.dates && b.dates.inquiry)) || String(a.code).localeCompare(String(b.code));
+    })
+    .map((b, i) => ({ b, no: i + 1, p: PM.propOf(b) }));
+  /* the summary under the list. Value: only the bids this user may see the price of */
+  PM.proposalSummary = (rows) => {
+    const val = (xs) => PM.sum(xs.filter((x) => PM.canSeeBidPrice(x.b)), (x) => Number(x.b.value) || 0) / 1e6;
+    const status = PM.PROP_STATUS.map((s) => s.key).concat(rows.some((x) => x.p.status === 'nobid') ? ['nobid'] : []).map((key) => {
+      const xs = rows.filter((x) => x.p.status === key);
+      return { key, label: PM.propStatusInfo(key).label, level: PM.propStatusInfo(key).level, n: xs.length, value: val(xs) };
+    });
+    const type = PM.PROP_TYPES.map((t) => ({ label: t, n: rows.filter((x) => x.p.type === t).length }));
+    const priority = PM.PROP_PRIORITY.map((t) => ({ label: t.key, level: t.level, n: rows.filter((x) => x.p.priority === t.key).length }));
+    return { total: rows.length, value: val(rows), status, type, priority };
+  };
   PM.bidCost = (b) => { const e = (b && b.estimate) || {}; return ['material', 'labour', 'subcon', 'other'].reduce((s, k) => s + (Number(e[k]) || 0), 0); };
-  PM.bidChecks = (b) => { const c = ((b && b.proposal) || {}).checks || {}; return PM.PROP_CHECKS.filter((x) => c[x.key]).length; };
   PM.myUid = () => (PM.auth && PM.auth.user ? PM.auth.user.id : '');
   PM.myRole = () => (PM.auth && PM.auth.role) || '';
   /* the Sales account behind the chosen Sales person (an account id, or an employee whose name matches an account) */
@@ -263,7 +298,7 @@
   };
   /* data saved by older versions may miss newer collections */
   PM.ensureShape = () => {
-    ['bids', 'projects', 'ncrs', 'safety', 'resources', 'levels', 'timesheets', 'plans', 'pos', 'costs', 'prices', 'settings', 'dailies', 'punch', 'meetings'].forEach((c) => { if (!Array.isArray(PM.db[c])) PM.db[c] = []; });
+    ['bids', 'projects', 'ncrs', 'safety', 'resources', 'levels', 'timesheets', 'plans', 'pos', 'costs', 'prices', 'settings', 'dailies', 'punch', 'meetings', 'avl', 'qms', 'planrules'].forEach((c) => { if (!Array.isArray(PM.db[c])) PM.db[c] = []; });
     // fixed person levels: Engineer, Technician & Other (only these three exist)
     PM.PERSON_LEVELS.forEach((l) => { if (!PM.db.levels.some((x) => x.id === l.id)) PM.db.levels.push(Object.assign({}, l)); });
     const allowed = PM.PERSON_LEVELS.map((l) => l.id);
@@ -297,7 +332,7 @@
   PM.emptyDb = () => ({
     meta: { version: 1, company: PM.COMPANY, created: PM.today() },
     levels: PM.PERSON_LEVELS.map((l) => Object.assign({}, l)),
-    resources: [], bids: [], projects: [], ncrs: [], safety: [], timesheets: [], plans: [], pos: [], costs: [], prices: [], settings: [], dailies: [], punch: [], meetings: [],
+    resources: [], bids: [], projects: [], ncrs: [], safety: [], timesheets: [], plans: [], pos: [], costs: [], prices: [], settings: [], dailies: [], punch: [], meetings: [], avl: [], qms: [], planrules: [],
   });
 
   /* Build the 4 EPC phases for a new project from its dates and budget */
@@ -541,18 +576,23 @@
     }).filter((x) => x.id || x.bids.length || x.projects.length);
   };
 
+  /* someone who resigned (active false + resignDate = last working day) stays in the numbers of the periods they worked,
+     with no capacity after that day. active false without a date = switched off in an older version: not counted, as before */
+  PM.employedIn = (r, from) => r.active !== false || (!!r.resignDate && r.resignDate >= from);
+
   PM.utilization = function (from, to) {
     const db = PM.db;
     to = PM.min(to, PM.today());
     const days = from <= to ? PM.workdays(from, to) : 0;
     const ts = db.timesheets.filter((t) => t.date >= from && t.date <= to);
-    const people = db.resources.filter((r) => r.active !== false).map((r) => {
+    const people = db.resources.filter((r) => PM.employedIn(r, from)).map((r) => {
       const mine = ts.filter((t) => t.resourceId === r.id);
       const project = PM.sum(mine.filter((t) => t.kind === 'project'), (t) => t.hours);
       const bid = PM.sum(mine.filter((t) => t.kind === 'bid'), (t) => t.hours);
       const leave = PM.sum(mine.filter((t) => t.kind === 'overhead' && t.refId === 'leave'), (t) => t.hours);
       const overhead = PM.sum(mine.filter((t) => t.kind === 'overhead' && t.refId !== 'leave'), (t) => t.hours);
-      const capacity = PM.needsTimesheet(r) ? (PM.cap(r) / 5) * days : 0; // Level Other: no Timesheet → no capacity to fill
+      const myDays = r.active === false && from <= to ? PM.workdays(from, PM.min(to, r.resignDate)) : days;
+      const capacity = PM.needsTimesheet(r) ? (PM.cap(r) / 5) * myDays : 0; // Level Other: no Timesheet → no capacity to fill
       const available = Math.max(0, capacity - leave);
       const billable = project + bid;
       const level = db.levels.find((l) => l.id === r.level);
@@ -567,7 +607,7 @@
       const ps = people.filter((p) => p.r.level === l.id);
       const av = PM.sum(ps, (p) => p.available);
       const bl = PM.sum(ps, (p) => p.billable);
-      return { level: l, n: ps.length, available: av, billable: bl, util: av ? bl / av : null, target: l.target / 100 };
+      return { level: l, n: ps.filter((p) => p.r.active !== false).length, available: av, billable: bl, util: av ? bl / av : null, target: l.target / 100 };
     }).filter((x) => x.n > 0 || PM.PERSON_LEVELS.some((l) => l.id === x.level.id)); // fixed levels always listed
     const total = {
       capacity: PM.sum(people, (p) => p.capacity),
@@ -643,7 +683,7 @@
     const ctx = { hol: new Set(set.holidays.map((h) => h.date)), rates: set.rates, holidays: set.holidays };
     const ts = db.timesheets.filter((t) => t.date >= from && t.date <= to);
     const byProject = {}; // project id ('' = not a project: bidding / overhead) → { hours, cost }
-    const people = db.resources.filter((r) => r.active !== false).map((r) => {
+    const people = db.resources.filter((r) => PM.employedIn(r, from)).map((r) => {
       const mine = ts.filter((t) => t.resourceId === r.id);
       const day = {};
       mine.forEach((t) => {
@@ -786,11 +826,19 @@
       let resultDate = '';
       if (result === 'won' || result === 'lost') resultDate = PM.min(T, PM.addDays(dates.submit, ri(14, 40)));
       if (result === 'nobid') resultDate = dates[stage];
+      const done = idx >= 3;
+      const inWork = idx === 2;
       return {
         id: 'B' + bidNo, code: 'BD-' + inqDate.slice(2, 4) + '-' + String(bidNo).padStart(3, '0'),
         name, client, sector, scope, value: Math.round(valueM * 1e6), margin: ri(8, 16),
         estimator, boqItems: ri(80, 900), dueDate: due, dates, stage, result, resultDate,
         projectId: projectId || null, notes: '',
+        proposal: {
+          type: valueM >= 150 ? 'Budgetary' : 'Bidding', priority: pick(['High', 'Medium', 'Low', '']),
+          progress: done ? 100 : inWork ? ri(30, 80) : 0, status: done ? 'complete' : inWork ? 'in_progress' : 'not_started', owner: estimator,
+          deliverables: valueM >= 150 ? 'P&ID, GA, List eq., Technical Prop., BOQ' : pick(['Proposal, BOQ', 'List eq., BOQ', 'Proposal, BOQ, Project Schedule', 'BOQ']),
+          reviewer: done ? (estimator === 'R3' ? 'R4' : 'R3') : '', reviewDate: done ? dates.submit : '',
+        },
       };
     };
     db.bids = [];
@@ -867,6 +915,10 @@
           action: closed ? 'Rework completed and re-inspected' : '',
           status: closed ? 'closed' : 'open',
           closedDate: closed ? PM.min(upto, PM.addDays(date, ri(4, 30))) : '',
+          rootCause: closed ? pick(['ไม่ได้ตรวจตามขั้นตอนก่อนส่งงาน', 'ผู้ปฏิบัติไม่ได้รับ Revision ล่าสุด', 'ผู้ขายไม่ได้ตรวจก่อนจัดส่ง']) : '',
+          correction: closed ? 'แก้ไขงานที่พบและตรวจซ้ำ' : '',
+          dueDate: closed ? '' : PM.addDays(date, ri(10, 30)),
+          effective: closed ? 'yes' : '',
         });
       }
     });
@@ -965,6 +1017,8 @@
     if (PM.buildSampleDailies) { const keep = PM.db; PM.db = db; db.dailies = PM.buildSampleDailies(db.projects, T); PM.db = keep; }
     if (PM.buildSamplePunch) db.punch = PM.buildSamplePunch(db.projects, T); // punch.js
     if (PM.buildSampleMeetings) db.meetings = PM.buildSampleMeetings(db.projects, T, db.resources); // meetings.js
+    if (PM.buildSampleAvl) db.avl = PM.buildSampleAvl(db.projects, T); // approved vendor list (avl.js)
+    if (PM.buildSampleQms) db.qms = PM.buildSampleQms(db, T); // ISO 9001 records (iso.js)
 
     /* weekly plan — 6 past weeks, this week, next week (built from each person's allocation) */
     const TASKS = {
@@ -1013,6 +1067,7 @@
         }
       });
     }
+    if (PM.buildSamplePlanTools) PM.buildSamplePlanTools(db, T); // recurring tasks, tasks further ahead, things to prepare (weekly.js)
 
     /* purchase orders — per project, dated inside the procurement phase (demo has no files) */
     const PO_ITEMS = [

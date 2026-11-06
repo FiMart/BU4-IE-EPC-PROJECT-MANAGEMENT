@@ -147,35 +147,58 @@
 
   const shortName = (v) => String(v || '').replace(/\s*(Co\.,?\s*Ltd\.?|Company Limited|PCL|Ltd\.?)\s*$/i, '').trim();
 
+  /* cheapest / dearest of each item, by price id → 'low' | 'high'. Vendors at the same price share the colour; an item all at
+     one price has neither; a price of 0 (not filled in yet) is left out */
+  function priceTones(cmp) {
+    const out = {};
+    cmp.forEach((g) => {
+      const xs = g.items.filter((p) => Number(p.price) > 0), v = xs.map((p) => Number(p.price));
+      const lo = Math.min(...v), hi = Math.max(...v);
+      if (xs.length < 2 || lo === hi) return;
+      xs.forEach((p) => { if (Number(p.price) === lo) out[p.id] = 'low'; else if (Number(p.price) === hi) out[p.id] = 'high'; });
+    });
+    return out;
+  }
+  const TONE_WORD = { low: 'ถูกสุด', high: 'แพงสุด' };
+  const PL_PRICE = 7, PL_WORD = 9; // columns of the Price List sheet that carry the strong colour
+  const CMP_TONE = { 3: ['low', true], 4: ['low', false], 5: ['high', true], 6: ['high', false] }; // comparison sheet: lowest and highest price + vendor
+
   /* ---------- export: the rows on screen (filters applied) + vendor comparison ---------- */
   function report(list, T) {
     const filters = [state.cat && `หมวด: ${state.cat}`, state.vendor && `ผู้ขาย: ${state.vendor}`,
       state.status !== 'all' && `สถานะ: ${FILTERS.find((f) => f.key === state.status).label}`, state.q && `ค้นหา: "${state.q}"`].filter(Boolean);
     const cmp = groups(list);
-    const lowest = new Set(cmp.map((g) => g.low.id));
+    const tones = priceTones(cmp);
+    const legend = [{ tone: 'low', label: 'ถูกสุด' }, { tone: 'high', label: 'แพงสุด' }];
+    const legendNote = 'เทียบเฉพาะรายการเดียวกัน สกุลเงินเดียวกัน จาก 2 ผู้ขายขึ้นไปในรายงานนี้ (รวมราคาที่หมดอายุ ดูคอลัมน์สถานะ) · ราคาเท่ากันทุกผู้ขาย = ไม่มีสี';
     return {
       filename: `price-list-${T}`,
       title: 'Price List / Vendor Cost — ราคาผู้ขาย',
       subtitle: `ข้อมูล ณ ${U.date(T)} · ${list.length} รายการ${filters.length ? ' · ' + filters.join(' · ') : ''} · ราคาต่อหน่วยไม่รวม VAT`,
       sheets: [
         {
-          name: 'Price List', title: 'Price List — ราคาผู้ขาย',
+          name: 'Price List', title: 'Price List — ราคาผู้ขาย', legend, legendNote,
+          tone: (r, c) => { const t = tones[list[r].id]; return t ? { tone: t, strong: c === PL_PRICE || c === PL_WORD } : null; },
           columns: [
             { header: 'รหัส', width: 13 }, { header: 'รายการ', width: 34 }, { header: 'รายละเอียด / Spec', width: 28 }, { header: 'หมวด', width: 12 },
             { header: 'หน่วย', width: 8 }, { header: 'ผู้ขาย', width: 30 }, { header: 'ผู้ติดต่อ', width: 18 },
-            { header: 'ราคา / หน่วย', width: 14, type: 'number' }, { header: 'สกุลเงิน', width: 8 }, { header: 'ถูกสุด', width: 8 },
+            { header: 'ราคา / หน่วย', width: 14, type: 'number' }, { header: 'สกุลเงิน', width: 8 }, { header: 'เทียบราคา', width: 9 },
             { header: 'เปลี่ยนจากราคาก่อน (%)', width: 12, type: 'number' }, { header: 'MOQ', width: 8, type: 'int' }, { header: 'Lead time (วัน)', width: 10, type: 'int' },
             { header: 'เลขที่ใบเสนอราคา', width: 16 }, { header: 'วันที่เสนอราคา', width: 12, type: 'date' }, { header: 'ใช้ได้ถึง', width: 12, type: 'date' },
             { header: 'สถานะ', width: 18 }, { header: 'หมายเหตุ', width: 26 },
           ],
           rows: list.map((p) => {
             const c = change(p);
-            return [p.code, p.name, p.spec, p.category, p.unit, p.vendor, p.contact, p.price, p.currency || 'THB', lowest.has(p.id) ? '✓' : '',
+            return [p.code, p.name, p.spec, p.category, p.unit, p.vendor, p.contact, p.price, p.currency || 'THB', TONE_WORD[tones[p.id]] || '',
               c == null ? '' : Math.round(c * 10000) / 100, p.moq || '', p.leadTime || '', p.quoteRef, p.quoteDate, p.validUntil, PM.priceStatus(p, T).th, p.note];
           }),
         },
         {
-          name: 'เปรียบเทียบราคา', title: 'เปรียบเทียบราคาผู้ขาย (รายการที่มี 2 ผู้ขายขึ้นไป)',
+          name: 'เปรียบเทียบราคา', title: 'เปรียบเทียบราคาผู้ขาย (รายการที่มี 2 ผู้ขายขึ้นไป)', legend,
+          tone: (r, c) => {
+            const m = CMP_TONE[c], g = cmp[r];
+            return m && tones[(m[0] === 'low' ? g.low : g.high).id] === m[0] ? { tone: m[0], strong: m[1] } : null;
+          },
           columns: [
             { header: 'รายการ', width: 34 }, { header: 'หน่วย', width: 8 }, { header: 'จำนวนผู้ขาย', width: 10, type: 'int' },
             { header: 'ราคาต่ำสุด', width: 14, type: 'number' }, { header: 'ผู้ขาย (ต่ำสุด)', width: 30 },
@@ -203,8 +226,8 @@
     const form = U.modal({
       title: isNew ? 'เพิ่มราคา (Price List)' : `${x.name} · ${x.vendor}`, wide: true, submitLabel: canEdit ? 'บันทึกราคา' : undefined,
       onSubmit: canEdit ? () => false : null, // saving is async (file uploads) — handled below
-      onDelete: !isNew && canEdit ? async () => {
-        try { await PM.poFiles.remove((x.files || []).map((f) => f.path)); } catch (e) { /* files may already be gone */ }
+      onDelete: !isNew && canEdit ? () => {
+        PM.poFiles.trash(`prices/${x.id}`, (x.files || []).map((f) => f.path));
         PM.remove('prices', x.id); U.toast('ลบราคาแล้ว'); done();
       } : null,
       body: `
@@ -216,6 +239,7 @@
         <div class="sub-h">ผู้ขายและราคา</div>
         <label><span>ผู้ขาย (Vendor)</span><input name="vendor" list="dl-price-vendors" value="${esc(x.vendor)}" required autocomplete="off"><datalist id="dl-price-vendors">${vendors.map((n) => `<option value="${esc(n)}">`).join('')}</datalist></label>
         ${U.field('ผู้ติดต่อ / เบอร์โทร', 'contact', x.contact)}
+        <div class="full po-avl" id="pl-avl" hidden></div>
         ${U.field('ราคาต่อหน่วย (ไม่รวม VAT)', 'price', x.price, { type: 'number', min: 0, step: 'any', required: true })}
         ${U.field('สกุลเงิน', 'currency', x.currency || 'THB', { options: PM.CURRENCIES })}
         ${U.field('หน่วย', 'unit', x.unit, { options: units })}
@@ -237,6 +261,10 @@
         ${!isNew && x.updatedByName ? `<p class="full muted" style="margin:0">แก้ไขล่าสุด ${U.date((x.updatedAt || '').slice(0, 10))} โดย ${esc(x.updatedByName)}</p>` : ''}`,
     });
     const files = PM.poFiles.box(form, x.files, canEdit);
+    // a price is not tied to a project: show which projects' AVL have this vendor (avl.js)
+    const avlShow = () => { const b = form.querySelector('#pl-avl'), html = PM.avlWhere(form.vendor.value); b.innerHTML = html; b.hidden = !html; };
+    form.vendor.addEventListener('input', avlShow);
+    avlShow();
     if (!canEdit) { form.querySelectorAll('input, select, textarea').forEach((i) => { i.disabled = true; }); return; }
 
     form.addEventListener('submit', async (e) => {

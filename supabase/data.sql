@@ -81,13 +81,55 @@ create policy "records: update" on public.app_records for update to authenticate
   with check (public.can_write_record(collection) and (collection <> 'bidprices' or public.can_see_bid_price(data ->> 'owner')));
 -- Weekly Plan tasks can only be deleted by the person who created them
 -- (tasks without a recorded creator — older data / demo — only by Admin)
+-- A project (with everything in it): Admin, Department Manager & Project Manager only.
+-- A bid: Admin and the Sales who owns it — the only people who may see its price and quotation files, which go with it.
 create policy "records: delete" on public.app_records for delete to authenticated using (
   public.can_write_record(collection) and (collection <> 'bidprices' or public.can_see_bid_price(data ->> 'owner')) and (
     collection <> 'plans'
     or data ->> 'createdBy' = auth.uid()::text
     or (coalesce(data ->> 'createdBy', '') = '' and public.is_admin())
+  ) and (
+    collection <> 'projects'
+    or exists (select 1 from public.profiles where id = auth.uid() and role::text in ('admin', 'dept_manager', 'project_manager'))
+  ) and (
+    collection <> 'bids' or public.can_see_bid_price(data ->> 'owner')
+  ) and (
+    -- ISO 9001 records: Admin & Department Manager only (everyone else marks them closed / obsolete instead)
+    collection <> 'qms'
+    or exists (select 1 from public.profiles where id = auth.uid() and role::text in ('admin', 'dept_manager'))
   )
 );
+
+-- Deleting means gone from the database: what belongs to a deleted project, bid or person is removed with it,
+-- whoever deleted it — also rows that role may not delete itself (Timesheets, another person's Weekly Plan task, bid prices).
+-- Runs after the delete statement, so Reset / Import (delete everything, then insert) is not affected.
+create or replace function public.app_records_cascade()
+returns trigger language plpgsql security definer set search_path = public as $$
+begin
+  if old.collection = 'projects' then
+    delete from public.app_records
+     where (collection in ('ncrs', 'safety', 'pos', 'costs', 'avl', 'punch', 'meetings', 'dailies') and data ->> 'projectId' = old.id)
+        or (collection in ('timesheets', 'plans') and data ->> 'kind' = 'project' and data ->> 'refId' = old.id);
+  elsif old.collection = 'bids' then
+    delete from public.app_records
+     where (collection = 'bidprices' and id = old.id)
+        or (collection in ('timesheets', 'plans') and data ->> 'kind' = 'bid' and data ->> 'refId' = old.id);
+  elsif old.collection = 'resources' then
+    delete from public.app_records where collection = 'timesheets' and data ->> 'resourceId' = old.id;
+    -- Weekly Plan tasks only this person is on (the app takes them off shared tasks itself)
+    delete from public.app_records
+     where collection = 'plans'
+       and coalesce(case when jsonb_typeof(data -> 'guests') = 'array' then jsonb_array_length(data -> 'guests') end, 0) = 0
+       and case when jsonb_typeof(data -> 'resourceIds') = 'array' and jsonb_array_length(data -> 'resourceIds') > 0
+                then data -> 'resourceIds' = jsonb_build_array(old.id)
+                else data ->> 'resourceId' = old.id end;
+  end if;
+  return null;
+end $$;
+drop trigger if exists app_records_cascade on public.app_records;
+create trigger app_records_cascade after delete on public.app_records
+  for each row when (old.collection in ('projects', 'bids', 'resources'))
+  execute function public.app_records_cascade();
 
 -- one-time move (safe to re-run): bids saved before v1.26 carry value / margin / files on the bid itself →
 -- move them to a 'bidprices' row and take them off the bid. The owner is the Sales account behind the bid:
@@ -150,6 +192,69 @@ drop trigger if exists app_records_keep_creator on public.app_records;
 create trigger app_records_keep_creator before update on public.app_records
   for each row execute function public.app_records_keep_creator();
 
+-- =====================================================================
+-- Audit trail (ISO 9001 clause 7.5.3): who added, changed or deleted which record, and when.
+--  - Written only by the trigger below. Nobody can change or delete a row through the API: there is no such grant.
+--  - Read by Admin & Department Manager only.
+--  - Holds the names of the fields that changed, never their values. A bid's price row logs only that it changed.
+--  - actor is not a foreign key and the name is copied: the history outlives a deleted account.
+-- =====================================================================
+create table if not exists public.app_audit (
+  id         bigserial primary key,
+  at         timestamptz not null default now(),
+  actor      uuid,
+  actor_name text not null default '',
+  action     text not null check (action in ('insert', 'update', 'delete', 'replace_all')),
+  collection text not null default '',
+  record_id  text not null default '',
+  label      text not null default '',
+  fields     text[] not null default '{}'
+);
+create index if not exists app_audit_at_idx on public.app_audit (at desc);
+alter table public.app_audit enable row level security;
+revoke all on public.app_audit from public, anon, authenticated;
+grant select on public.app_audit to authenticated;
+drop policy if exists "audit: read" on public.app_audit;
+create policy "audit: read" on public.app_audit for select to authenticated using (
+  exists (select 1 from public.profiles where id = auth.uid() and role::text in ('admin', 'dept_manager')));
+
+create or replace function public.app_actor_name()
+returns text language sql stable security definer set search_path = public as $$
+  select coalesce((select coalesce(nullif(trim(full_name), ''), split_part(email, '@', 1)) from public.profiles where id = auth.uid()), '');
+$$;
+
+create or replace function public.app_records_audit()
+returns trigger language plpgsql security definer set search_path = public as $$
+declare
+  rec jsonb := case when tg_op = 'DELETE' then old.data else new.data end;
+  changed text[] := '{}';
+  is_price boolean := (case when tg_op = 'DELETE' then old.collection else new.collection end) = 'bidprices';
+begin
+  if coalesce(current_setting('app.bulk', true), '') = '1' then return null; end if; -- Reset / Import writes one line of its own
+  if (case when tg_op = 'DELETE' then old.collection else new.collection end) = 'meta' then return null; end if;
+  if tg_op = 'UPDATE' then
+    select coalesce(array_agg(k order by k), '{}') into changed from (
+      select n.key as k from jsonb_each(new.data) n where n.value is distinct from old.data -> n.key
+      union
+      select o.key from jsonb_each(old.data) o where not new.data ? o.key
+    ) x;
+    if cardinality(changed) = 0 then return null; end if; -- saved again without a change
+  end if;
+  insert into public.app_audit (actor, actor_name, action, collection, record_id, label, fields)
+  values (
+    auth.uid(), public.app_actor_name(), lower(tg_op),
+    case when tg_op = 'DELETE' then old.collection else new.collection end,
+    case when tg_op = 'DELETE' then old.id else new.id end,
+    case when is_price then '' else left(coalesce(rec ->> 'no', rec ->> 'poNo', rec ->> 'code', rec ->> 'title', rec ->> 'name', rec ->> 'description', ''), 120) end,
+    case when is_price then '{}' else changed end
+  );
+  return null;
+end $$;
+revoke all on function public.app_records_audit() from public, anon, authenticated;
+drop trigger if exists app_records_audit on public.app_records;
+create trigger app_records_audit after insert or update or delete on public.app_records
+  for each row execute function public.app_records_audit();
+
 -- Reset / Import: replace everything in one transaction (Admin, Department Manager & Project Manager only)
 create or replace function public.app_replace_all(payload jsonb)
 returns integer language plpgsql security definer set search_path = public as $$
@@ -158,11 +263,13 @@ begin
   if not exists (select 1 from public.profiles where id = auth.uid() and role::text in ('admin', 'dept_manager', 'project_manager')) then
     raise exception 'Only Admin, Department Manager or Project Manager can reset or import data';
   end if;
+  perform set_config('app.bulk', '1', true); -- this transaction only: one line in the audit trail, not one per row
   delete from public.app_records where true;
   insert into public.app_records (collection, id, data, ord)
   select r ->> 'collection', r ->> 'id', r -> 'data', coalesce((r ->> 'ord')::bigint, 0)
   from jsonb_array_elements(payload) as r;
   get diagnostics n = row_count;
+  insert into public.app_audit (actor, actor_name, action, label) values (auth.uid(), public.app_actor_name(), 'replace_all', n || ' records');
   return n;
 end $$;
 revoke all on function public.app_replace_all(jsonb) from public, anon;
@@ -174,8 +281,9 @@ grant execute on function public.app_replace_all(jsonb) to authenticated;
 --            and bids/<bidId>/<timestamp>-<file name>        (inquiry / quotation attachments)
 --  - any signed-in user with a role can view / download and upload
 --    (except bids/…: only Admin and the Sales who owns the bid — see can_see_bid_files)
---  - delete: the person who uploaded the file, or Admin / Department Manager / Project Manager
---            (Document Control too, except bids/… — they replace superseded document revisions)
+--  - delete: any signed-in user with a role — deleting a record has to remove its files, whoever uploaded them
+--            (the app decides who may delete which record). bids/…: the uploader, Admin / Department Manager /
+--            Project Manager, and whoever may see that bid's files.
 -- =====================================================================
 insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
 values ('po-files', 'po-files', false, 20971520, array[
@@ -197,8 +305,23 @@ create policy "po-files: upload" on storage.objects for insert to authenticated
   with check (bucket_id = 'po-files' and public.has_app_role()
               and (name not like 'bids/%' or exists (select 1 from public.profiles where id = auth.uid() and role::text in ('admin', 'sales'))));
 create policy "po-files: delete" on storage.objects for delete to authenticated
-  using (bucket_id = 'po-files' and (
-    owner_id = auth.uid()::text
+  using (bucket_id = 'po-files' and public.has_app_role() and (
+    name not like 'bids/%'
+    or owner_id = auth.uid()::text
+    or public.can_see_bid_files(split_part(name, '/', 2))
     or exists (select 1 from public.profiles where id = auth.uid() and role::text in ('admin', 'dept_manager', 'project_manager'))
-    or (name not like 'bids/%' and exists (select 1 from public.profiles where id = auth.uid() and role::text = 'doc_control'))
   ));
+
+-- the files in a folder, so deleting a record removes all of them (also files no record points to any more).
+-- Quotation files (bids/…) only for those who may see them: their names stay hidden from everyone else.
+-- prefix '' = the whole bucket: Admin only (Reset).
+create or replace function public.app_file_paths(prefix text)
+returns setof text language sql stable security definer set search_path = public as $$
+  select o.name from storage.objects o
+   where o.bucket_id = 'po-files' and public.has_app_role()
+     and case when coalesce(prefix, '') = '' then public.is_admin()
+              else left(o.name, length(prefix) + 1) = prefix || '/'
+                   and (split_part(prefix, '/', 1) <> 'bids' or public.can_see_bid_files(split_part(prefix, '/', 2))) end;
+$$;
+revoke all on function public.app_file_paths(text) from public, anon;
+grant execute on function public.app_file_paths(text) to authenticated;

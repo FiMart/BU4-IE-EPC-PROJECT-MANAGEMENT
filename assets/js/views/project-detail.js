@@ -8,6 +8,7 @@
     { key: 'boq', label: 'BOQ', icon: 'layers', group: 'ต้นทุนและการเงิน' },
     { key: 'cost', label: 'ค่าใช้จ่าย', icon: 'coins', group: 'ต้นทุนและการเงิน' },
     { key: 'po', label: 'PO', icon: 'truck', group: 'ต้นทุนและการเงิน' },
+    { key: 'avl', label: 'AVL ผู้ขาย', icon: 'check', group: 'ต้นทุนและการเงิน' },
     { key: 'changes', label: 'VO งานเพิ่ม-ลด', icon: 'wrench', group: 'ต้นทุนและการเงิน' },
     { key: 'billing', label: 'งวดเงิน', icon: 'proposal', group: 'ต้นทุนและการเงิน' },
     { key: 'risks', label: 'ความเสี่ยง', icon: 'alert', group: 'หน้างานและทีม' },
@@ -81,7 +82,7 @@
 
     const tabEl = el.querySelector('#tab');
     const rerender = () => PM.views.project(el, params);
-    ({ overview, timeline: timelineTab, boq: boqTab, changes: (...a) => PM.changesTab(...a), billing: (...a) => PM.billingTab(...a), risks: (...a) => PM.risksTab(...a), daily: (...a) => PM.dailyTab(...a), meetings: (...a) => PM.meetingsTab(...a), punch: (...a) => PM.punchTab(...a), cost: costTab, quality, safety, team, po: poTab }[tab] || overview)(tabEl, p, m, rerender);
+    ({ overview, timeline: timelineTab, boq: boqTab, changes: (...a) => PM.changesTab(...a), billing: (...a) => PM.billingTab(...a), risks: (...a) => PM.risksTab(...a), daily: (...a) => PM.dailyTab(...a), meetings: (...a) => PM.meetingsTab(...a), punch: (...a) => PM.punchTab(...a), avl: (...a) => PM.avlTab(...a), cost: costTab, quality, safety, team, po: poTab }[tab] || overview)(tabEl, p, m, rerender);
     // the tab bar sits right under the header on every tab; the EPC phase cards and their line items open the Overview tab
     if (full) tabEl.insertAdjacentHTML('afterbegin', `${phaseFlow(p, m, sel)}${PM.phaseItemsCard(p, sel)}`);
 
@@ -100,7 +101,7 @@
       if (act === 'phase') phaseForm(p, a.dataset.key, rerender);
       if (act === 'new-ncr') ncrForm(p, null, rerender);
       if (act === 'edit-ncr') ncrForm(p, PM.find('ncrs', id), rerender);
-      if (act === 'close-ncr') { const n = PM.find('ncrs', id); n.status = 'closed'; n.closedDate = PM.today(); PM.upsert('ncrs', n); U.toast(`${n.no} closed`); rerender(); }
+      if (act === 'close-ncr') ncrForm(p, PM.find('ncrs', id), rerender, true); // closing asks for the cause, the action and who verified it
       if (act === 'new-safety') safetyForm(p, null, rerender);
       if (act === 'edit-safety') safetyForm(p, PM.find('safety', id), rerender);
     };
@@ -303,7 +304,7 @@
             <td><span class="title">${esc(n.no)}</span></td><td>${U.date(n.date)}</td><td>${esc(U.phaseLabel(n.phase))}</td>
             <td>${esc(n.category)}</td>
             <td>${U.badge(n.severity === 'Critical' ? 'critical' : n.severity === 'Major' ? 'serious' : 'neutral', n.severity)}</td>
-            <td>${n.source === 'weekly-plan' ? '<span class="chip" title="เปิดจากงานที่ไม่เสร็จใน Weekly Plan">Weekly Plan</span> ' : ''}${esc(n.description)}${n.action ? `<small>CA: ${esc(n.action)}</small>` : ''}</td><td>${esc(n.responsible)}</td>
+            <td>${n.source === 'weekly-plan' ? '<span class="chip" title="เปิดจากงานที่ไม่เสร็จใน Weekly Plan">Weekly Plan</span> ' : ''}${esc(n.description)}${n.rootCause ? `<small>Root cause: ${esc(n.rootCause)}</small>` : ''}${n.action ? `<small>CA: ${esc(n.action)}</small>` : ''}${n.verifiedBy ? `<small>Verified: ${esc(n.verifiedBy)} ${U.date(n.verifiedDate)}</small>` : ''}</td><td>${esc(n.responsible)}${n.status === 'open' && n.dueDate ? `<small${n.dueDate < T ? ' class="neg"' : ''}>กำหนด ${U.date(n.dueDate)}</small>` : ''}</td>
             <td class="num">${PM.diffDays(n.date, n.status === 'closed' && n.closedDate ? n.closedDate : T)}</td>
             <td>${n.status === 'closed' ? U.badge('good', 'Closed') : U.badge('warning', 'Open')}</td>
             <td>${n.status === 'open' ? `<button class="btn sm" data-action="close-ncr" data-id="${n.id}">Close</button>` : ''}</td></tr>`).join('')}
@@ -317,7 +318,8 @@
     PM.charts.hbars(document.getElementById('c-ncr-ph'), { items: counts('phase', PM.PHASES.map((x) => x.key), U.phaseLabel) });
   }
 
-  function ncrForm(p, ncr, done) {
+  /* ISO 9001 clause 10.2: an NCR is closed only with its cause, the action taken, and someone having verified that it worked */
+  function ncrForm(p, ncr, done, closing) {
     const T = PM.today();
     const isNew = !ncr;
     const n = ncr || {
@@ -325,7 +327,8 @@
       no: PM.nextNcrNo(p),
       date: T, phase: 'construction', category: 'Workmanship', severity: 'Minor', description: '', responsible: '', action: '', status: 'open', closedDate: '',
     };
-    U.modal({
+    const wasClosed = n.status === 'closed';
+    const form = U.modal({
       title: isNew ? 'New NCR' : n.no, wide: true,
       onDelete: isNew ? null : () => { PM.remove('ncrs', n.id); done(); },
       body: `
@@ -336,10 +339,22 @@
         ${U.field('Severity', 'severity', n.severity, { options: PM.SEVERITY })}
         ${U.field('Responsible', 'responsible', n.responsible, { placeholder: 'Sub-con / Supplier / Dept.' })}
         ${U.field('Description (ปัญหาที่พบ)', 'description', n.description, { type: 'textarea', full: true })}
-        ${U.field('Corrective action', 'action', n.action, { type: 'textarea', full: true, rows: 2 })}
-        ${U.field('Status', 'status', n.status, { options: [{ value: 'open', label: 'Open' }, { value: 'closed', label: 'Closed' }] })}
-        ${U.field('Closed date', 'closedDate', n.closedDate, { type: 'date' })}`,
+        ${U.field('Correction (แก้ไขเฉพาะหน้า)', 'correction', n.correction || '', { type: 'textarea', full: true, rows: 2 })}
+        ${U.field('Root cause (สาเหตุ)', 'rootCause', n.rootCause || '', { type: 'textarea', full: true, rows: 2 })}
+        ${U.field('Corrective action (ป้องกันไม่ให้เกิดซ้ำ)', 'action', n.action, { type: 'textarea', full: true, rows: 2 })}
+        ${U.field('กำหนดเสร็จ', 'dueDate', n.dueDate || '', { type: 'date' })}
+        ${U.field('ผู้ตรวจสอบผล (Verified by)', 'verifiedBy', n.verifiedBy || '')}
+        ${U.field('วันที่ตรวจสอบผล', 'verifiedDate', n.verifiedDate || '', { type: 'date' })}
+        ${U.field('ผลการแก้ไข', 'effective', n.effective || '', { options: [{ value: '', label: '— ยังไม่ตรวจ —' }, { value: 'yes', label: 'ได้ผล' }, { value: 'no', label: 'ไม่ได้ผล — ต้องแก้ไขเพิ่ม' }] })}
+        ${U.field('Status', 'status', closing ? 'closed' : n.status, { options: [{ value: 'open', label: 'Open' }, { value: 'closed', label: 'Closed' }] })}
+        ${U.field('Closed date', 'closedDate', n.closedDate || (closing ? T : ''), { type: 'date' })}
+        ${isNew ? '' : '<div class="full"><button type="button" class="btn sm" data-ncr-print>🖨 พิมพ์ใบ NCR</button></div>'}`,
       onSubmit: (f) => {
+        if (f.status === 'closed' && !wasClosed) {
+          const miss = [!f.rootCause && 'Root cause', !f.action && 'Corrective action', !f.verifiedBy && 'ผู้ตรวจสอบผล', f.effective !== 'yes' && 'ผลการแก้ไข = ได้ผล'].filter(Boolean);
+          if (miss.length) { U.alert(`ปิด NCR ไม่ได้ — ยังขาด: ${miss.join(' · ')}\n(ISO 9001 ข้อ 10.2)`); return false; }
+          if (!f.verifiedDate) f.verifiedDate = T;
+        }
         if (f.status === 'closed' && !f.closedDate) f.closedDate = T;
         if (f.status === 'open') f.closedDate = '';
         Object.assign(n, f);
@@ -347,6 +362,23 @@
         U.toast('บันทึก NCR แล้ว');
         done();
       },
+    });
+    const pr = form.querySelector('[data-ncr-print]');
+    if (pr) pr.addEventListener('click', () => ncrPrint(p, n));
+  }
+
+  function ncrPrint(p, n) {
+    const P = PM.printDoc, win = P.open();
+    if (!win) return;
+    const row = (k, v) => `<tr><th style="width:26%">${esc(k)}</th><td>${esc(v || '–').replace(/\n/g, '<br>')}</td></tr>`;
+    P.write(win, {
+      title: `${n.no} ${p.code}`, bar: `NCR ${n.no}`, doc: 'ncr',
+      head: { title: `<h1>ใบแจ้งงานไม่เป็นไปตามข้อกำหนด</h1><p><b>Non-Conformance Report (NCR)</b></p><p>${esc(p.code)} · ${esc(p.name)}</p>`, meta: `${esc(PM.COMPANY)}<br>${esc(n.no)}<br>${U.date(n.date)}` },
+      body: `<section><table><tbody>
+        ${row('ขั้นงาน / หมวด', `${U.phaseLabel(n.phase)} · ${n.category}`)}${row('ความรุนแรง', n.severity)}${row('ผู้รับผิดชอบ', n.responsible)}${row('ปัญหาที่พบ', n.description)}
+        ${row('แก้ไขเฉพาะหน้า (Correction)', n.correction)}${row('สาเหตุ (Root cause)', n.rootCause)}${row('ป้องกันไม่ให้เกิดซ้ำ (Corrective action)', n.action)}${row('กำหนดเสร็จ', U.date(n.dueDate))}
+        ${row('ผู้ตรวจสอบผล', n.verifiedBy)}${row('วันที่ตรวจสอบ', U.date(n.verifiedDate))}${row('ผลการแก้ไข', n.effective === 'yes' ? 'ได้ผล' : n.effective === 'no' ? 'ไม่ได้ผล' : '')}${row('สถานะ', n.status === 'closed' ? `ปิดแล้ว ${U.date(n.closedDate)}` : 'เปิดอยู่')}
+      </tbody></table></section><div class="sign"><div>ผู้ออก NCR</div><div>ผู้รับผิดชอบ</div><div>ผู้ตรวจสอบผล</div></div>`,
     });
   }
 

@@ -221,7 +221,7 @@
     if (!win) return;
     const purpose = TR_PURPOSE.find((x) => x.key === t.purpose) || {};
     P.write(win, {
-      title: `${t.no}`, bar: `Transmittal ${t.no}`,
+      title: `${t.no}`, bar: `Transmittal ${t.no}`, doc: 'transmittal',
       head: {
         title: `<h1>ใบนำส่งเอกสาร (Document Transmittal)</h1><p><b>${esc(p.code)} · ${esc(p.name)}</b></p><p>เลขที่ <b>${esc(t.no)}</b> · วันที่ ${U.date(t.date)}</p>`,
         meta: `${esc(PM.COMPANY)}<br>ส่งทาง ${esc(t.via || '–')}`,
@@ -326,7 +326,7 @@
     const form = U.modal({
       title: item ? `${x.no} · ${x.name}` : `เพิ่ม${c.noun} — ${PM.PHASES.find((y) => y.key === key).label}`, wide: true,
       onDelete: item && canEdit ? () => {
-        PM.poFiles.remove((x.files || []).map((f) => f.path)).catch(() => { /* already gone */ });
+        PM.poFiles.trash(`${p.id}/items/${x.id}`, (x.files || []).map((f) => f.path));
         p.phaseItems = p.phaseItems.filter((i) => i.id !== x.id); PM.upsert('projects', p); U.toast('ลบแล้ว'); done();
       } : null,
       body: `

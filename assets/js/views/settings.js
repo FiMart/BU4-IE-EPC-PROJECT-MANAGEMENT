@@ -1,6 +1,7 @@
 /* settings.js — the Settings page: a section menu on the left (a row of chips on phones), one section at a time on the right.
    #/settings/<section>: account (บัญชีของฉัน) · display (การแสดงผล) · org (องค์กร & การอนุมัติ) · users (ผู้ใช้ & สิทธิ์) ·
-   data (ข้อมูล & Cloud) · kpi (สูตร KPI). Sections a role may not use show what they can see, with who may change it. */
+   iso (ISO 9001 — its own tabs: #/settings/iso/<tab>, iso.js) · data (ข้อมูล & Cloud) · kpi (สูตร KPI).
+   Sections a role may not use show what they can see, with who may change it. */
 (function () {
   const U = PM.ui, esc = U.esc;
   const LOCK = '<svg class="lock-ico" viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>';
@@ -14,6 +15,7 @@
     { key: 'display', label: 'การแสดงผล', sub: 'ธีม · เมนูด้านซ้าย', icon: 'sparkle' },
     { key: 'org', label: 'องค์กร & การอนุมัติ', sub: 'บริษัท · วงเงินอนุมัติ · OT', icon: 'building' },
     { key: 'users', label: 'ผู้ใช้ & สิทธิ์', sub: 'Role ผู้ใช้ · ตารางสิทธิ์', icon: 'people' },
+    { key: 'iso', label: 'ISO 9001', sub: 'เอกสาร · Audit · CAR · สอบเทียบ · ประวัติการแก้ไข', icon: 'quality' },
     { key: 'data', label: 'ข้อมูล & Cloud', sub: 'ซิงค์ · สำรอง · Reset', icon: 'database' },
     { key: 'kpi', label: 'สูตร KPI', sub: 'วิธีคำนวณตัวชี้วัด', icon: 'book' },
   ];
@@ -45,7 +47,7 @@
     // keep the chosen section in view on phones (the chip row scrolls sideways)
     const on = el.querySelector('.st-nav a.on');
     if (on && on.scrollIntoView && window.innerWidth <= 900) on.scrollIntoView({ block: 'nearest', inline: 'center' });
-    BIND[key] && BIND[key](el);
+    BIND[key] && BIND[key](el, params);
     el.onclick = (e) => onClick(el, e);
     el.onchange = (e) => { const sel = e.target.closest('select[data-role-for]'); if (sel) changeRole(el, sel); };
     el.oninput = (e) => { if (e.target.id === 'st-user-q') filterUsers(el, e.target.value); };
@@ -53,6 +55,7 @@
 
   /* ================= sections ================= */
   const BODY = {
+    iso() { return '<div class="st-iso"></div>'; },
     account() {
       const A = PM.auth, user = A && A.user;
       if (!user) return '<div class="card"><div class="card-b"><p class="empty">ยังไม่ได้เข้าสู่ระบบ</p></div></div>';
@@ -190,6 +193,7 @@
 
   /* ================= per-section wiring ================= */
   const BIND = {
+    iso(el, params) { PM.isoSection(el.querySelector('.st-iso'), params[1]); },
     account(el) {
       const A = PM.auth;
       const busy = async (form, fn) => {
@@ -277,9 +281,9 @@
     }
     if ((act === 'demo' || act === 'empty') && !PM.can('data.reset')) { U.toast('ไม่มีสิทธิ์ Reset ข้อมูล'); return; }
     if (act === 'demo') U.confirm('แทนที่ข้อมูลทั้งหมดด้วยข้อมูลตัวอย่าง? ข้อมูลปัจจุบันจะหายทั้งหมด — แนะนำให้ Export ก่อน', { title: 'โหลดข้อมูลตัวอย่าง', ok: 'แทนที่' })
-      .then((ok) => { if (ok) { PM.reset(false); PM.applyAsOf(); U.toast('โหลดข้อมูลตัวอย่างแล้ว'); PM.render(); } });
-    if (act === 'empty') U.confirm('ลบข้อมูลทั้งหมด (งานประมูล โครงการ PO ค่าใช้จ่าย Timesheet บุคลากร ฯลฯ)? ลบแล้วกู้คืนไม่ได้ — แนะนำให้ Export ก่อน', { title: 'ล้างข้อมูลทั้งหมด', ok: 'ลบทั้งหมด' })
-      .then((ok) => { if (ok) { PM.reset(true); PM.applyAsOf(); U.toast('ล้างข้อมูลแล้ว'); PM.render(); } });
+      .then((ok) => { if (ok) { PM.poFiles.trash('', []); PM.reset(false); PM.applyAsOf(); U.toast('โหลดข้อมูลตัวอย่างแล้ว'); PM.render(); } });
+    if (act === 'empty') U.confirm('ลบข้อมูลทั้งหมด (งานประมูล โครงการ PO ค่าใช้จ่าย Timesheet บุคลากร ฯลฯ) และไฟล์แนบทุกไฟล์? ลบออกจากฐานข้อมูลถาวร กู้คืนไม่ได้ — แนะนำให้ Export ก่อน (ไฟล์แนบไม่อยู่ใน Export)', { title: 'ล้างข้อมูลทั้งหมด', ok: 'ลบทั้งหมด' })
+      .then((ok) => { if (ok) { PM.poFiles.trash('', []); PM.reset(true); PM.applyAsOf(); U.toast('ล้างข้อมูลแล้ว'); PM.render(); } });
   }
 
   /* ---------- display settings (saved on the account — app.js PM.prefs) ---------- */

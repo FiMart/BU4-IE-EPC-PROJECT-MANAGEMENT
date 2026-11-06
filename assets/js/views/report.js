@@ -80,20 +80,24 @@
   .badge { font-size: 9.5px; }
   .sign { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin-top: 30px; text-align: center; font-size: 10.5px; break-inside: avoid; }
   .sign div { border-top: 1px solid #3f5068; padding-top: 4px; margin-top: 34px; }
+  .docno { margin: -6px 0 10px; font-size: 10px; font-style: italic; color: #3f5068; text-align: center; background: #edf2f9; padding: 3px 6px; }
   footer.rf { margin-top: 18px; font-size: 9.5px; color: #6a7a91; text-align: center; }
-  @media print { .bar { display: none; } main { padding-top: 0; } }`;
+  @media print { .bar { display: none; } main { padding-top: 0; } * { -webkit-print-color-adjust: exact; print-color-adjust: exact; } }`;
   /* a new window for the report (opened straight from the click, so pop-up blockers allow it) */
   function newWindow() {
     const win = window.open('', '_blank');
     if (!win) U.alert('เบราว์เซอร์บล็อกหน้าต่างใหม่ — อนุญาต Pop-up ของเว็บนี้แล้วลองอีกครั้ง');
     return win;
   }
-  function writePage(win, { title, bar, head, body }) {
+  /* doc: the form's key in the ISO document list (iso.js) — prints its controlled number under the heading */
+  function writePage(win, { title, bar, head, body, doc }) {
+    const info = doc && PM.docInfo ? PM.docInfo(doc) : null;
     win.document.write(`<!doctype html><html lang="th" data-theme="light"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <title>${esc(title)}</title><style>${CHART_CSS}${PAGE_CSS}</style></head><body>
 <div class="bar">${PM.xport.backButton()}<b>${esc(bar)}</b><span class="hint">กด "พิมพ์ / บันทึก PDF" แล้วเลือกเครื่องพิมพ์ "บันทึกเป็น PDF"</span><span style="flex:1"></span><button onclick="window.print()">🖨 พิมพ์ / บันทึก PDF</button></div>
 <main>
   <header class="rh"><img class="rlogo" src="${esc(PM.logoUrl(true))}" alt="${esc(PM.COMPANY)}"><div class="rtitle">${head.title}</div><div class="meta">${head.meta}</div></header>
+  ${info ? `<p class="docno">Document: ${esc(info.no)} | Rev: ${esc(info.rev || '–')} | Issue Date: ${esc(U.date(info.issueDate).replace(/ /g, '-'))}${info.preparedBy ? ` | Prepared by: ${esc(info.preparedBy)}` : ''}</p>` : ''}
   ${body}
   <footer class="rf">สร้างจาก BU4 IE/EPC Project Management · ${esc(PM.COMPANY)} · ${U.date(PM.today())} · ตัวเลขทั้งหมดคำนวณ ณ วันที่ออกรายงาน</footer>
 </main></body></html>`);
@@ -117,6 +121,7 @@
     const risks = (p.risks || []).filter((r) => r.status !== 'closed').sort((a, b) => PM.riskScore(b) - PM.riskScore(a));
     const pos = (PM.db.pos || []).filter((x) => x.projectId === p.id);
     const poSt = PM.poStats(pos, T);
+    const avl = PM.avlStats ? PM.avlStats(p, T) : null;
     const ncrs = (PM.db.ncrs || []).filter((n) => n.projectId === p.id && n.status === 'open');
     const h = p.status === 'closed' ? 'neutral' : U.worst(U.health(m.spi), U.health(m.cpi));
     const gap = (m.act - m.plan) * 100;
@@ -194,7 +199,7 @@
       <div><b>30 วันข้างหน้า</b>${tbl([{ t: 'รายการ' }, { t: 'กำหนด' }], msNext.map((x) => [`◆ ${esc(x.name)}`, U.date(x.date)]).concat(tasksNext.slice(0, 6).map((t) => [`${esc(t.name)} (${U.num(t.progress || 0)}%)`, U.date(t.end)])), 'ไม่มีรายการ')}</div></div></section>
 
   <section><h2>6. จัดซื้อ (PO)</h2>
-    <p style="margin:0 0 4px">PO ทั้งหมด ${poSt.total} · ยังไม่ส่งครบ ${poSt.open} · เลยกำหนด ${poSt.late.length} · จ่ายแล้ว ${U.pct(poSt.paidPct)}</p>
+    <p style="margin:0 0 4px">PO ทั้งหมด ${poSt.total} · ยังไม่ส่งครบ ${poSt.open} · เลยกำหนด ${poSt.late.length} · จ่ายแล้ว ${U.pct(poSt.paidPct)}${avl && avl.total ? ` · AVL อนุมัติแล้ว ${avl.approved} จาก ${avl.total} ราย · PO นอก AVL ${avl.off.length} ใบ` : ''}</p>
     ${tbl([{ t: 'PO' }, { t: 'ผู้ขาย' }, { t: 'รายการ' }, { t: 'กำหนดส่ง' }, { t: 'สถานะ' }], poSt.late.concat(poSt.soon).slice(0, 8).map((x) => [esc(x.poNo), esc(x.supplier || ''), esc(x.description || ''), U.date(x.deliveryDue), PM.poDaysLate(x, T) ? `<span class="neg">เลย ${PM.poDaysLate(x, T)} วัน</span>` : `อีก ${PM.diffDays(T, x.deliveryDue)} วัน`]), 'ไม่มี PO ที่ต้องติดตาม')}</section>
 
   <section><h2>7. คุณภาพและความปลอดภัย</h2>

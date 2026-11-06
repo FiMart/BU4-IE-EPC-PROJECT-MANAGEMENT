@@ -38,6 +38,7 @@
         ${V.seg('status', [{ key: 'active', label: 'Active' }, { key: 'closed', label: 'Closed' }, { key: 'all', label: 'All' }], state.status)}
         <input type="search" id="prj-q" placeholder="ค้นหา Project No. / ชื่อโครงการ / ลูกค้า / PM / Sales…" value="${esc(state.q)}" aria-label="ค้นหาโครงการ" style="width:300px">
         <span class="spacer"></span>
+        ${PM.can('project.import') ? '<button class="btn" data-action="import" title="ลากไฟล์ Excel มาวาง หรือวางเซลล์ที่คัดลอกจาก Excel">⬆ นำเข้า Excel</button>' : ''}
         <button class="btn primary fab" data-action="new" aria-label="New project"><span class="fab-i">+</span><span class="fab-t">New project</span></button>
       </div>
       <div class="row filter-row">

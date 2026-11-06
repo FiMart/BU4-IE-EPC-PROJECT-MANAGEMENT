@@ -155,6 +155,9 @@
   };
 
   const people = () => PM.db.resources.filter((r) => r.active !== false).map((r) => ({ value: r.id, label: r.name }));
+  /* THB ↔ the list's Value (MB) */
+  V.toMB = (v) => (v === '' || v == null ? '' : +(Number(v) / 1e6).toFixed(3));
+  V.delivTokens = (s) => String(s || '').split(/\s*[,/]\s*/).map((x) => x.trim()).filter(Boolean);
 
   /* ---------- bid form ---------- */
   /* Bid No. of a new inquiry starts as this fixed text (current year) — the user types the running number after it */
@@ -176,7 +179,10 @@
       result: 'pending', resultDate: '', projectId: null, notes: '', sales: '', salesName: '', leadSource: 'Sales visit', contact: '',
     };
     if (isNew && !canPrice) { b.value = null; b.margin = null; } // no price on the shared bid record (cloud.js sends price only via bidprices)
-    const est = b.estimate || {}, prop = b.proposal || {};
+    const est = b.estimate || {}, prop = PM.propOf(b);
+    // the fields the Proposal Status List shares with other tabs: one value, shown in both places (see "mirror" below)
+    const MIRRORS = { m_code: 'code', m_client: 'client', m_name: 'name', m_due: 'dueDate', m_sales: 'salesName' };
+    const propStatus0 = prop.status === 'win' || prop.status === 'lose' ? prop.status : prop.work;
     // a salesperson opening "New inquiry" is adding their own lead: they are the Sales (their employee record, else their account)
     if (isNew) {
       const me = PM.auth && PM.auth.user;
@@ -197,7 +203,7 @@
     ];
     const tab0 = TABS.some((t) => t.key === opts.tab) ? opts.tab
       : isNew ? 'inquiry' : b.result && b.result !== 'pending' ? 'submit' : b.stage || 'inquiry';
-    const pane = (key, html) => `<div class="full bf-pane" data-pane="${key}"${key === tab0 ? '' : ' hidden'}>${html}</div>`;
+    const pane = (key, html, cls) => `<div class="full bf-pane${cls ? ' ' + cls : ''}" data-pane="${key}"${key === tab0 ? '' : ' hidden'}>${html}</div>`;
     const body = `
       <div class="full bf-tabs" role="tablist">${TABS.map((t) => `<button type="button" role="tab" data-tab="${t.key}" class="${t.key === tab0 ? 'on' : ''}" aria-selected="${t.key === tab0}">${t.n ? `<i>${t.n}</i>` : ''}${t.lock ? '🔒 ' : ''}${esc(t.label)}<em data-mark="${t.key}"></em></button>`).join('')}</div>
       ${canEdit ? '' : '<p class="full perm-note">ดูได้อย่างเดียว — เพิ่ม / แก้ไข Inquiry, เลื่อนขั้น และบันทึกผล Won / Lost ได้เฉพาะ Admin · Project Manager · Engineer และ Sales ผู้รับผิดชอบงานนี้</p>'}
@@ -235,17 +241,35 @@
       <div class="full est-total"><span>ต้นทุนประมาณการ (จากแท็บ Estimate)</span><b id="est-total-p">–</b><span id="est-margin-p"></span></div>
       ${PM.poFiles.boxHtml(canEdit, 'ไฟล์แนบ — ใบเสนอราคา / เอกสาร Inquiry', 'ใบเสนอราคาที่ส่งให้ลูกค้า, TOR, แบบ, BOQ')}` : lockNote}`)}
       ${pane('proposal', `
-      <div class="sub-h">จัดทำข้อเสนอ (Proposal)</div>
-      ${U.field('Proposal started', 'd_proposal', b.dates.proposal, { type: 'date' })}
-      ${U.field('ผู้จัดทำข้อเสนอ', 'prop_owner', prop.owner || '', { options: people(), placeholder: '— เลือก —' })}
-      ${U.field('สถานะข้อเสนอ', 'prop_status', prop.status || 'todo', { options: PM.PROP_STATUS.map((s) => ({ value: s.key, label: s.label })) })}
+      <div class="sub-h">Project Information</div>
+      ${U.field('Customer', 'm_client', b.client)}
+      ${U.field('Bid No.', 'm_code', b.code)}
+      ${U.field('Project Name', 'm_name', b.name, { full: true })}
+      ${U.field('Type', 'prop_type', prop.type, { options: PM.PROP_TYPES })}
+      ${canPrice ? U.field('Value (MB)', 'm_value', V.toMB(b.value), { type: 'number', min: 0, step: 'any', hint: 'ล้านบาท · เห็นเฉพาะ Sales เจ้าของงานและ Admin' })
+        : '<label><span>Value (MB)</span><input value="🔒 เฉพาะ Sales เจ้าของงาน / Admin" disabled></label>'}
+      ${U.field('Priority', 'prop_priority', prop.priority, { options: [{ value: '', label: '-' }].concat(PM.PROP_PRIORITY.map((x) => ({ value: x.key, label: x.key }))) })}
       <span></span>
-      <div class="full prop-checks"><span>เอกสารในข้อเสนอ</span><div>${PM.PROP_CHECKS.map((c) => `<label class="prop-check"><input type="checkbox" name="pc_${c.key}"${(prop.checks || {})[c.key] ? ' checked' : ''}> ${esc(c.label)}</label>`).join('')}</div></div>
-      ${U.field('หมายเหตุข้อเสนอ', 'prop_notes', prop.notes || '', { type: 'textarea', full: true, rows: 2 })}`)}
+      <div class="sub-h">Schedule</div>
+      ${U.field('Due Date', 'm_due', b.dueDate, { type: 'date' })}
+      ${U.field('Start Date', 'd_proposal', b.dates.proposal, { type: 'date' })}
+      <div class="sub-h">Tracking</div>
+      ${U.field('Progress (%)', 'prop_progress', prop.progress, { type: 'number', min: 0, max: 100, step: 1 })}
+      ${U.field('Status', 'prop_status', propStatus0, { options: PM.PROP_STATUS.map((s) => ({ value: s.key, label: s.label })) })}
+      <div class="sub-h">Team</div>
+      <label><span>PM</span>${V.pmSelect('prop_owner', prop.owner, prop.ownerName)}</label>
+      <label><span>Sales</span><input name="m_sales" list="dl-sales" value="${esc(V.salesName(b) === '–' ? '' : V.salesName(b))}" placeholder="เว้นว่าง = Non" autocomplete="off"></label>
+      <div class="sub-h">Scope</div>
+      ${U.field('Deliverables', 'prop_deliv', prop.deliverables, { full: true, placeholder: 'เช่น P&ID, List eq., BOQ', hint: 'กดเลือกจากรายการ หรือพิมพ์เพิ่มเองได้' })}
+      <div class="full deliv-chips">${PM.PROP_DELIVERABLES.map((d) => `<button type="button" class="deliv-chip" data-deliv="${esc(d)}">${esc(d)}</button>`).join('')}</div>
+      ${U.field('หมายเหตุ', 'prop_notes', prop.notes, { type: 'textarea', full: true, rows: 2 })}`, 'no-i18n')}
       ${pane('submit', `
       <div class="sub-h">ยื่นใบเสนอราคา (Submit)</div>
       ${U.field('Submitted', 'd_submit', b.dates.submit, { type: 'date' })}
       <span></span>
+      <div class="sub-h">ทบทวนก่อนยื่น (ISO 9001 ข้อ 8.2.3)</div>
+      <label><span>ผู้ทบทวนข้อกำหนดลูกค้า</span>${V.pmSelect('prop_reviewer', prop.reviewer, '')}</label>
+      ${U.field('วันที่ทบทวน', 'prop_reviewDate', prop.reviewDate, { type: 'date' })}
       <div class="sub-h">ผลการประมูล (Award)</div>
       ${U.field('Result', 'result', b.result, { options: Object.keys(PM.BID_RESULTS).map((k) => ({ value: k, label: PM.BID_RESULTS[k] })) })}
       ${U.field('Result date', 'resultDate', b.resultDate, { type: 'date' })}
@@ -254,15 +278,15 @@
       ${PM.poFiles.boxHtml(canEdit, 'ไฟล์งานของทีม — ถอดปริมาณ / ประมาณราคา / ข้อเสนอทางเทคนิค', 'ทุกคนในทีมเห็นได้ · ใบเสนอราคาที่ส่งลูกค้าอยู่ในแท็บ "ราคาขาย"', 'work')}`)}`;
     let files = null;
     const form = U.modal({
-      title: isNew ? 'New inquiry' : `${b.code} · ${b.name}`, body, wide: true,
-      onDelete: isNew || !canEdit ? null : () => {
-        PM.poFiles.remove((b.files || []).concat(b.workFiles || []).map((f) => f.path)).catch(() => { /* files may already be gone */ });
-        PM.remove('bids', b.id); U.toast('ลบแล้ว'); onSaved && onSaved();
-      },
+      title: isNew ? (opts.tab === 'proposal' ? 'New proposal' : 'New inquiry') : `${b.code} · ${b.name}`, body, wide: true,
+      // only who may see this bid's quotation files: deleting has to remove them, and the names stay hidden from everyone else
+      deleteText: () => PM.purge.bidText(b),
+      onDelete: isNew || !canEdit || !PM.canSeeBidPrice(b) ? null : async () => { await PM.purge.bid(b); U.toast('ลบแล้ว'); if (onSaved) onSaved(); },
       onSubmit: !canEdit ? null : (f, frm) => {
-        if (f.code === V.bidNoPrefix()) { U.alert(`พิมพ์เลขต่อท้าย Bid No. ก่อนบันทึก (เช่น ${V.bidNoPrefix()}1)`).then(() => frm.code.focus()); return false; }
+        const toCode = () => { showTab('inquiry'); frm.code.focus(); };
+        if (f.code === V.bidNoPrefix()) { U.alert(`พิมพ์เลขต่อท้าย Bid No. ก่อนบันทึก (เช่น ${V.bidNoPrefix()}1)`).then(toCode); return false; }
         if (PM.db.bids.some((x) => x.id !== b.id && String(x.code).trim().toUpperCase() === f.code.toUpperCase())) {
-          U.alert(`Bid No. ${f.code} ถูกใช้แล้ว`).then(() => frm.code.focus()); return false;
+          U.alert(`Bid No. ${f.code} ถูกใช้แล้ว`).then(toCode); return false;
         }
         const dates = { inquiry: f.d_inquiry, estimate: f.d_estimate, proposal: f.d_proposal, submit: f.d_submit };
         const order = PM.BID_STAGES.map((s) => dates[s.key]).filter(Boolean);
@@ -299,7 +323,7 @@
         inquiry: !!(v('code') && v('client') && v('name') && v('d_inquiry')),
         estimate: ['done', 'reviewed'].includes(v('est_status')),
         price: canPrice && n(form.value) > 0,
-        proposal: v('prop_status') === 'ready',
+        proposal: ['complete', 'win', 'lose'].includes(v('prop_status')),
         submit: !!v('d_submit') || v('result') !== 'pending',
         files: form.querySelectorAll('[data-files="work"] .po-file-list li:not(.empty-files)').length > 0,
       };
@@ -310,10 +334,49 @@
       const p = e.target.closest('.bf-pane');
       if (p && p.hidden) { showTab(p.dataset.pane); setTimeout(() => e.target.reportValidity(), 0); }
     }, true);
-    form.addEventListener('input', (e) => { if (/^est_|^value$/.test(e.target.name || '')) drawCost(); drawMarks(); });
-    form.addEventListener('change', drawMarks);
+    /* mirror: Customer · Project Name · Bid No. · Due Date · Sales · Value are also on the tab they started on — one value, both places */
+    const el = (name) => form.elements[name];
+    const toSource = (name) => {
+      if (MIRRORS[name]) el(MIRRORS[name]).value = el(name).value;
+      if (name === 'm_value') el('value').value = el(name).value === '' ? '' : Math.round(Number(el(name).value) * 1e6);
+    };
+    const toMirror = (name) => {
+      Object.keys(MIRRORS).filter((m) => MIRRORS[m] === name).forEach((m) => { el(m).value = el(name).value; });
+      if (name === 'value' && el('m_value')) el('m_value').value = V.toMB(el('value').value);
+    };
+    Object.values(MIRRORS).concat(canPrice ? ['value'] : []).forEach(toMirror); // a restored draft may have changed the first ones
+    /* Status Complete (Win) / (Lose) and the Result on the Submit tab are the same thing */
+    const syncResult = (name) => {
+      const st = el('prop_status'), res = el('result');
+      if (name === 'prop_status') res.value = st.value === 'win' ? 'won' : st.value === 'lose' ? 'lost' : ['won', 'lost'].includes(res.value) ? 'pending' : res.value;
+      if (name === 'result') st.value = res.value === 'won' ? 'win' : res.value === 'lost' ? 'lose' : ['win', 'lose'].includes(st.value) ? 'complete' : st.value;
+    };
+    const drawDeliv = () => {
+      const has = new Set(V.delivTokens(el('prop_deliv').value).map((x) => x.toLowerCase()));
+      form.querySelectorAll('[data-deliv]').forEach((c) => c.classList.toggle('on', has.has(c.dataset.deliv.toLowerCase())));
+    };
+    form.querySelector('.deliv-chips').addEventListener('click', (e) => {
+      const c = e.target.closest('[data-deliv]');
+      if (!c || el('prop_deliv').disabled) return;
+      const d = c.dataset.deliv, list = V.delivTokens(el('prop_deliv').value);
+      const at = list.findIndex((x) => x.toLowerCase() === d.toLowerCase());
+      if (at >= 0) list.splice(at, 1); else list.push(d);
+      el('prop_deliv').value = list.join(', ');
+      el('prop_deliv').dispatchEvent(new Event('input', { bubbles: true }));
+    });
+    form.addEventListener('input', (e) => {
+      const name = e.target.name || '';
+      toSource(name); toMirror(name);
+      if (name === 'prop_deliv') drawDeliv();
+      // a new proposal started before today: the inquiry cannot be later than its start
+      if (name === 'd_proposal' && isNew && e.target.value && el('d_inquiry').value > e.target.value) el('d_inquiry').value = e.target.value;
+      if (/^est_|^value$|^m_value$/.test(name)) drawCost();
+      drawMarks();
+    });
+    form.addEventListener('change', (e) => { syncResult(e.target.name); drawMarks(); });
     drawCost();
     drawMarks();
+    drawDeliv();
     if (!canEdit) { // view only
       form.querySelectorAll('input, select, textarea').forEach((i) => { i.disabled = true; });
       if (document.activeElement) document.activeElement.blur();
@@ -330,7 +393,12 @@
       problems.push(...w.problems);
       b.workFiles = w.files;
       b.estimate = { status: f.est_status, reviewer: f.est_reviewer, material: f.est_material, labour: f.est_labour, subcon: f.est_subcon, other: f.est_other, notes: f.est_notes };
-      b.proposal = { status: f.prop_status, owner: f.prop_owner, notes: f.prop_notes, checks: Object.fromEntries(PM.PROP_CHECKS.map((c) => [c.key, !!f['pc_' + c.key]])) };
+      b.proposal = {
+        type: f.prop_type, priority: f.prop_priority, progress: Math.max(0, Math.min(100, Math.round(Number(f.prop_progress) || 0))),
+        status: ['win', 'lose'].includes(f.prop_status) ? 'complete' : f.prop_status, // win / lose live in the bid's result
+        owner: f.prop_owner, ownerName: f.prop_owner ? '' : prop.ownerName, deliverables: f.prop_deliv, notes: f.prop_notes, listNo: (b.proposal || {}).listNo,
+        reviewer: f.prop_reviewer, reviewDate: f.prop_reviewer ? f.prop_reviewDate || T : f.prop_reviewDate,
+      };
       Object.assign(b, {
         code: f.code, name: f.name, client: f.client, sector: f.sector,
         estimator: f.estimator, boqItems: f.boqItems, dueDate: f.dueDate, dates, result: f.result,
@@ -519,16 +587,12 @@
       ${isNew ? '' : '<p class="full muted" style="margin:0">หมายเหตุ: การแก้วันที่โครงการไม่เปลี่ยนแผนของแต่ละ phase — แก้ได้ที่การ์ดขั้นงาน → อัปเดตความคืบหน้า</p>'}`;
     const form = U.modal({
       title: isNew ? (fromBid ? `Create project from ${fromBid.code}` : 'New project') : `Edit ${p.code}`, body,
-      onDelete: isNew ? null : () => {
-        PM.remove('projects', p.id);
-        PM.db.ncrs = PM.db.ncrs.filter((n) => n.projectId !== p.id);
-        PM.db.safety = PM.db.safety.filter((s) => s.projectId !== p.id);
-        const pos = PM.db.pos.filter((po) => po.projectId === p.id);
-        PM.poFiles.remove(pos.flatMap((po) => (po.files || []).map((f) => f.path))).catch(() => { /* best effort */ });
-        PM.db.pos = PM.db.pos.filter((po) => po.projectId !== p.id);
-        PM.db.costs = PM.db.costs.filter((c) => c.projectId !== p.id);
-        PM.save();
-        location.hash = '#/projects';
+      deleteText: () => PM.purge.projectText(p),
+      onDelete: isNew || !PM.can('project.delete') ? null : async () => {
+        location.hash = '#/projects'; // off the project's page first: it is about to go
+        await PM.purge.project(p);
+        U.toast(`ลบโครงการ ${p.code} แล้ว`);
+        PM.render();
       },
       onSubmit: (f) => {
         if (f.endDate <= f.startDate) { U.alert('Finish date ต้องอยู่หลัง Start date'); return false; }

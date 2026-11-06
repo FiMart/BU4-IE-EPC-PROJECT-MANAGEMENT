@@ -150,7 +150,7 @@
       `<svg class="chart-svg" viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" role="img" aria-label="${esc(o.label || 'Line chart')}">${g}<line class="crosshair" x1="0" x2="0" y1="${m.t}" y2="${m.t + ih}" style="opacity:0"/><g class="draw">${paths}</g><g class="late">${ends}</g>${hits}</svg>`;
   };
 
-  /* Horizontal bars (HTML). items: [{label, value, color, display, tip, target, sub}] */
+  /* Horizontal bars (HTML). items: [{label, value, color, display, tip, target, sub, href}] — href: the row is a link */
   C.hbars = function (el, o) {
     const fmt = o.fmt || ((v) => PM.ui.num(v));
     const max = o.max || Math.max(1e-9, ...o.items.map((it) => Math.max(it.value || 0, it.target || 0)));
@@ -159,7 +159,7 @@
       const w = Math.max(0, Math.min(100, ((it.value || 0) / max) * 100));
       const t = it.target != null ? Math.min(100, (it.target / max) * 100) : null;
       const tip = it.tip || `${it.label}\n${fmt(it.value)}`;
-      return `<div class="hbar" style="--d:${i}" data-tip="${esc(tip)}">
+      return `<div class="hbar${it.href ? ' link' : ''}" style="--d:${i}" data-tip="${esc(tip)}"${it.href ? ` data-href="${esc(it.href)}"` : ''}>
         <div class="hbar-label">${esc(it.label)}${it.sub ? `<small>${esc(it.sub)}</small>` : ''}</div>
         <div class="hbar-track"><span style="width:${w}%;background:${it.color || 'var(--s1)'}"></span>${t != null ? `<i class="target" style="left:${t}%"></i>` : ''}</div>
         <div class="hbar-value">${esc(it.display != null ? it.display : fmt(it.value))}</div>
@@ -193,7 +193,7 @@
     el.innerHTML = `<div class="legend"><span><i class="sw" style="background:${neg.color}"></i>${esc(neg.label)}</span><span><i class="sw" style="background:${pos.color}"></i>${esc(pos.label)}</span></div>
       <div class="hbars div-bars">${o.items.map((it, i) => {
         const v = it.value || 0, w = Math.min(50, (Math.abs(v) / max) * 50);
-        return `<div class="hbar" style="--d:${i}" data-tip="${esc(it.tip || `${it.label}\n${it.display}`)}">
+        return `<div class="hbar${it.href ? ' link' : ''}" style="--d:${i}" data-tip="${esc(it.tip || `${it.label}\n${it.display}`)}"${it.href ? ` data-href="${esc(it.href)}"` : ''}>
           <div class="hbar-label">${esc(it.label)}${it.sub ? `<small>${esc(it.sub)}</small>` : ''}</div>
           <div class="hbar-track div-track"><i class="mid"></i><span class="${v < 0 ? 'neg' : 'pos'}" style="${v < 0 ? `right:50%` : `left:50%`};width:${w}%;background:${v < 0 ? neg.color : pos.color}"></span></div>
           <div class="hbar-value">${esc(it.display)}</div></div>`;

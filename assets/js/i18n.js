@@ -147,6 +147,7 @@
     [/\(EV\)/, 'EV — มูลค่าของงานที่ทำได้จริง คิดตามงบของงานนั้น (Earned Value)'],
     [/\(PV\)/, 'PV — มูลค่าของงานที่ควรทำได้ตามแผน ณ วันนี้ (Planned Value)'],
     [/\(AC\)/, 'AC — เงินที่จ่ายจริง (Actual Cost)'],
+    [/\bAVL\b/, 'AVL (Approved Vendor List) — รายชื่อผู้ขาย / ผู้ผลิตที่ลูกค้าอนุมัติให้ใช้ในโครงการนี้\nควรซื้อจากรายชื่อที่อนุมัติแล้วเท่านั้น'],
     [/S-Curve/, 'S-Curve — กราฟความคืบหน้าสะสม แผน เทียบ ทำได้จริง\nเส้นจริงอยู่ต่ำกว่าเส้นแผน = ช้ากว่าแผน'],
     [/ผูกพันแล้ว|Committed/, 'ผูกพันแล้ว (Committed)\nยอด PO ที่สั่งไปแล้ว — ต้องจ่ายแน่นอนแม้ยังไม่ได้จ่าย'],
     [/อัตราใช้งาน/, 'อัตราใช้งาน (Utilization)\nชั่วโมงที่คิดเงินได้ ÷ ชั่วโมงที่มี · เกิน 105% = งานล้นมือ'],
@@ -155,19 +156,21 @@
     [/เงินประกันผลงาน|Retention/, 'เงินประกันผลงาน (Retention)\n% ที่ลูกค้าหักไว้ในแต่ละงวด และคืนเมื่อพ้นระยะประกัน'],
   ];
   const GSEL = 'th, .tile-label, .kv dt, .legend > span, .cost-strip > div > span, .card-h h2';
+  // drawn, not a letter: stays centred and in proportion whatever the font around it
+  const GL_ICON = '<svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="7" fill="none" stroke="currentColor" stroke-width="1.5"/><circle cx="8" cy="4.9" r="1.05" fill="currentColor"/><path d="M8 7.5v4" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>';
   function gloss(el) {
     if (el.querySelector('.gl') || el.closest('.qs, #tour-root, .modal')) return;
     const text = el.textContent;
     const tips = GL.filter(([re]) => re.test(text)).map(([, t]) => t);
     if (!tips.length) return;
-    el.insertAdjacentHTML('beforeend', `<span class="gl" tabindex="0" role="note" aria-label="คำอธิบาย" data-tip="${PM.ui.esc(tips.join('\n\n'))}">i</span>`);
+    el.insertAdjacentHTML('beforeend', `<span class="gl" tabindex="0" role="note" aria-label="คำอธิบาย" data-tip="${PM.ui.esc(tips.join('\n\n'))}">${GL_ICON}</span>`);
   }
 
   /* ---------- apply ---------- */
   const SEL = 'th, .tile-label, .tile-sub, .card-h h2, .card-h p, .section-h h2, .section-h p, .flow-step b, .flow-step .th, .flow-step .meta, ' +
     '.tabs a, .seg button, .badge, .chip, .kv dt, .legend span, .btn, .hero-text b, .cost-strip span, .kcol-h, label > span, .sub-h, ' +
     'option[value], .share-legend li, .phase-card .meta, .empty, h1, .crumb, .cal-h, .cal-day, .wk-label';
-  const SKIP = '#tooltip, #tour-root, .qs-list, input, textarea, [contenteditable]';
+  const SKIP = '#tooltip, #tour-root, .qs-list, input, textarea, [contenteditable], .no-i18n'; // .no-i18n: words that must stay as on a controlled form
   function text(el) {
     const w = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
     let node;

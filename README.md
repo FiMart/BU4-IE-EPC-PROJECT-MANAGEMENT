@@ -59,6 +59,8 @@ Web app สำหรับบริหารโครงการแบบ EPC (
 อัปเดตจากเวอร์ชันก่อน v1.26 (ราคา Bid เห็นเฉพาะ Sales เจ้าของงาน / Admin): รัน `data.sql` อีกครั้ง 1 ครั้ง — ย้ายราคาของ Bid เดิมไปเก็บแยก และผูก Bid กับบัญชี Sales ที่ชื่อตรงกับ Sales ของงานนั้น
 อัปเดตจากเวอร์ชันก่อน v1.55 (เพิ่ม Document Control): รัน `roles.sql` แล้วตามด้วย `data.sql` อีกครั้งอย่างละ 1 ครั้ง
 อัปเดตจากเวอร์ชันก่อน v1.56 (Admin กรอก Timesheet ได้): รัน `data.sql` อีกครั้ง 1 ครั้ง
+อัปเดตจากเวอร์ชันก่อน v1.68 (ISO 9001 · ประวัติการแก้ไขข้อมูล): รัน `data.sql` อีกครั้ง 1 ครั้ง
+อัปเดตจากเวอร์ชันก่อน v1.66 (ลบแล้วลบจากฐานข้อมูลทั้งหมด): รัน `data.sql` อีกครั้ง 1 ครั้ง · ข้อมูลที่ค้างจากการลบในเวอร์ชันก่อน: ดูจำนวนด้วย `supabase/cleanup-orphans.sql` แล้วทำตามคำแนะนำในไฟล์
 
 - ผู้ใช้คนแรกของระบบ (สมัครก่อนสุด) จะเป็น **Admin** อัตโนมัติ — คนที่สมัครหลังจากนั้นได้ **Technician**
 - **Admin, Department Manager และ Project Manager** เปลี่ยน Role ได้ที่ Settings → จัดการ Role ผู้ใช้ (บังคับด้วย Row Level Security ในฐานข้อมูล)
@@ -118,7 +120,6 @@ Web app สำหรับบริหารโครงการแบบ EPC (
 
 | เมนู | เนื้อหา | KPI |
 | --- | --- | --- |
-| **โหมดนำเสนอ** (`#/present`) | หน้าจอเต็มสำหรับทีวี / โปรเจกเตอร์ — ตัวเลขใหญ่ สลับหน้าอัตโนมัติ (Bidding · Projects · SPI × CPI · PO · Weekly Plan · Resource · Safety) ตามสิทธิ์ของบัญชี · อัปเดตจาก Cloud ทุก 1 นาที · ปุ่มลัด ← → Space F Esc | ภาพรวมทั้งองค์กร |
 | **Dashboard** | สรุป 3 ส่วน: Bidding · Execution · Resource | ทั้งหมดในหน้าเดียว |
 | **Bidding** (Before Award) | Board / Table: Inquiry → Estimate → Proposal → Submit → Won/Lost, สร้าง Project จาก bid ที่ชนะได้ทันที · แต่ละ bid มี **Sales ผู้หาลูกค้า** (พิมพ์ชื่อเองหรือเลือกจากรายชื่อ — ถ้าชื่อตรงกับพนักงาน/บัญชีผู้ใช้จะผูกกับคนนั้น ถ้าไม่ตรงจะเก็บเป็นชื่อที่พิมพ์), ที่มาของงาน (Lead source), ผู้ติดต่อฝั่งลูกค้า, **ไฟล์แนบ** (ใบเสนอราคาที่ส่งให้ลูกค้า / เอกสาร Inquiry — กด 📎 บนการ์ดเพื่อเปิดดู) · กรองตาม Sales | **Quantity**: จำนวน inquiry, proposal, BOQ items · **Time**: วันเฉลี่ยในแต่ละ stage, cycle time, on-time submission · Win rate · **ผลงาน Sales** (inquiry, win rate, won value, pipeline, โครงการที่รับผิดชอบ) |
 | **Bidding — หน้าแยกแต่ละขั้น** (`#/bidding/inquiry` · `estimate` · `proposal` · `submit` · `award`) | เมนูย่อยใต้ Bidding / แท็บ / คลิกขั้นใน Flow: งานที่อยู่ในขั้นนั้นตอนนี้ (เลื่อนขั้น / บันทึกผล) · งานที่ผ่านขั้นนั้นแล้ว · กราฟรายเดือน · ชั่วโมงจาก Timesheet ของขั้นนั้น · หน้า Award: รอผล / Won (สร้างโครงการ) / Lost / No-bid | ต่อขั้น: จำนวนในขั้น · conversion · เวลาเฉลี่ย · เลยกำหนด · ชั่วโมง · Award: Win rate, Submit → Award |
@@ -126,7 +127,7 @@ Web app สำหรับบริหารโครงการแบบ EPC (
 | **Project detail** | EPC phases (update progress / quantity / plan cost), S-Curve, **ค่าใช้จ่าย** (บันทึกทีละรายการ: วันที่ · รายการ · จำนวนเงิน · phase · หมวด · ผู้ขาย · เลขที่เอกสาร · อ้างอิง PO, Export CSV, กราฟต้นทุนสะสม PV / EV / AC), NCR log, Safety รายเดือน, ชั่วโมงทีมงาน | **Quantity** · **Time** (SPI) · **Cost** (CPI, EAC — Actual cost = ผลรวมรายการค่าใช้จ่าย) · **Quality** (NCR) · **Safety** (LTIFR, TRIR) |
 | **Purchase Orders** | PO ของทุกโครงการ (หน้า Purchase Orders + แท็บ PO ในแต่ละโครงการ): ผู้ขาย · รายการ · มูลค่า · วันที่ PO · กำหนดส่ง · สถานะ · จ่ายแล้ว · **ไฟล์แนบ** (PDF/รูป/Excel/Word ≤ 20 MB, เก็บใน Supabase Storage) | มูลค่า PO (Committed) เทียบ Plan cost · เลยกำหนดส่ง · ส่งภายใน 14 วัน · % จ่ายแล้ว — สรุปบน Dashboard |
 | **Price List / Vendor Cost** | ราคาต่อหน่วยของแต่ละผู้ขาย (รหัส · รายการ · Spec · หมวด · หน่วย · ราคา / สกุลเงิน · MOQ · Lead time · ใบเสนอราคา · ใช้ได้ถึง · ไฟล์แนบ), ประวัติราคา, เปรียบเทียบผู้ขายของรายการเดียวกัน, **Export Excel (.xlsx) / PDF** ตามตัวกรอง — เก็บบน Supabase (collection `prices`) | ราคาใกล้หมดอายุ / หมดอายุ · ส่วนต่างราคาระหว่างผู้ขาย |
-| **Weekly Plan** | วางแผนงานรายสัปดาห์ (งาน · โครงการ/bid · phase · ผู้รับผิดชอบ · ชั่วโมง · ปริมาณ · กำหนดเสร็จ), อัปเดตสถานะ Planned → In progress → Done / Not done + สาเหตุ, ยกงานค้างไปสัปดาห์ถัดไป, ดูภาระงานรายคน, ดึงเป็นแถวใน Timesheet | **PPC** = งานเสร็จ ÷ งานในแผน (เป้า ≥ 80%), สาเหตุงานไม่เสร็จ, ชั่วโมงตามแผน vs capacity |
+| **Weekly Plan** | วางแผนงานรายสัปดาห์ (งาน · โครงการ/bid · phase · ผู้รับผิดชอบ · ชั่วโมง · ปริมาณ · กำหนดเสร็จ), อัปเดตสถานะ Planned → In progress → Done / Not done + สาเหตุ, ยกงานค้างไปสัปดาห์ถัดไป, ดูภาระงานรายคน, ดึงเป็นแถวใน Timesheet, คัดลอกข้อความส่ง LINE, Screenshot เป็นรูป PNG, พิมพ์ PDF, ค้นหา / กรองสถานะ / งานของฉัน, ทำซ้ำงาน, งานประจำ (สร้างเองเมื่อมีคนเปิดเว็บ), แผนล่วงหน้า 4 สัปดาห์ + สิ่งที่ต้องเตรียม, คัดลอกทั้งสัปดาห์, อัปเดตหลายงานพร้อมกัน | **PPC** = งานเสร็จ ÷ งานในแผน (เป้า ≥ 80%), สาเหตุงานไม่เสร็จ, ชั่วโมงตามแผน vs capacity |
 | **Resource Utilization** | Utilization ตาม **Level**, heatmap loading รายสัปดาห์, รายคน, ตั้งค่า level (rate, target) | Utilization vs target, over/under allocation |
 | **Timesheet** | กรอกชั่วโมงรายสัปดาห์ต่อคน (รวม OT) — **เฉพาะ Admin และ Project Manager** (Role อื่นดูได้อย่างเดียว) · Project+Phase / Bid+ขั้นตอน (Inquiry · Estimate · Proposal · Submit) / Overhead / Leave · ชั่วโมง Bidding แยกตามขั้นตอนของทั้งทีม · สถานะการกรอกของทั้งทีม | Timesheet completeness |
 
@@ -170,8 +171,11 @@ assets/js/i18n.js            แสดงป้าย / หัวตาราง
 assets/js/views/phase-items.js  รายการย่อยของขั้นงาน EPC (เอกสารออกแบบ · แพ็กเกจจัดซื้อ · งานก่อสร้าง · เอกสารส่งมอบ) + Transmittal — แก้รายการมาตรฐานที่ PM.PHASE_ITEMS
 assets/js/views/daily.js     รายงานประจำวันหน้างาน (collection dailies) + พิมพ์ PDF
 assets/js/views/punch.js     Punch List (collection punch) + พิมพ์รายการค้าง
+assets/js/views/avl.js       AVL รายชื่อผู้ขายที่ลูกค้าอนุมัติของแต่ละโครงการ (collection avl) + ตรวจ PO นอก AVL + พิมพ์
 assets/js/views/meetings.js  บันทึกการประชุม MOM + Action (collection meetings) + พิมพ์ PDF
 assets/js/approvals.js       อนุมัติ PO / ค่าใช้จ่ายที่ถึงวงเงิน (วงเงินใน collection settings id 'approval')
+assets/js/views/iso.js       ISO 9001: ทะเบียนบันทึกของระบบคุณภาพ (collection qms) · หลักฐานตามข้อกำหนด · ประวัติการแก้ไข (ตาราง app_audit ใน data.sql)
+assets/js/purge.js           ลบถาวร: โครงการ · งานประมูล · บุคลากร · PO พร้อมข้อมูลและไฟล์ที่เกี่ยวข้อง (ฝั่งฐานข้อมูล: trigger app_records_cascade ใน data.sql)
 assets/js/version.js         เวอร์ชัน + ประวัติการแก้ไข (หน้า About)
 assets/js/config.js          Supabase URL + anon key (ต้องกรอก)
 assets/js/auth.js            login / register / reset password (Supabase Auth)
@@ -179,8 +183,9 @@ assets/js/roles.js           Role + ตารางสิทธิ์ + เร�
 assets/js/cloud.js           ซิงค์ข้อมูลทั้งหมดกับ Supabase (บันทึกอัตโนมัติ / โหลดเมื่อเปิดเว็บ)
 supabase/roles.sql           SQL สร้างตาราง profiles, RLS, trigger (รันใน Supabase ก่อน)
 supabase/data.sql            SQL สร้างตาราง app_records สำหรับเก็บข้อมูลทั้งหมด (รันต่อจาก roles.sql)
+supabase/cleanup-orphans.sql นับ / ลบข้อมูลที่ค้างจากการลบในเวอร์ชันก่อน v1.66 (รันครั้งเดียว ตามคำแนะนำในไฟล์)
 assets/img/flowlab-logo.png  โลโก้บริษัทสำหรับหน้าเว็บ (480 px) · flowlab-logo-full.png = ความละเอียดเต็มสำหรับเอกสาร PDF — เปลี่ยนโลโก้ได้โดยแทนที่ 2 ไฟล์นี้ (ชื่อเดิม)
 assets/js/assist.js          ต้องดำเนินการวันนี้ (PM.attention) · ค้นหาด่วน Ctrl+K · ปุ่ม "+ สร้างใหม่" บนแถบด้านบน
 assets/js/tour.js            คลิปสอนการใช้งาน (Tour เล่นอัตโนมัติบนหน้าจอจริง) — เพิ่ม / แก้ขั้นตอนได้ที่ TOURS ในไฟล์นี้
-assets/js/views/*.js         แต่ละหน้า (weekly.js = Weekly Plan, costs.js = รายการค่าใช้จ่ายโครงการ, timeline.js = Timeline · Gantt Chart ของโครงการ, changes.js = VO งานเพิ่ม-ลด, billing.js = งวดเงิน / วางบิล + เงื่อนไขการชำระเงิน, risks.js = Risk & Issue register, report.js = รายงานประจำเดือน (PDF), boq.js = BOQ ของโครงการ (ปร.4 · วางจาก Excel · ราคาจาก Price List), bid-stage.js = หน้าแยกของแต่ละขั้น Bidding, help.js = คู่มือวิธีใช้งาน, present.js = โหมดนำเสนอขึ้นจอ)
+assets/js/views/*.js         แต่ละหน้า (weekly.js = Weekly Plan, costs.js = รายการค่าใช้จ่ายโครงการ, timeline.js = Timeline · Gantt Chart ของโครงการ, changes.js = VO งานเพิ่ม-ลด, billing.js = งวดเงิน / วางบิล + เงื่อนไขการชำระเงิน, risks.js = Risk & Issue register, report.js = รายงานประจำเดือน (PDF), boq.js = BOQ ของโครงการ (ปร.4 · วางจาก Excel · ราคาจาก Price List), bid-stage.js = หน้าแยกของแต่ละขั้น Bidding, help.js = คู่มือวิธีใช้งาน)
 ```

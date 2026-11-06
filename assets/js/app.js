@@ -14,9 +14,8 @@
     [/^#\/weekly$/, 'weekly', 'แผนงานรายสัปดาห์', 'Weekly Plan · PPC · ภาระงาน'],
     [/^#\/resources$/, 'resources', 'ภาระงานบุคลากร', 'ระดับ · อัตราใช้งาน · ภาระงาน'],
     [/^#\/timesheet$/, 'timesheet', 'ลงเวลาทำงาน (Timesheet)', 'ชั่วโมงทำงานจริงตามแผน'],
-    [/^#\/settings(?:\/(\w+))?$/, 'settings', 'ตั้งค่า', 'ระบบ'],
+    [/^#\/settings(?:\/(\w+))?(?:\/(\w+))?$/, 'settings', 'ตั้งค่า', 'ระบบ'],
     [/^#\/help(?:\/(\w+))?$/, 'help', 'คู่มือ / คลิปสอน', 'คู่มือการใช้งานทุกหน้า'],
-    [/^#\/present$/, 'present', 'โหมดนำเสนอ', 'นำเสนอขึ้นจอ'],
     [/^#\/about$/, 'about', 'เกี่ยวกับระบบ', 'เวอร์ชันและประวัติการแก้ไข'],
   ];
 
@@ -27,8 +26,6 @@
     if (!route) { location.hash = '#/dashboard'; return; }
     const el = document.getElementById('view');
     applyRoleNav();
-    // presentation mode: the page takes the whole screen (no sidebar, top bar, banner or tab bar — CSS)
-    document.body.classList.toggle('presenting', route[1] === 'present');
     // pages a role may not open (menu items are hidden too) — e.g. Resources: Admin / Department Manager / Project Manager
     const need = PAGE_PERM[route[1]];
     if (need && PM.auth && PM.auth.user && !PM.can(need)) {
@@ -60,6 +57,7 @@
       el.innerHTML = skeleton(`ยังโหลดข้อมูลจาก Cloud ไม่ได้ — กำลังลองใหม่อัตโนมัติ <button type="button" class="btn sm" data-sync-retry>ลองใหม่ตอนนี้</button>`);
       return;
     }
+    if (PM.ensureRecurring) PM.ensureRecurring(); // recurring tasks: nothing runs on a clock, so whoever opens the site creates what is due (weekly.js)
     PM.views[route[1]](el, match.slice(1));
     if (hash !== lastAnimated) { // animate on navigation only, not on resize / data refresh
       lastAnimated = hash;
@@ -396,6 +394,6 @@
       render();
     }
     PM.splash.hide();
-    if (PM.tour && !location.hash.startsWith('#/present')) setTimeout(PM.tour.welcome, 1200); // first visit: offer the getting-started clip
+    if (PM.tour) setTimeout(PM.tour.welcome, 1200); // first visit: offer the getting-started clip
   };
 })();

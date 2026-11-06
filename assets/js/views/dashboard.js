@@ -1,8 +1,13 @@
-/* dashboard.js — the three whiteboard sections on one page */
+/* dashboard.js — the department at a glance, told in charts: a row of headline numbers, then the charts of each section.
+   Every chart's rows are also there as a table behind "ดูเป็นตาราง" (exact figures, keyboard and screen-reader friendly).
+   Charts show counts to everyone; bid money only in the tiles and tooltips of those who may see it. */
 (function () {
   const U = PM.ui, V = PM.common, esc = U.esc;
   // Cost overrun filter: active | closed | all
   const state = U.keep('dashboard', { overrun: 'active' }, ['overrun']);
+
+  const chartCard = (id, title, sub) => `<div class="card"><div class="card-h"><h2>${esc(title)}</h2><p>${esc(sub)}</p></div><div class="card-b"><div class="chart" id="${id}"></div></div></div>`;
+  const tableBox = (title, html, id) => `<details class="dash-table"><summary>ดูเป็นตาราง — ${esc(title)}</summary><div class="card-b flush table-wrap"${id ? ` id="${id}"` : ''}>${html}</div></details>`;
 
   PM.views.dashboard = function (el) {
     const db = PM.db, T = PM.today();
@@ -27,11 +32,9 @@
       .slice(0, 8);
     const over = ut.people.filter((p) => p.util > 1.05).length;
     const under = ut.people.filter((p) => p.util != null && p.util < p.target - 0.25).length;
+    const sales = PM.salesStats(from12, T);
 
     const overrun = PM.costOverrunRows(db.projects.map((p) => (p.status === 'closed' ? { p, m: PM.projectMetrics(p) } : rows.find((r) => r.p === p))));
-
-    const phaseCount = {};
-    PM.PHASES.forEach((ph) => (phaseCount[ph.key] = rows.filter((r) => r.m.current && r.m.current.key === ph.key)));
 
     const seesResources = PM.can('resource.view'); // section 4: Admin · Department Manager · Project Manager only
     // "ต้องดำเนินการวันนี้": one bar with the counts and the most urgent items — the full list is the bell (notify.js)
@@ -54,35 +57,25 @@
         <a href="#/dashboard" data-jump="#sec-po"><span class="idx">3</span>Purchase Orders</a>
         ${seesResources ? '<a href="#/dashboard" data-jump="#sec-res"><span class="idx">4</span>Resource</a>' : ''}
       </nav>
+
       <div class="section-h" id="sec-bid"><span class="idx">1</span><h2>Bidding Performance</h2><p>Before Award · 12 เดือนล่าสุด</p><span class="spacer"></span><a href="#/bidding">เปิด Bidding →</a></div>
-      ${V.flow(PM.BID_STAGES.map((s, i) => {
-        const inStage = allPending.filter((b) => b.stage === s.key);
-        const sd = bs.stageDays[i];
-        return { label: s.label, th: s.th, big: `${inStage.length} <small class="muted" style="font-size:12px">งาน</small>`, meta: `${V.bidSum(inStage) ? V.bidSum(inStage) + ' · ' : ''}avg ${U.days(sd.avg)}`, href: '#/bidding/' + s.key,
-          tip: `${s.label}: ${inStage.length} bids in stage now\nAvg time in stage (12m): ${U.days(sd.avg)}` };
-      }).concat([{ n: '→', label: 'Award', th: 'ผลการประมูล 12 เดือน', big: `${bs.won} <small class="muted" style="font-size:12px">won / ${bs.won + bs.lost}</small>`, meta: `Win rate ${U.pct(bs.winRate)}`, href: '#/bidding/award' }]))}
-      <div class="grid cols-6">
+      <div class="grid cols-4">
         ${V.tile({ label: 'Inquiries', tag: 'Quantity', value: bs.total, sub: `ยื่นใบเสนอราคาแล้ว ${bs.submitted} งาน` })}
-        ${V.tile({ label: 'BOQ items', tag: 'Quantity', value: U.num(PM.sum(bs.list.filter((b) => b.dates.estimate), (b) => b.boqItems)), sub: 'ถอดปริมาณ / ประมาณราคาแล้ว' })}
-        ${V.tile({ label: 'Avg cycle time', tag: 'Time', value: `${U.num(bs.avgCycle, 1)} <small>days</small>`, sub: 'Inquiry → Submit' })}
-        ${V.tile({ label: 'On-time submission', tag: 'Time', value: U.pct(bs.onTimeRate), sub: U.badge(bs.onTimeRate >= 0.9 ? 'good' : bs.onTimeRate >= 0.75 ? 'warning' : 'critical', 'target 90%') })}
         ${V.tile({ label: 'Win rate', value: U.pct(bs.winRate), sub: PM.myRole() === 'admin' ? `by value ${U.pct(bs.winRateValue)} · won ${U.money(bs.wonValue)}` : `${bs.won} won / ${bs.won + bs.lost} decided` })}
+        ${V.tile({ label: 'On-time submission', tag: 'Time', value: U.pct(bs.onTimeRate), sub: U.badge(bs.onTimeRate >= 0.9 ? 'good' : bs.onTimeRate >= 0.75 ? 'warning' : 'critical', 'target 90%') })}
         ${PM.seesBidPrices()
           ? V.tile({ label: 'Pipeline (pending)', value: V.bidSum(allPending), sub: `${allPending.length} bids in progress${PM.myRole() === 'sales' ? ' · มูลค่าเฉพาะงานของคุณ' : ''}` })
           : V.tile({ label: 'Pipeline (pending)', value: allPending.length, sub: 'bids in progress · มูลค่าเห็นได้เฉพาะ Sales / Admin', icon: 'funnel' })}
       </div>
       <div class="grid cols-2">
-        <div class="card"><div class="card-h"><h2>Inquiries per month</h2><p>Quantity — จำนวนงานที่เข้ามาแต่ละเดือน แยกตามผล</p></div><div class="card-b"><div class="chart" id="c-inq"></div></div></div>
-        <div class="card"><div class="card-h"><h2>Average days in each stage</h2><p>Time — ระยะเวลาเฉลี่ยของแต่ละขั้นตอน</p></div><div class="card-b"><div class="chart" id="c-stage"></div></div></div>
+        ${chartCard('c-stages', 'งานประมูลในแต่ละขั้นตอนตอนนี้', 'จำนวนงานที่ยังไม่รู้ผล · คลิกแถบเพื่อเปิดขั้นนั้น')}
+        ${chartCard('c-inq', 'Inquiries per month', 'จำนวนงานที่เข้ามาแต่ละเดือน แยกตามผล')}
+        ${chartCard('c-stage', 'Average days in each stage', 'ระยะเวลาเฉลี่ยของแต่ละขั้นตอน')}
+        ${chartCard('c-sales', 'ผลงาน Sales', 'จำนวนงาน 12 เดือนของแต่ละคน แยกตามผล')}
       </div>
-      <div class="card"><div class="card-h"><h2>ผลงาน Sales</h2><p>Inquiry ที่หามาได้ 12 เดือน · Win rate · Pipeline · โครงการที่รับผิดชอบ</p></div>
-        <div class="card-b flush table-wrap" id="d-sales">${V.salesTable(PM.salesStats(from12, T))}</div></div>
+      ${tableBox('ผลงาน Sales', V.salesTable(sales), 'd-sales')}
 
       <div class="section-h" id="sec-exec"><span class="idx">2</span><h2>Execution (EPC)</h2><p>KPI: Quantity · Time · Cost · Quality (NCR) · Safety</p><span class="spacer"></span><a href="#/projects">เปิด Projects →</a></div>
-      ${V.flow(PM.PHASES.map((ph) => ({
-        label: ph.label, th: ph.th, big: `${phaseCount[ph.key].length} <small class="muted" style="font-size:12px">โครงการ</small>`,
-        meta: phaseCount[ph.key].map((r) => esc(r.p.code)).join(', ') || '—', href: '#/projects',
-      })))}
       <div class="grid cols-6">
         ${V.tile({ label: 'Active projects', value: active.length, sub: `Backlog ${U.money(PM.sum(rows, (r) => r.p.contractValue * (1 - r.m.act)))}` })}
         ${V.tile({ label: 'Portfolio SPI', tag: 'Time', value: U.ratio(pSPI), sub: U.badge(U.health(pSPI), U.healthLabel[U.health(pSPI)]), tip: 'SPI = EV / PV (Earned Value ÷ Planned Value)' })}
@@ -91,23 +84,28 @@
         ${V.tile({ label: 'Open NCR', tag: 'Quality', value: openNcr, sub: openNcr ? U.badge(rows.some((r) => r.m.ncrCriticalOpen) ? 'critical' : 'warning', `${PM.sum(rows, (r) => r.m.ncrCriticalOpen)} critical`) : U.badge('good', 'None open') })}
         ${V.tile({ label: 'LTIFR (12m)', tag: 'Safety', value: U.num(ltifr, 2), sub: `${U.num(mh12)} man-hours · LTI ${lti12}`, tip: 'LTIFR = LTI × 1,000,000 / man-hours' })}
       </div>
-      <div class="card">
-        <div class="card-h"><h2>Project status</h2><p>แท่ง = Actual progress, เส้นดำ = Planned progress ณ วันนี้</p></div>
-        <div class="card-b flush table-wrap">${projectTable(rows)}</div>
-      </div>
-      <div class="card" id="d-overrun">${overrunCard(overrun)}</div>
       <div class="grid cols-2">
-        <div class="card"><div class="card-h"><h2>ค่าใช้จ่ายรายเดือน</h2><p>Cost — ผลรวมรายการค่าใช้จ่ายทุกโครงการ 12 เดือน แยกตาม phase</p></div><div class="card-b"><div class="chart" id="c-spend"></div></div></div>
-        <div class="card"><div class="card-h"><h2>Actual cost เทียบ Plan cost</h2><p>โครงการ Active · เส้นดำ = Plan cost (งบ)</p></div><div class="card-b"><div class="chart" id="c-actual"></div></div></div>
+        ${chartCard('c-progress', 'ความคืบหน้าแต่ละโครงการ', 'แท่ง = ทำได้จริง · เส้นดำ = ตามแผน ณ วันนี้ · คลิกเพื่อเปิดโครงการ')}
+        ${chartCard('c-health', 'สุขภาพโครงการ SPI × CPI', 'จุดละ 1 โครงการ — มุมซ้ายล่าง = ช้ากว่าแผนและเกินงบ ต้องดูก่อน')}
+        ${chartCard('c-scurve', 'ต้นทุนสะสมทุกโครงการ Active', 'PV ตามแผน · EV มูลค่างานที่ทำได้ · AC จ่ายจริง')}
+        ${chartCard('c-spend', 'ค่าใช้จ่ายรายเดือน', 'ผลรวมรายการค่าใช้จ่ายทุกโครงการ 12 เดือน แยกตาม phase')}
+        ${chartCard('c-actual', 'Actual cost เทียบ Plan cost', 'โครงการ Active · เส้นดำ = Plan cost (งบ) · คลิกเพื่อเปิดค่าใช้จ่าย')}
+        <div class="card" id="d-overrun">${overrunCard(overrun)}</div>
+        ${chartCard('c-ncr', 'NCR ของแต่ละโครงการ', 'เปิดอยู่ / ปิดแล้ว')}
+        ${chartCard('c-safety', 'เหตุการณ์ความปลอดภัยต่อเดือน', 'ทุกโครงการ 12 เดือน · สีเข้มขึ้น = รุนแรงขึ้น')}
       </div>
+      ${tableBox('สถานะโครงการ', projectTable(rows))}
+      <div id="d-overrun-table">${tableBox('ต้นทุนเกินงบ', overrunTable(overrunList(overrun)))}</div>
 
       <div class="section-h" id="sec-po"><span class="idx">3</span><h2>Purchase Orders</h2><p>ติดตาม PO ทุกโครงการ · ส่งของ · การจ่ายเงิน</p><span class="spacer"></span><a href="#/pos">เปิด Purchase Orders →</a></div>
       ${PM.poTiles(po)}
       <div class="grid cols-2">
-        <div class="card"><div class="card-h"><h2>PO ที่ต้องติดตาม</h2><p>เลยกำหนดส่ง และที่ต้องส่งภายใน 14 วัน</p></div>
-          <div class="card-b flush table-wrap" id="d-po-watch">${PM.poTable(poWatch, { compact: true, empty: 'ไม่มี PO ที่ต้องติดตาม' })}</div></div>
-        <div class="card"><div class="card-h"><h2>มูลค่า PO ตามโครงการ</h2><p>สั่งแล้ว (Committed) เทียบ Plan cost</p></div><div class="card-b"><div class="chart" id="c-po-proj"></div></div></div>
+        ${chartCard('c-po-proj', 'มูลค่า PO ตามโครงการ', 'สั่งแล้ว (Committed) · เส้นดำ = Plan cost')}
+        ${chartCard('c-po-due', 'มูลค่า PO ที่รอส่งของ', 'PO ที่ยังส่งไม่ครบ ตามเดือนที่กำหนดส่ง')}
+        ${chartCard('c-po-status', 'สถานะ PO', 'จำนวน PO ทุกโครงการ ไม่รวมที่ยกเลิก')}
+        ${chartCard('c-po-supplier', 'ผู้ขายรายใหญ่', 'มูลค่า PO ที่สั่งแล้ว 6 อันดับแรก')}
       </div>
+      ${tableBox('PO ที่ต้องติดตาม (เลยกำหนด / ต้องส่งใน 14 วัน)', PM.poTable(poWatch, { compact: true, empty: 'ไม่มี PO ที่ต้องติดตาม' }), 'd-po-watch')}
 
       ${seesResources ? `<div class="section-h" id="sec-res"><span class="idx">4</span><h2>Resource Utilization</h2><p>4 สัปดาห์ล่าสุด · Level & Timesheet</p><span class="spacer"></span><a href="#/resources">เปิด Resources →</a></div>
       <div class="grid cols-5">
@@ -118,16 +116,25 @@
         ${V.tile({ label: 'Timesheet completeness', value: U.pct(ut.total.capacity ? ut.total.logged / ut.total.capacity : null), sub: `ขาด ${U.num(ut.total.missing)} ชม. จาก capacity`, tip: 'Logged hours ÷ capacity hours' })}
       </div>
       <div class="grid cols-2">
-        <div class="card"><div class="card-h"><h2>Utilization by level</h2><p>เส้นดำ = Target ของแต่ละ level</p></div><div class="card-b"><div class="chart" id="c-level"></div></div></div>
-        <div class="card"><div class="card-h"><h2>Hours by category</h2><p>ชั่วโมงจาก Timesheet แยกตามประเภท (4 สัปดาห์)</p></div><div class="card-b"><div class="chart" id="c-hours"></div></div></div>
+        ${chartCard('c-level', 'Utilization by level', 'เส้นดำ = Target ของแต่ละ level')}
+        ${chartCard('c-hours', 'Hours by category', 'ชั่วโมงจาก Timesheet แยกตามประเภท (4 สัปดาห์)')}
+        ${chartCard('c-ppc', 'PPC — 8 สัปดาห์ล่าสุด', 'งานที่เสร็จ ÷ งานในแผน · เป้า ≥ 80%')}
+        ${chartCard('c-people', 'ภาระงานสูงสุด 8 คน', 'Utilization 4 สัปดาห์ · เส้นดำ = เป้า · สีแดง = เกิน 105%')}
       </div>` : ''}`;
 
-    V.bindFlowLinks(el);
     el.onclick = (e) => {
       if (e.target.closest('[data-action="dash-report"]')) { PM.dashboardReport(); return; } // report.js
       if (e.target.closest('[data-open-bell]')) { e.stopPropagation(); if (PM.notify) PM.notify.open(); return; } // stop: the page click would close it again
       const seg = e.target.closest('[data-seg="overrun"]');
-      if (seg) { state.overrun = seg.dataset.val; el.querySelector('#d-overrun').innerHTML = overrunCard(overrun); return; }
+      if (seg) {
+        state.overrun = seg.dataset.val;
+        el.querySelector('#d-overrun').innerHTML = overrunCard(overrun);
+        el.querySelector('#d-overrun-table').innerHTML = tableBox('ต้นทุนเกินงบ', overrunTable(overrunList(overrun)));
+        drawOverrun(el, overrun);
+        return;
+      }
+      const bar = e.target.closest('.hbar[data-href]');
+      if (bar) { location.hash = bar.dataset.href; return; }
       if (e.target.closest('tr[data-sales]') && !e.target.closest('a')) { location.hash = '#/bidding'; return; }
       const poRow = e.target.closest('tr[data-po]');
       if (poRow) { PM.poForm(PM.find('pos', poRow.dataset.po), null, () => PM.views.dashboard(el)); return; }
@@ -135,9 +142,15 @@
       if (tr) location.hash = '#/projects/' + tr.dataset.id;
     };
 
-    /* charts */
+    /* ---------- 1 · bidding ---------- */
     const months = PM.months(PM.addDays(T, -334).slice(0, 7), T.slice(0, 7));
     const inMonth = (fn) => months.map((m) => db.bids.filter((b) => b.dates.inquiry.slice(0, 7) === m && fn(b)).length);
+    PM.charts.hbars(document.getElementById('c-stages'), {
+      items: PM.BID_STAGES.map((s, i) => {
+        const inStage = allPending.filter((b) => b.stage === s.key), money = V.bidSum(inStage);
+        return { label: s.label, sub: s.th, value: inStage.length, display: `${inStage.length} งาน`, href: '#/bidding/' + s.key, tip: `${s.label}: ${inStage.length} งาน${money ? ` · ${money}` : ''}\nเฉลี่ยในขั้นนี้ ${U.days(bs.stageDays[i].avg)}` };
+      }).concat([{ label: 'Award', sub: 'ชนะ 12 เดือน', value: bs.won, display: `${bs.won} งาน`, href: '#/bidding/award', tip: `ชนะ ${bs.won} จาก ${bs.won + bs.lost} งานที่ประกาศผล\nWin rate ${U.pct(bs.winRate)}` }]),
+    });
     PM.charts.columns(document.getElementById('c-inq'), {
       categories: months.map(U.month), label: 'Inquiries per month',
       series: [
@@ -149,6 +162,31 @@
     PM.charts.hbars(document.getElementById('c-stage'), {
       items: bs.stageDays.map((s) => ({ label: s.label, value: s.avg || 0, display: U.days(s.avg), tip: `${s.label}\nAvg ${U.days(s.avg)} (n=${s.n})` })),
     });
+    const salesRows = sales.slice().sort((a, b) => (b.bs.total - a.bs.total)).slice(0, 8);
+    const salesName = (x) => (x.id ? V.personName(x.id, x.fallbackName) : 'ไม่ระบุ');
+    if (salesRows.length) PM.charts.columns(document.getElementById('c-sales'), {
+      categories: salesRows.map((x) => salesName(x).split(' ')[0]), tipTitle: salesRows.map(salesName), label: 'Bids by Sales',
+      series: [
+        { name: 'Won', color: 'var(--s1)', values: salesRows.map((x) => x.bs.won) },
+        { name: 'Lost', color: 'var(--s2)', values: salesRows.map((x) => x.bs.lost) },
+        { name: 'In progress', color: 'var(--s-neutral)', values: salesRows.map((x) => x.pipeline) },
+      ],
+    }); else document.getElementById('c-sales').innerHTML = '<p class="empty">ยังไม่มีข้อมูล</p>';
+
+    /* ---------- 2 · execution & cost ---------- */
+    PM.charts.hbars(document.getElementById('c-progress'), {
+      max: 1,
+      items: rows.map((r) => ({
+        label: r.p.code, sub: r.m.current ? U.phaseLabel(r.m.current.key) : '–', value: r.m.act, target: r.m.plan, display: U.pct(r.m.act), href: '#/projects/' + r.p.id,
+        tip: `${r.p.code} ${r.p.name}\nจริง ${U.pct(r.m.act)} · แผน ${U.pct(r.m.plan)}\nSPI ${U.ratio(r.m.spi)} · CPI ${U.ratio(r.m.cpi)}`,
+      })),
+    });
+    PM.charts.quadrant(document.getElementById('c-health'), {
+      label: 'SPI × CPI', xName: 'SPI (เวลา)', yName: 'CPI (ต้นทุน)', height: 280,
+      quads: { tr: 'เร็วกว่าแผน · ต่ำกว่างบ', tl: 'ช้ากว่าแผน · ต่ำกว่างบ', br: 'เร็วกว่าแผน · เกินงบ', bl: 'ช้ากว่าแผน · เกินงบ' },
+      points: rows.map((r) => ({ label: r.p.code, x: r.m.spi, y: r.m.cpi, level: r.p.status === 'onhold' ? 'neutral' : U.worst(U.health(r.m.spi), U.health(r.m.cpi)), tip: `${r.p.code} ${r.p.name}\nSPI ${U.ratio(r.m.spi)} · CPI ${U.ratio(r.m.cpi)}` })),
+    });
+    drawPortfolioCurve(rows, T);
     const spend = (db.costs || []).filter((c) => c.date.slice(0, 7) >= months[0] && c.date <= T && PM.costCounts(c));
     PM.charts.columns(document.getElementById('c-spend'), {
       categories: months.map(U.month), fmt: U.money, axisFmt: U.money, label: 'Monthly spend',
@@ -156,19 +194,63 @@
     });
     PM.charts.hbars(document.getElementById('c-actual'), {
       items: rows.map((r) => ({
-        label: r.p.code, sub: `${U.pct(r.m.bac ? r.m.ac / r.m.bac : null)} ของงบ · งานเสร็จ ${U.pct(r.m.act)}`, value: r.m.ac, target: r.m.bac, display: U.money(r.m.ac),
-        color: r.m.ac > r.m.bac ? 'var(--critical)' : 'var(--s2)',
+        label: r.p.code, sub: `${U.pct(r.m.bac ? r.m.ac / r.m.bac : null)} ของงบ`, value: r.m.ac, target: r.m.bac, display: U.money(r.m.ac), href: `#/projects/${r.p.id}/cost`,
+        color: r.m.ac > r.m.bac ? 'var(--critical)' : 'var(--s1)',
         tip: `${r.p.code} ${r.p.name}\nActual cost ${U.money(r.m.ac)}\nPlan cost ${U.money(r.m.bac)}\nEarned value ${U.money(r.m.ev)} · CPI ${U.ratio(r.m.cpi)}`,
       })),
     });
+    drawOverrun(el, overrun);
+    if (rows.length) PM.charts.columns(document.getElementById('c-ncr'), {
+      categories: rows.map((r) => r.p.code), label: 'NCR by project',
+      series: [
+        { name: 'เปิดอยู่ (วิกฤต)', color: 'var(--critical)', values: rows.map((r) => r.m.ncrCriticalOpen) },
+        { name: 'เปิดอยู่', color: 'var(--s2)', values: rows.map((r) => r.m.ncrOpen - r.m.ncrCriticalOpen) },
+        { name: 'ปิดแล้ว', color: 'var(--s-neutral)', values: rows.map((r) => r.m.ncrTotal - r.m.ncrOpen) },
+      ],
+    }); else document.getElementById('c-ncr').innerHTML = '<p class="empty">ยังไม่มีโครงการ</p>';
+    const sumBy = (k) => months.map((ym) => PM.sum(saf12.filter((s) => s.month === ym), (s) => s[k] || 0));
+    PM.charts.columns(document.getElementById('c-safety'), {
+      categories: months.map(U.month), label: 'Safety incidents',
+      series: [
+        { name: 'Near miss', color: 'var(--seq-3)', values: sumBy('nearMiss') }, { name: 'First aid', color: 'var(--seq-4)', values: sumBy('firstAid') },
+        { name: 'Recordable', color: 'var(--seq-5)', values: sumBy('recordable') }, { name: 'LTI', color: 'var(--seq-6)', values: sumBy('lti') },
+      ],
+    });
+
+    /* ---------- 3 · purchase orders ---------- */
+    const committed = (db.pos || []).filter(PM.poIsCommitted);
     PM.charts.hbars(document.getElementById('c-po-proj'), {
       items: rows.map((r) => {
-        const v = PM.sum((db.pos || []).filter((x) => x.projectId === r.p.id && PM.poIsCommitted(x)), (x) => x.amount || 0);
-        return { label: r.p.code, sub: U.pct(r.m.bac ? v / r.m.bac : null) + ' ของแผน', value: v, target: r.m.bac, display: U.money(v), color: 'var(--s2)',
+        const v = PM.sum(committed.filter((x) => x.projectId === r.p.id), (x) => x.amount || 0);
+        return { label: r.p.code, sub: U.pct(r.m.bac ? v / r.m.bac : null) + ' ของแผน', value: v, target: r.m.bac, display: U.money(v), href: `#/projects/${r.p.id}/po`,
           tip: `${r.p.code} ${r.p.name}\nPO committed ${U.money(v)}\nPlan cost ${U.money(r.m.bac)}` };
       }),
     });
+    const waiting = committed.filter((x) => !x.deliveredDate && x.deliveryDue && x.status !== 'delivered' && x.status !== 'closed');
+    const dueMonths = PM.months(T.slice(0, 7), PM.addDays(T, 150).slice(0, 7));
+    const lateValue = PM.sum(waiting.filter((x) => x.deliveryDue < T), (x) => x.amount || 0);
+    PM.charts.columns(document.getElementById('c-po-due'), {
+      categories: ['เลยกำหนด'].concat(dueMonths.map(U.month)), fmt: U.money, axisFmt: U.money, label: 'PO value waiting for delivery',
+      series: [
+        { name: 'เลยกำหนดส่ง', color: 'var(--critical)', values: [lateValue].concat(dueMonths.map(() => 0)) },
+        { name: 'ต้องส่ง', color: 'var(--s1)', values: [0].concat(dueMonths.map((ym) => PM.sum(waiting.filter((x) => x.deliveryDue >= T && x.deliveryDue.slice(0, 7) === ym), (x) => x.amount || 0))) },
+      ],
+    });
+    // ordered steps from draft to closed: one hue, darker = further along
+    const stepColor = ['var(--s-neutral)', 'var(--seq-2)', 'var(--seq-3)', 'var(--seq-4)', 'var(--seq-5)', 'var(--seq-6)'];
+    const steps = PM.PO_STATUS.filter((s) => s.key !== 'cancelled').slice(0, 6);
+    PM.charts.share(document.getElementById('c-po-status'), {
+      label: 'PO status', fmt: (v) => `${U.num(v)} ใบ`, totalLabel: 'รวม',
+      segments: steps.map((s, i) => ({ name: s.th, color: stepColor[i], value: (db.pos || []).filter((x) => x.status === s.key).length })),
+    });
+    const bySupplier = {};
+    committed.forEach((x) => { bySupplier[x.supplier] = (bySupplier[x.supplier] || 0) + (x.amount || 0); });
+    PM.charts.hbars(document.getElementById('c-po-supplier'), {
+      items: Object.keys(bySupplier).sort((a, b) => bySupplier[b] - bySupplier[a]).slice(0, 6).map((k) => ({ label: k, value: bySupplier[k], display: U.money(bySupplier[k]) })),
+    });
+
     if (!seesResources) return;
+    /* ---------- 4 · resource ---------- */
     PM.charts.hbars(document.getElementById('c-level'), {
       max: 1.2,
       items: ut.byLevel.map((l) => ({ label: l.level.name, sub: `${l.n} คน`, value: l.util || 0, target: l.target, display: U.pct(l.util), tip: `${l.level.name}\nUtilization ${U.pct(l.util)}\nTarget ${U.pct(l.target)}\nBillable ${U.num(l.billable)} / ${U.num(l.available)} h` })),
@@ -183,7 +265,43 @@
         { name: 'Leave', value: ut.total.leave, color: 'var(--s4)' },
       ],
     });
+    const weeks = Array.from({ length: 8 }, (_, i) => PM.addDays(PM.monday(T), (i - 7) * 7));
+    const ppc = weeks.map((w) => { const s = PM.planStats((db.plans || []).filter((x) => x.week === w)); return s.total && s.ppc != null ? Math.round(s.ppc * 100) : null; });
+    PM.charts.lines(document.getElementById('c-ppc'), {
+      labels: weeks.map((w) => `${w.slice(8)}/${w.slice(5, 7)}`), tipTitle: weeks.map((w) => `สัปดาห์ ${U.date(w)}`), yMax: 100, height: 230, ref: { value: 80, label: 'เป้า 80%' },
+      fmt: (v) => v + '%', axisFmt: (v) => v + '%', label: 'PPC by week',
+      series: [{ name: 'PPC', color: 'var(--s1)', values: ppc }],
+    });
+    PM.charts.hbars(document.getElementById('c-people'), {
+      max: 1.2,
+      items: ut.people.filter((x) => x.util != null).sort((a, b) => b.util - a.util).slice(0, 8).map((x) => ({
+        label: x.r.name, sub: PM.levelName(x.r.level), value: x.util, target: x.target, display: U.pct(x.util), color: x.util > 1.05 ? 'var(--critical)' : 'var(--s1)',
+        tip: `${x.r.name}\nUtilization ${U.pct(x.util)} · เป้า ${U.pct(x.target)}`,
+      })),
+    });
   };
+
+  /* every active project's cumulative PV / EV / AC added up, month by month (a project holds its last value after it ends) */
+  function drawPortfolioCurve(rows, T) {
+    const box = document.getElementById('c-scurve');
+    const curves = rows.map((r) => PM.costCurve(r.p, PM.projectCosts(r.p.id)));
+    const yms = curves.flatMap((c) => c.months).sort();
+    if (!yms.length) { box.innerHTML = '<p class="empty">ยังไม่มีโครงการ</p>'; return; }
+    const months = PM.months(yms[0], yms[yms.length - 1]);
+    const now = T.slice(0, 7);
+    const at = (c, ym, k) => {
+      const hit = c.rows.find((x) => x.ym === ym);
+      if (hit && hit[k] != null) return hit[k];
+      if (ym < c.months[0]) return 0;
+      const known = c.rows.filter((x) => x[k] != null);
+      return known.length ? known[known.length - 1][k] : 0;
+    };
+    const line = (k, future) => months.map((ym) => (!future && ym > now ? null : PM.sum(curves, (c) => at(c, ym, k))));
+    PM.charts.lines(box, {
+      labels: months.map(U.month), marker: months.indexOf(now), markerLabel: 'วันนี้', fmt: U.money, axisFmt: U.money, height: 230, label: 'Cumulative cost, all active projects',
+      series: [{ name: 'PV ตามแผน', color: 'var(--s1)', dash: true, values: line('pv', true) }, { name: 'EV ทำได้', color: 'var(--s3)', values: line('ev') }, { name: 'AC จ่ายจริง', color: 'var(--s2)', values: line('ac') }],
+    });
+  }
 
   function projectTable(rows) {
     if (!rows.length) return '<p class="empty">ยังไม่มีโครงการ</p>';
@@ -208,16 +326,31 @@
   const OVERRUN_VIEW = {
     active: 'โครงการ Active',
     closed: 'โครงการ Closed · ใช้ต้นทุนจริงสุดท้าย',
-    all: 'ทุกโครงการ (Active + Closed) · โครงการ Closed ใช้ต้นทุนจริงสุดท้าย',
+    all: 'ทุกโครงการ · โครงการ Closed ใช้ต้นทุนจริงสุดท้าย',
   };
-  function overrunCard(all) {
+  function overrunList(all) {
     if (!OVERRUN_VIEW[state.overrun]) state.overrun = 'active';
-    const nClosed = all.filter((r) => r.o.closed).length;
-    const list = state.overrun === 'all' ? all : all.filter((r) => r.o.closed === (state.overrun === 'closed'));
+    return state.overrun === 'all' ? all : all.filter((r) => r.o.closed === (state.overrun === 'closed'));
+  }
+  function overrunCard(all) {
+    const list = overrunList(all), nClosed = all.filter((r) => r.o.closed).length;
     return `<div class="card-h"><h2>Cost Project Overrun</h2>${overrunChips(list)}<span class="spacer"></span>
         ${V.seg('overrun', [{ key: 'active', label: `Active (${all.length - nClosed})` }, { key: 'closed', label: `Closed (${nClosed})` }, { key: 'all', label: `All (${all.length})` }], state.overrun)}
-        <p>${OVERRUN_VIEW[state.overrun]} · เกินงบแล้ว = Actual cost เกิน Plan cost · คาดว่าจะเกิน = EAC (Plan cost ÷ CPI) เกิน Plan cost เมื่อจบโครงการ</p></div>
-      <div class="card-b flush table-wrap">${overrunTable(list)}</div>`;
+        <p>${OVERRUN_VIEW[state.overrun]} · ส่วนต่างจากงบตอนจบโครงการ (EAC − Plan cost) · คลิกเพื่อเปิดโครงการ</p></div>
+      <div class="card-b"><div class="chart" id="c-overrun"></div></div>`;
+  }
+  /* above / below budget at the end of each project, worst first */
+  function drawOverrun(el, all) {
+    const box = el.querySelector('#c-overrun');
+    const list = overrunList(all).filter((r) => r.o.status !== 'nobudget').sort((a, b) => b.o.forecast - a.o.forecast);
+    if (!list.length) { box.innerHTML = '<p class="empty">ไม่มีโครงการในมุมมองนี้</p>'; return; }
+    PM.charts.diverging(box, {
+      neg: { label: 'ต่ำกว่างบ', color: 'var(--s1)' }, pos: { label: 'เกินงบ', color: 'var(--s2)' },
+      items: list.map(({ p, m, o }) => ({
+        label: p.code, sub: PM.COST_OVERRUN[o.status].label, value: o.forecast, display: `${o.forecast > 0 ? '+' : '−'}${U.money(Math.abs(o.forecast))}`, href: '#/projects/' + p.id,
+        tip: `${p.code} ${p.name}\nPlan cost ${U.money(m.bac)} · ใช้ไป ${U.money(m.ac)} (${U.pct(o.used)})\n${o.closed ? 'ต้นทุนสุดท้าย' : 'EAC'} ${U.money(o.eac)}`,
+      })),
+    });
   }
 
   function overrunChips(list) {

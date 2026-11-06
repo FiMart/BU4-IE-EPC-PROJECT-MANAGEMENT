@@ -85,6 +85,21 @@
     });
   };
 
+  /* copy text; the older way is for pages not on https, where the browser has no clipboard API → true when copied */
+  U.copyText = async (text) => {
+    try { await navigator.clipboard.writeText(text); return true; } catch (e) { /* try the older way */ }
+    const t = document.createElement('textarea');
+    t.value = text;
+    t.setAttribute('readonly', '');
+    t.style.cssText = 'position:fixed;top:0;left:0;opacity:0';
+    document.body.appendChild(t);
+    t.select();
+    let ok = false;
+    try { ok = document.execCommand('copy'); } catch (e) { ok = false; }
+    t.remove();
+    return ok;
+  };
+
   U.formData = (form) => {
     const out = {};
     Array.from(form.elements).forEach((el) => {
@@ -95,7 +110,7 @@
   };
 
   /* modal */
-  U.modal = function ({ title, body, submitLabel = 'บันทึก', onSubmit, onDelete, wide }) {
+  U.modal = function ({ title, body, submitLabel = 'บันทึก', onSubmit, onDelete, deleteText, wide }) {
     const draft = readDraft(title); // a form of the same name left unsaved when the page was closed / discarded
     U.closeModal();
     const wrap = document.createElement('div');
@@ -131,7 +146,8 @@
     wrap.addEventListener('mousedown', (e) => { if (e.target === wrap) U.closeModal(); });
     wrap.querySelectorAll('[data-close]').forEach((b) => b.addEventListener('click', U.closeModal));
     const del = wrap.querySelector('[data-delete]');
-    if (del) del.addEventListener('click', () => U.confirm('ยืนยันการลบรายการนี้? ลบแล้วกู้คืนไม่ได้', { title: 'ลบรายการ', ok: 'ลบ', tone: 'danger' })
+    // deleteText: what else goes with this record (worked out when the button is pressed)
+    if (del) del.addEventListener('click', () => U.confirm(deleteText ? deleteText() : 'ยืนยันการลบรายการนี้? ลบออกจากฐานข้อมูลถาวร กู้คืนไม่ได้', { title: 'ลบรายการ', ok: 'ลบถาวร', tone: 'danger' })
       .then((ok) => { if (ok) { onDelete(); U.closeModal(); } }));
     form.addEventListener('submit', (e) => {
       e.preventDefault();

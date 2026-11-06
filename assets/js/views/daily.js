@@ -111,7 +111,7 @@
     const form = U.modal({
       title: `${rep ? 'รายงานประจำวัน' : 'รายงานประจำวันใหม่'} — ${p.code} · ${U.date(x.date)}`, wide: true, submitLabel: 'บันทึกรายงาน',
       onDelete: rep && canEdit ? () => {
-        PM.poFiles.remove((x.photos || []).map((f) => f.path)).catch(() => { /* already gone */ });
+        PM.poFiles.trash(`${p.id}/daily/${x.id}`, (x.photos || []).map((f) => f.path));
         PM.remove('dailies', x.id); U.toast('ลบรายงานแล้ว'); done();
       } : null,
       body: `
@@ -169,7 +169,7 @@
     const planVals = {}; (p.phases || []).forEach((ph) => (planVals[ph.key] = PM.plannedPct(ph, d.date) * 100));
     const asOf = { act: snap ? PM.weightedProgress(p, snap.values) / 100 : 0, plan: PM.weightedProgress(p, planVals) / 100 };
     P.write(win, {
-      title: `Daily Report ${p.code} ${d.date}`, bar: `รายงานประจำวัน — ${p.code} · ${U.date(d.date)}`,
+      title: `Daily Report ${p.code} ${d.date}`, bar: `รายงานประจำวัน — ${p.code} · ${U.date(d.date)}`, doc: 'daily',
       head: {
         title: `<h1>รายงานประจำวัน (Daily Site Report)</h1><p><b>${esc(p.code)} · ${esc(p.name)}</b></p><p>ลูกค้า ${esc(p.client || '–')} · PM ${esc(PM.common.pmName(p))}</p>`,
         meta: `${esc(PM.COMPANY)}<br>วันที่ <b>${U.date(d.date)}</b><br>${new Date(d.date + 'T00:00:00').toLocaleDateString('th-TH', { weekday: 'long' })}`,

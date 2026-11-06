@@ -93,7 +93,7 @@
     );
   }
   function openPalette() {
-    if (!document.body.classList.contains('authed') || document.body.classList.contains('presenting')) return;
+    if (!document.body.classList.contains('authed')) return;
     if (!pal) {
       pal = document.createElement('div');
       pal.className = 'qs-backdrop';

@@ -51,6 +51,7 @@
         <div class="card-h"><h2>People</h2><p>คลิกเพื่อแก้ไข · สถานะเทียบกับ target ของ level</p></div>
         <div class="card-b flush table-wrap">${peopleTable(ut)}</div>
       </div>
+      ${resignedCard(db)}
       <div class="card">
         <div class="card-h"><h2>Levels</h2><p>อัตราค่าแรงต่อชั่วโมงและ utilization target ของแต่ละระดับ — คลิกเพื่อแก้ไข</p></div>
         <div class="card-b flush table-wrap"><table class="tbl"><thead><tr><th>Code</th><th>Level</th><th class="num">Headcount</th><th class="num">Rate (THB/h)</th><th class="num">Target</th><th class="num">Actual</th><th>Status</th><th>สิทธิ์ OT</th></tr></thead><tbody>
@@ -116,7 +117,7 @@
   }
 
   function heatmap(db, weeks, weekUt) {
-    const people = db.resources.filter((r) => r.active !== false && PM.needsTimesheet(r)); // Level Other has no Timesheet to show
+    const people = db.resources.filter((r) => PM.employedIn(r, weeks[0]) && PM.needsTimesheet(r)); // Level Other has no Timesheet to show
     if (!people.length) return '<p class="empty">ยังไม่มีรายชื่อพนักงาน</p>';
     return `<table class="heat"><thead><tr><th class="name">Name</th>${weeks.map((w) => `<th>${esc(U.date(w).slice(0, 6))}</th>`).join('')}</tr></thead><tbody>
       ${people.map((r, ri) => `<tr style="--r:${ri}"><th class="name">${esc(r.name)} <small>${esc(PM.levelName(r.level))}</small></th>${weekUt.map((w, i) => {
@@ -223,7 +224,7 @@
       ${rows.map((x) => {
         const st = U.utilLevel(x.util, x.target);
         return `<tr class="click" data-action="edit-person" data-id="${esc(x.r.id)}">
-          <td><span class="title">${esc(x.r.name)}</span>${PM.needsTimesheet(x.r) ? '' : `<small>${x.r.level === 'OTHER' ? 'Level Other' : 'capacity 0'} — ไม่ลง Timesheet · ไม่คิด utilization</small>`}</td><td>${esc(x.level ? x.level.name : x.r.level)}</td><td>${esc(x.r.discipline)}</td>
+          <td><span class="title">${esc(x.r.name)}</span>${x.r.active === false ? `<small>ลาออก ${U.date(x.r.resignDate)}</small>` : ''}${PM.needsTimesheet(x.r) ? '' : `<small>${x.r.level === 'OTHER' ? 'Level Other' : 'capacity 0'} — ไม่ลง Timesheet · ไม่คิด utilization</small>`}</td><td>${esc(x.level ? x.level.name : x.r.level)}</td><td>${esc(x.r.discipline)}</td>
           <td class="num">${U.num(x.available)}</td><td class="num">${U.num(x.project)}</td><td class="num">${U.num(x.bid)}</td>
           <td class="num">${U.num(x.overhead)}</td><td class="num">${U.num(x.leave)}</td>
           <td><div class="pbar-wrap">${U.progress(Math.min(1, x.util || 0), x.target, `${x.r.name}\nUtilization ${U.pct(x.util)} · target ${U.pct(x.target)}`)}<span class="num">${U.pct(x.util)}</span></div></td>
@@ -231,22 +232,62 @@
       }).join('')}</tbody></table>`;
   }
 
+  /* people who resigned: their hours stay in the reports; from here they can be brought back or deleted for good */
+  function resignedCard(db) {
+    const list = db.resources.filter((r) => r.active === false).sort((a, b) => String(b.resignDate || '').localeCompare(String(a.resignDate || '')));
+    if (!list.length) return '';
+    return `<div class="card"><div class="card-h"><h2>ลาออกแล้ว</h2>${U.badge('neutral', `${list.length} คน`)}<p>ชั่วโมงและ OT ย้อนหลังยังนับในรายงานครบ · ไม่ขึ้นในรายชื่อให้เลือกอีก · คลิกเพื่อแก้ไข กลับมาทำงาน หรือลบถาวร</p></div>
+      <div class="card-b flush table-wrap"><table class="tbl"><thead><tr><th>Name</th><th>Level</th><th>Discipline</th><th>ทำงานวันสุดท้าย</th><th class="num">ชั่วโมงที่บันทึกไว้</th></tr></thead><tbody>
+        ${list.map((r) => `<tr class="click" data-action="edit-person" data-id="${esc(r.id)}"><td><span class="title">${esc(r.name)}</span></td><td>${esc(PM.levelName(r.level))}</td><td>${esc(r.discipline)}</td>
+          <td class="nowrap">${r.resignDate ? U.date(r.resignDate) : '<span class="muted">ไม่ระบุ — ยังไม่นับในรายงาน</span>'}</td>
+          <td class="num">${U.num(PM.sum(db.timesheets.filter((t) => t.resourceId === r.id), (t) => Number(t.hours) || 0))}</td></tr>`).join('')}
+      </tbody></table></div></div>`;
+  }
+
   function personForm(r, done) {
     const isNew = !r;
     const p = r || { id: PM.uid('R'), name: '', level: 'ENG', discipline: PM.DISCIPLINES[0], capacity: 40, active: true };
+    const T = PM.today();
     // only Engineer / Technician / Other; a person still on an older level keeps it listed so it isn't changed by accident
     const levelOptions = PM.PERSON_LEVELS.map((l) => ({ value: l.id, label: PM.levelName(l.id) }));
     if (!isNew && !PM.PERSON_LEVELS.some((l) => l.id === p.level)) levelOptions.push({ value: p.level, label: `${PM.levelName(p.level)} (เดิม)` });
-    U.modal({
+    const form = U.modal({
       title: isNew ? 'Add person' : p.name,
-      onDelete: isNew ? null : () => { p.active = false; PM.upsert('resources', p); U.toast('ปิดการใช้งานแล้ว (ข้อมูล timesheet เดิมยังอยู่)'); done(); },
+      deleteText: () => PM.purge.personText(p),
+      onDelete: isNew ? null : () => { PM.purge.person(p); U.toast(`ลบ ${p.name} แล้ว`); done(); },
       body: `
         ${U.field('ชื่อ-สกุล', 'name', p.name, { required: true, full: true })}
         ${U.field('Level', 'level', p.level, { options: levelOptions })}
         ${U.field('Discipline', 'discipline', p.discipline, { options: PM.DISCIPLINES })}
-        ${U.field('Capacity (hours/week)', 'capacity', p.capacity, { type: 'number', min: 0, max: 80, hint: 'Level Other ไม่ต้องลง Timesheet อยู่แล้ว (ไม่นับใน utilization) · ใส่ 0 สำหรับคนอื่นที่ไม่ลง Timesheet' })}`,
-      onSubmit: (f) => { Object.assign(p, f, { active: true }); PM.upsert('resources', p); U.toast('บันทึกแล้ว'); done(); },
+        ${U.field('Capacity (hours/week)', 'capacity', p.capacity, { type: 'number', min: 0, max: 80, hint: 'Level Other ไม่ต้องลง Timesheet อยู่แล้ว (ไม่นับใน utilization) · ใส่ 0 สำหรับคนอื่นที่ไม่ลง Timesheet' })}
+        ${isNew ? '' : `${U.field('สถานะ', 'empStatus', p.active === false ? 'resigned' : 'active', { options: [{ value: 'active', label: 'ทำงานอยู่' }, { value: 'resigned', label: 'ลาออก' }] })}
+        ${U.field('ทำงานวันสุดท้าย', 'resignDate', p.resignDate || '', { type: 'date' })}
+        <p class="full muted" style="margin:0"><b>ลาออก</b> = เก็บชั่วโมงและ OT ย้อนหลังไว้ครบ แต่ไม่ขึ้นในรายชื่อให้เลือกอีก · <b>ปุ่มลบ</b> = ลบคนนี้พร้อมชั่วโมงทั้งหมดออกจากฐานข้อมูลถาวร</p>`}`,
+      onSubmit: (f) => {
+        const leaving = f.empStatus === 'resigned', wasActive = p.active !== false;
+        delete f.empStatus;
+        if (leaving && !f.resignDate) { U.alert('กรุณาระบุวันที่ทำงานวันสุดท้าย'); return false; }
+        if (!leaving) delete f.resignDate;
+        Object.assign(p, f, { active: !leaving });
+        if (!leaving) delete p.resignDate;
+        PM.upsert('resources', p);
+        // what still has this person's name on it: the team decides who takes it over
+        const pmOf = leaving && wasActive ? PM.db.projects.filter((x) => x.status !== 'closed' && x.pm === p.id).length : 0;
+        const open = leaving && wasActive ? PM.db.plans.filter((x) => PM.planHas(x, p.id) && x.status !== 'done' && x.status !== 'not_done' && (x.dueDate || x.week) > p.resignDate).length : 0;
+        U.toast(leaving && wasActive ? `บันทึกว่าลาออกแล้ว${pmOf ? ` · ยังเป็น PM ของ ${pmOf} โครงการ` : ''}${open ? ` · มีงานหลังวันลาออก ${open} งาน` : ''}` : 'บันทึกแล้ว', pmOf || open ? 6000 : undefined);
+        done();
+      },
     });
+    if (isNew) return;
+    // the date only matters when leaving; a first guess of today
+    const box = form.resignDate.closest('label');
+    const sync = () => {
+      const leaving = form.empStatus.value === 'resigned';
+      box.style.display = leaving ? '' : 'none';
+      if (leaving && !form.resignDate.value && p.active !== false) form.resignDate.value = T;
+    };
+    form.empStatus.addEventListener('change', sync);
+    sync();
   }
 
   function levelForm(l, done) {

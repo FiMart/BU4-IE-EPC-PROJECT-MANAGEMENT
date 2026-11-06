@@ -870,101 +870,6 @@ td.row-actions .btn + .btn { margin-left: 4px; }
 .nav a.sub.active { color: #fff; }
 @media (min-width: 901px) { html.nav-collapsed .nav a.sub { display: none; } } /* icon-only sidebar: the Bidding tabs lead to the steps */
 
-/* ---------- presentation mode (present.js) — a TV / projector view ---------- */
-.present-btn { display: inline-grid; place-items: center; color: var(--ink-2); }
-.present-btn:hover { text-decoration: none; color: var(--accent); }
-.present-btn svg, .nav a[data-route="present"] svg { fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
-.present-btn svg { width: 20px; height: 20px; }
-body.presenting .sidebar, body.presenting .topbar, body.presenting .page-hero, body.presenting .tabbar, body.presenting .scrim, body.presenting .top-progress { display: none !important; }
-body.presenting .app { grid-template-columns: minmax(0, 1fr) !important; }
-body.presenting .main { padding-bottom: 0 !important; background: none; }
-body.presenting .content { max-width: none; padding: 0; }
-.pres { position: relative; min-height: 100vh; min-height: 100dvh; display: flex; flex-direction: column; gap: clamp(12px, 2vh, 24px); padding: clamp(16px, 2.4vw, 40px); }
-.pres-top { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 24px; }
-.pres-brand { display: flex; align-items: center; gap: 12px; }
-.pres-brand b { display: block; font-size: 15px; }
-.pres-brand small { display: block; color: var(--muted); font-size: 12px; }
-.pres-title h1 { font-size: clamp(22px, 2.4vw, 40px); }
-.pres-title p { margin: 4px 0 0; color: var(--muted); font-size: clamp(13px, 1.1vw, 18px); }
-.pres-time { text-align: right; }
-.pres-time b { display: block; font-size: clamp(24px, 2.6vw, 44px); font-weight: 650; line-height: 1.1; }
-.pres-time small { color: var(--muted); font-size: 13px; }
-.pres-stage { flex: 1; display: flex; flex-direction: column; gap: clamp(14px, 2.2vh, 28px); animation: viewIn .35s ease-out both; }
-/* on a big screen the part under the KPI row takes the rest of the height */
-.pres-stage > :last-child { flex: 1; }
-.pres-funnel .step { justify-content: center; gap: 10px; }
-.pres-funnel .step b { font-size: clamp(44px, 5.4vw, 120px); }
-.pres-funnel .step .k { font-size: clamp(14px, 1.3vw, 22px); }
-.pres-funnel .step .s { font-size: clamp(13px, 1.1vw, 18px); }
-.pres .div-bars .hbar, .pres .hbars .hbar { padding: 8px 6px; }
-.pres-list { justify-content: space-evenly; }
-.pres-card { display: flex; flex-direction: column; }
-.pres-card .chart { flex: 1; display: flex; flex-direction: column; justify-content: center; }
-.pres-kpis { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: clamp(10px, 1.4vw, 20px); }
-.pres-kpi { display: flex; flex-direction: column; gap: 6px; padding: clamp(14px, 1.6vw, 26px); background: var(--surface); border: 1px solid var(--border); border-top: 4px solid var(--accent); border-radius: 16px; }
-.pres-kpi.lv-good { border-top-color: var(--good); }
-.pres-kpi.lv-warning { border-top-color: var(--warning); }
-.pres-kpi.lv-critical { border-top-color: var(--critical); }
-.pres-kpi .k { font-size: clamp(14px, 1.2vw, 20px); font-weight: 600; color: var(--ink-2); }
-.pres-kpi .v { font-size: clamp(40px, 4.6vw, 84px); font-weight: 700; line-height: 1.05; letter-spacing: -.02em; }
-.pres-kpi .v small { font-size: .4em; font-weight: 600; color: var(--muted); }
-.pres-kpi .s { font-size: clamp(12px, 1vw, 17px); color: var(--muted); }
-.pres-funnel { display: flex; align-items: stretch; gap: 10px; }
-.pres-funnel .step { flex: 1; display: flex; flex-direction: column; gap: 4px; padding: 16px 18px; background: var(--surface); border: 1px solid var(--border); border-radius: 14px; }
-.pres-funnel .step .k { font-size: clamp(12px, 1vw, 16px); font-weight: 700; color: var(--muted); }
-.pres-funnel .step b { font-size: clamp(32px, 3.6vw, 64px); line-height: 1.1; }
-.pres-funnel .step b small { font-size: .45em; color: var(--muted); }
-.pres-funnel .step .s { font-size: clamp(12px, .95vw, 15px); color: var(--ink-2); }
-.pres-funnel .step.award { border-color: var(--s4); }
-.pres-funnel .arrow { align-self: center; color: var(--muted); font-size: 22px; }
-.pres-list { display: flex; flex-direction: column; gap: 8px; }
-.pres-list .row { display: flex; align-items: center; gap: 16px; padding: 12px 18px; background: var(--surface); border: 1px solid var(--border); border-radius: 12px; }
-.pres-list .name { flex: 1; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
-.pres-list .name b { font-size: clamp(16px, 1.3vw, 22px); margin-right: 10px; }
-.pres-list .name span { font-size: clamp(13px, 1vw, 17px); color: var(--muted); }
-.pres-list .chip { font-size: 13px; }
-.pres-list .pct { width: 64px; text-align: right; font-size: 20px; font-variant-numeric: tabular-nums; }
-.pres-list .when { font-size: 15px; color: var(--ink-2); }
-.pres-list .amt { min-width: 120px; text-align: right; font-size: 20px; font-variant-numeric: tabular-nums; }
-.pres-list .badge { font-size: 15px; padding: 3px 12px 3px 4px; }
-.pres-bar { position: relative; flex: 0 0 28%; height: 14px; border-radius: 7px; background: var(--surface-2); }
-.pres-bar span { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 7px; background: var(--accent); }
-.pres-bar.over span { background: var(--critical); }
-.pres-bar i { position: absolute; top: -4px; bottom: -4px; width: 3px; margin-left: -1.5px; border-radius: 2px; background: var(--ink); }
-.pres-grid2 { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px; flex: 1; }
-.pres-card { padding: 18px 22px; background: var(--surface); border: 1px solid var(--border); border-radius: 16px; min-width: 0; }
-.pres-card h3 { margin-bottom: 12px; font-size: clamp(15px, 1.2vw, 20px); color: var(--ink); text-transform: none; letter-spacing: 0; }
-/* bigger chart text for reading from across the room */
-.pres .chart-svg .tick { font-size: 13px; }
-.pres .chart-svg .pt-label { font-size: 15px; }
-.pres .chart-svg .quad { font-size: 13px; }
-.pres .hbar-label, .pres .hbar-value { font-size: 16px; }
-.pres .hbar-track { height: 18px; }
-.pres .legend { font-size: 14px; }
-.pres .share-legend li { font-size: 16px; }
-.pres-foot { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; }
-.pres-dots { display: flex; align-items: center; gap: 8px; }
-.pres-dots button { width: 10px; height: 10px; padding: 0; border: 0; border-radius: 50%; background: var(--border-strong); cursor: pointer; }
-.pres-dots button.on { width: 28px; border-radius: 5px; background: var(--accent); }
-.pres-ctrl { display: flex; align-items: center; gap: 6px; opacity: .55; transition: opacity .2s; }
-.pres:hover .pres-ctrl, .pres-ctrl:focus-within { opacity: 1; }
-.pres-ctrl select { width: auto; }
-.pres-progress { position: absolute; left: 0; right: 0; bottom: 0; height: 4px; }
-.pres-progress i { display: block; height: 100%; background: var(--accent); transform-origin: left; animation: presBar linear both; }
-.pres.paused .pres-progress i { animation-play-state: paused; opacity: .4; }
-@keyframes presBar { from { transform: scaleX(0); } to { transform: scaleX(1); } }
-@media (max-width: 900px) {
-  .pres-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .pres-grid2 { grid-template-columns: minmax(0, 1fr); }
-  .pres-top { grid-template-columns: 1fr auto; }
-  .pres-brand { display: none; }
-  .pres-funnel { flex-wrap: wrap; }
-  .pres-funnel .arrow { display: none; }
-  .pres-funnel .step { flex: 1 1 40%; }
-  .pres-list .row { flex-wrap: wrap; }
-  .pres-bar { flex-basis: 100%; }
-}
-
 /* Settings → การแสดงผล */
 .prefs-grid { display: flex; flex-direction: column; gap: 0; }
 .pref-row { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; padding: 10px 0; border-bottom: 1px solid var(--border); }
@@ -1468,7 +1373,6 @@ kbd { font: 600 10.5px/1 var(--font); padding: 3px 5px; border-radius: 5px; bord
 .logo-plate { display: inline-flex; align-items: center; justify-content: center; background: #fff; border-radius: 10px; padding: 6px 10px; box-shadow: 0 1px 2px rgba(0, 0, 0, .12); flex: none; }
 .logo-plate img { display: block; height: 100%; width: auto; }
 .boot-logo { height: 72px; padding: 8px 14px; margin: 0 auto 4px; border-radius: 14px; }
-.pres-brand .logo-plate { height: 48px; padding: 6px 10px; }
 .about-logo { height: 72px; padding: 8px 14px; margin-left: auto; border: 1px solid var(--border); box-shadow: none; }
 
 /* Bid form: Estimate & Proposal sections */
@@ -1582,6 +1486,19 @@ select.pi-st.st-return { background-color: var(--critical-bg); color: var(--crit
 select.pi-st.pl-st-open { background-color: var(--critical-bg); color: var(--critical-text); }
 select.pi-st.pl-st-fixed { background-color: var(--warning-bg); color: var(--warning-text); }
 select.pi-st.pl-st-closed { background-color: var(--good-bg); color: var(--good-text); }
+/* AVL (avl.js): rows grouped by item · status colours · the note under "Supplier" in the PO form */
+.avl-q { width: 230px; height: 36px; }
+.avl-table tr.avl-g td { background: color-mix(in srgb, var(--surface-2) 70%, var(--surface)); padding-top: 9px; padding-bottom: 9px; }
+.avl-table tr.avl-g small { display: inline; margin: 0 8px 0 8px; color: var(--muted); }
+.avl-table[hidden] { display: none; }
+select.pi-st.avl-st-proposed { background-color: var(--surface-2); color: var(--ink-2); }
+select.pi-st.avl-st-submitted { background-color: var(--warning-bg); color: var(--warning-text); }
+select.pi-st.avl-st-approved { background-color: var(--good-bg); color: var(--good-text); }
+select.pi-st.avl-st-conditional { background-color: var(--accent-soft); color: var(--accent); }
+select.pi-st.avl-st-rejected { background-color: var(--critical-bg); color: var(--critical-text); }
+.po-avl { margin: -4px 0 0; font-size: 13px; line-height: 1.7; color: var(--ink-2); }
+.po-avl[hidden] { display: none; }
+@media (max-width: 640px) { .avl-q { width: 100%; order: 5; } }
 .mt-print-row { display: flex; align-items: center; justify-content: space-between; gap: 8px 12px; flex-wrap: wrap; padding: 8px 10px 8px 14px; border-radius: 10px; background: var(--accent-soft); }
 .mt-print-row .muted { font-size: 13px; }
 .mt-acts { display: flex; flex-direction: column; gap: 6px; margin-bottom: 8px; }

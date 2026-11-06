@@ -183,7 +183,7 @@
     const tbl = (head, rows, empty, cls) => (rows.length ? `<table class="mom ${cls || ''}"><thead><tr>${head.map((h) => `<th${h === 'ลำดับ' || h === 'ข้อ' ? ' class="no"' : ''}>${h}</th>`).join('')}</tr></thead><tbody>${rows.join('')}</tbody></table>` : `<p class="none">${empty}</p>`);
     const pmName = PM.common && PM.common.pmName ? PM.common.pmName(p) : '';
     P.write(win, {
-      title: `${x.no} ${p.code} ${x.date}`, bar: `บันทึกการประชุม ${x.no}`,
+      title: `${x.no} ${p.code} ${x.date}`, bar: `บันทึกการประชุม ${x.no}`, doc: 'mom',
       head: {
         title: `<h1>บันทึกการประชุม</h1><p><b>Minutes of Meeting · ${esc(x.title || x.type)}</b></p><p>${esc(p.code)} · ${esc(p.name)}</p>`,
         meta: `${esc(PM.COMPANY)}<br>เลขที่ <b>${esc(x.no)}</b><br>${U.date(x.date)}${x.time ? ' · ' + esc(x.time) + ' น.' : ''}`,

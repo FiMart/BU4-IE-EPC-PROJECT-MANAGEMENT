@@ -15,12 +15,6 @@
       ['BOQ items', (b) => U.num(b.boqItems), 'num'],
       ['ต้นทุนประมาณการ', (b) => (PM.bidCost(b) ? U.money(PM.bidCost(b)) : '–'), 'num'],
     ],
-    proposal: [
-      ['ผู้จัดทำ', (b) => esc(U.resourceName((b.proposal || {}).owner) || '–')],
-      ['สถานะข้อเสนอ', (b) => { const s = PM.PROP_STATUS.find((x) => x.key === ((b.proposal || {}).status || 'todo')); return U.badge(s.level, s.label); }],
-      ['เอกสาร', (b) => `<span title="${esc(PM.PROP_CHECKS.map((c) => `${((b.proposal || {}).checks || {})[c.key] ? '✓' : '○'} ${c.label}`).join('\n'))}">${PM.bidChecks(b)} / ${PM.PROP_CHECKS.length}</span>`, 'num'],
-      ['Margin', (b) => (!PM.canSeeBidPrice(b) ? V.LOCK_PRICE : b.margin != null ? U.num(b.margin, 1) + '%' : '–'), 'num'],
-    ],
     submit: [
       ['ยื่นเมื่อ', (b) => U.date(b.dates.submit)],
       ['ตรงเวลา', (b) => (!b.dueDate ? '–' : b.dates.submit <= b.dueDate ? U.badge('good', 'On time') : U.badge('critical', `Late ${PM.diffDays(b.dueDate, b.dates.submit)}d`))],
@@ -49,7 +43,9 @@
         <select id="bid-sales" aria-label="Sales" style="width:auto">${salesOpt('', 'Sales: ทุกคน')}${salesRows.map((x) => salesOpt(x.id || '-', x.id ? 'Sales: ' + V.personName(x.id, x.fallbackName) : 'ไม่ระบุ Sales')).join('')}</select>
         <input type="search" id="bid-q" placeholder="ค้นหา bid / ลูกค้า / Sales…" value="${esc(state.q)}" style="width:220px">
         <span class="spacer"></span>
+        ${key === 'proposal' ? `${PM.can('bid.edit') ? '<button class="btn" data-action="prop-import" title="ลากไฟล์ Excel มาวาง หรือวางเซลล์ที่คัดลอกจาก Excel">⬆ นำเข้า Excel</button>' : ''}<button class="btn" data-action="prop-print">🖨 พิมพ์ / PDF</button><button class="btn" data-action="prop-xlsx">Excel</button>` : ''}
         ${key === 'inquiry' && PM.can('bid.edit') ? '<button class="btn primary fab" data-action="new" aria-label="New inquiry"><span class="fab-i">+</span><span class="fab-t">New inquiry</span></button>' : ''}
+        ${key === 'proposal' && PM.can('bid.edit') ? '<button class="btn primary fab" data-action="new" aria-label="New proposal"><span class="fab-i">+</span><span class="fab-t">New proposal</span></button>' : ''}
       </div>`;
 
     if (key === 'award') award(el, { toolbar, bids, bs, match, inPeriod, T });
@@ -58,17 +54,22 @@
     /* events */
     const rerender = () => PM.views.bidstage(el, args);
     el.querySelector('#bid-sales').addEventListener('change', (e) => { state.sales = e.target.value; rerender(); });
+    el.querySelectorAll('[data-prop-filter]').forEach((s) => s.addEventListener('change', () => { state[s.dataset.propFilter] = s.value; rerender(); }));
     el.querySelector('#bid-q').addEventListener('input', (e) => {
       state.q = e.target.value;
       clearTimeout(state.t);
       state.t = setTimeout(() => { rerender(); const i = el.querySelector('#bid-q'); i.focus(); i.setSelectionRange(i.value.length, i.value.length); }, 250);
     });
+    if (key === 'proposal' && PM.can('bid.edit')) PM.sheetImport.dropOn(el, (file) => PM.sheetImport.openBids(rerender, file));
     el.onclick = (e) => {
       const seg = e.target.closest('[data-seg]');
       if (seg) { state[seg.dataset.seg] = seg.dataset.val; rerender(); return; }
       const act = e.target.closest('[data-action]');
       if (act) {
-        if (act.dataset.action === 'new') { V.bidForm(null, rerender); return; }
+        if (act.dataset.action === 'new') { V.bidForm(null, rerender, key === 'proposal' ? { tab: 'proposal' } : {}); return; }
+        if (act.dataset.action === 'prop-import') { PM.sheetImport.openBids(rerender); return; }
+        if (act.dataset.action === 'prop-print') { proposalPrint(proposalRows(bids, match, inPeriod)); return; }
+        if (act.dataset.action === 'prop-xlsx') { proposalExcel(proposalRows(bids, match, inPeriod)); return; }
         V.bidAction(act.dataset.action, act.dataset.id && PM.find('bids', act.dataset.id), rerender);
         return;
       }
@@ -91,6 +92,7 @@
     const hrs = bidHours.filter((t) => t.phase === key);
     const hoursBy = {};
     hrs.forEach((t) => (hoursBy[t.refId] = (hoursBy[t.refId] || 0) + t.hours));
+    const isProp = key === 'proposal';
     const overdue = now.filter((b) => b.dueDate && b.dueDate < T);
     const dueSoon = now.filter((b) => b.dueDate && b.dueDate >= T && PM.diffDays(T, b.dueDate) <= 5);
     // left the step: started the next one, or got a result while still in it (e.g. No-bid during Estimate)
@@ -100,7 +102,7 @@
       inquiry: () => { const n = now.filter((b) => !PM.salesKey(b)).length; return V.tile({ label: 'ยังไม่ระบุ Sales', value: n, sub: n ? U.badge('warning', 'ควรระบุผู้รับผิดชอบ') : U.badge('good', 'ครบทุกงาน'), icon: 'people' }); },
       estimate: () => V.tile({ label: 'ประมาณราคาเสร็จ / ตรวจแล้ว', value: `${now.filter((b) => ['done', 'reviewed'].includes((b.estimate || {}).status)).length} <small>/ ${now.length}</small>`, sub: `BOQ ${U.num(PM.sum(now, (b) => b.boqItems))} รายการ · ไม่มี Estimator ${now.filter((b) => !b.estimator).length} งาน`, icon: 'layers' }),
       proposal: () => {
-        if (!PM.seesBidPrices()) return V.tile({ label: 'ข้อเสนอพร้อมยื่น', value: `${now.filter((b) => (b.proposal || {}).status === 'ready').length} <small>/ ${now.length}</small>`, sub: `เอกสารครบ ${now.filter((b) => PM.bidChecks(b) === PM.PROP_CHECKS.length).length} งาน`, icon: 'proposal' });
+        if (!PM.seesBidPrices()) return V.tile({ label: 'Status: Complete', value: `${now.filter((b) => PM.propOf(b).work === 'complete').length} <small>/ ${now.length}</small>`, sub: 'งานในขั้น Proposal ที่เสร็จแล้ว', icon: 'proposal' });
         const m = now.filter((b) => PM.canSeeBidPrice(b) && b.margin != null);
         return V.tile({ label: 'Margin เฉลี่ย', value: m.length ? U.num(PM.sum(m, (b) => b.margin) / m.length, 1) + '%' : '–', sub: `มูลค่ารวม ${V.bidSum(now)}${PM.myRole() === 'sales' ? ' · เฉพาะงานของคุณ' : ''}`, icon: 'coins' });
       },
@@ -110,7 +112,7 @@
       },
     }[key];
 
-    const extra = EXTRA[key];
+    const extra = EXTRA[key] || [];
     el.innerHTML = `${toolbar}
       <div class="grid cols-6">
         ${V.tile({ label: `${st.label} ตอนนี้`, value: now.length, sub: V.bidSum(now) ? `มูลค่า ${V.bidSum(now)}${PM.myRole() === 'sales' ? ' (งานของคุณ)' : ''}` : 'งานที่อยู่ในขั้นนี้', icon: key })}
@@ -122,7 +124,7 @@
         ${V.tile({ label: 'ชั่วโมง', tag: 'Hours', value: U.num(PM.sum(hrs, (t) => t.hours), 1), sub: `${new Set(hrs.map((t) => t.resourceId)).size} คน · จาก Timesheet` })}
         ${special()}
       </div>
-      <div class="card">
+      ${isProp ? proposalList(proposalRows(bids, match, inPeriod)) : `<div class="card">
         <div class="card-h"><h2>งานที่อยู่ในขั้น ${esc(st.label)} ตอนนี้</h2><p>${esc(st.th)} · เรียงตาม Due date · คลิกแถวเพื่อแก้ไข · ปุ่ม ${next ? `→ ${esc(next.label)} = เลื่อนไปขั้นถัดไป (บันทึกวันที่ = วันนี้)` : 'Won / Lost = บันทึกผลการประมูล'}</p></div>
         <div class="card-b flush table-wrap">${now.length ? `<table class="tbl"><thead><tr>
           <th>Bid</th><th>Client</th><th>Sales</th><th class="num">Value</th>${extra.map((c) => `<th${c[2] ? ` class="${c[2]}"` : ''}>${esc(c[0])}</th>`).join('')}
@@ -146,7 +148,7 @@
             <td>${U.date(b.dates[key])}</td><td>${U.date(out)}</td><td class="num">${out ? PM.diffDays(b.dates[key], out) : '–'}</td>
             <td class="num">${hoursBy[b.id] ? U.num(hoursBy[b.id], 1) : '–'}</td><td>${V.resultBadge(b)}</td></tr>`; }).join('')}
           </tbody></table>` : '<p class="empty">ยังไม่มีงานที่ผ่านขั้นนี้ในช่วงเวลาที่เลือก</p>'}</div>
-      </div>
+      </div>`}
       <div class="grid cols-2">
         <div class="card"><div class="card-h"><h2>งานที่เข้าขั้น ${esc(st.label)} รายเดือน</h2><p>12 เดือนล่าสุด · แยกตามผลการประมูลตอนนี้</p></div><div class="card-b"><div class="chart" id="c-step-month"></div></div></div>
         <div class="card"><div class="card-h"><h2>ชั่วโมงในขั้น ${esc(st.label)} แยกตามคน</h2><p>จาก Timesheet ในช่วงเวลาที่เลือก (แถว Bid ที่เลือกขั้นตอน = ${esc(st.label)})</p></div><div class="card-b"><div class="chart" id="c-step-hours"></div></div></div>
@@ -169,6 +171,101 @@
         label: U.resourceName(id), value: people[id], display: U.num(people[id], 1) + ' h', color: 'var(--s2)',
         sub: `${new Set(hrs.filter((t) => t.resourceId === id).map((t) => t.refId)).size} bids`,
       })),
+    });
+  }
+
+  /* ---------- Proposal Status List — same columns, words and colours as document PS-IE-2026-001 ---------- */
+  const dmy = (d) => (d ? U.date(d).replace(/ /g, '-') : '');
+  const mb = (v) => (Number(v) ? U.num(Number(v) / 1e6, 1) : ''); // blank until someone fills it in, as on the paper list
+  const pmOf = (x) => { const n = V.personName(x.p.owner, x.p.ownerName); return n === '–' ? '' : n; };
+  const salesOf = (x) => { const n = V.salesName(x.b); return n === '–' ? 'Non' : n; };
+  const priLevel = (p) => (PM.PROP_PRIORITY.find((x) => x.key === p) || {}).level;
+
+  function proposalRows(bids, match, inPeriod) {
+    const state = PM.biddingState;
+    const ids = new Set(bids.map((b) => b.id));
+    return PM.proposalList().filter(({ b, p }) => ids.has(b.id) && match(b) && (b.result === 'pending' || inPeriod(b.dates.inquiry))
+      && (!state.pStatus || p.status === state.pStatus) && (!state.pType || p.type === state.pType) && (!state.pPriority || p.priority === state.pPriority));
+  }
+  const filterSel = (name, label, items) => `<select data-prop-filter="${name}" aria-label="${esc(label)}" style="width:auto"><option value="">${esc(label)}: ทั้งหมด</option>${items.map((x) => `<option value="${esc(x.v)}"${PM.biddingState[name] === x.v ? ' selected' : ''}>${esc(x.t)}</option>`).join('')}</select>`;
+
+  function proposalList(rows) {
+    const s = PM.proposalSummary(rows), prices = PM.seesBidPrices(), T = PM.today();
+    const pct = (n) => (s.total ? U.num((n / s.total) * 100, 1) + '%' : '–');
+    const yours = PM.myRole() === 'sales' ? ' (เฉพาะงานของคุณ)' : '';
+    return `<div class="card no-i18n">
+        <div class="card-h"><h2>Proposal Status List</h2><p>คลิกแถวเพื่อกรอก / แก้ไข · มูลค่าเห็นเฉพาะ Sales เจ้าของงานและ Admin</p></div>
+        <div class="card-b row pl-filters">
+          ${filterSel('pStatus', 'Status', PM.PROP_STATUS.map((x) => ({ v: x.key, t: x.label })))}
+          ${filterSel('pType', 'Type', PM.PROP_TYPES.map((x) => ({ v: x, t: x })))}
+          ${filterSel('pPriority', 'Priority', PM.PROP_PRIORITY.map((x) => ({ v: x.key, t: x.key })))}
+          <span class="muted">${rows.length} รายการ</span>
+        </div>
+        <div class="card-b flush table-wrap">${rows.length ? `<table class="tbl pl-table"><thead>
+          <tr class="pl-bands"><td colspan="6">PROJECT INFORMATION</td><td colspan="2">SCHEDULE</td><td colspan="2">TRACKING</td><td colspan="2">TEAM</td><td>SCOPE</td><td></td></tr>
+          <tr><th class="num">No.</th><th>Customer</th><th>Project Name</th><th>Type</th><th class="num">Value (MB)</th><th>Priority</th><th>Due Date</th><th>Start Date</th><th class="num">Progress</th><th>Status</th><th>PM</th><th>Sales</th><th>Deliverables</th><th></th></tr></thead><tbody>
+          ${rows.map((x) => {
+            const st = PM.propStatusInfo(x.p.status), lv = priLevel(x.p.priority);
+            const late = x.b.result === 'pending' && !x.b.dates.submit && x.b.dueDate && x.b.dueDate < T;
+            return `<tr class="click" data-bid="${esc(x.b.id)}">
+            <td class="num">${x.no}</td><td>${esc(x.b.client)}</td><td><span class="title">${esc(x.b.name)}</span><small>${esc(x.b.code)}</small></td><td>${esc(x.p.type)}</td>
+            <td class="num">${PM.canSeeBidPrice(x.b) ? mb(x.b.value) : V.LOCK_PRICE}</td><td>${lv ? U.badge(lv, x.p.priority) : '-'}</td>
+            <td class="nowrap${late ? ' neg' : ''}">${dmy(x.b.dueDate)}</td><td class="nowrap">${dmy(x.b.dates.proposal)}</td>
+            <td class="num">${U.num(x.p.progress)}%</td><td>${U.badge(st.level, st.label)}</td><td>${esc(pmOf(x))}</td><td>${esc(salesOf(x))}</td><td>${esc(x.p.deliverables)}</td>
+            <td class="row-actions">${V.bidButtons(x.b)}</td></tr>`;
+          }).join('')}</tbody></table>` : '<p class="empty">ไม่พบรายการ</p>'}</div>
+      </div>
+      <div class="grid cols-3 no-i18n">
+        <div class="card"><div class="card-h"><h2>Status</h2>${yours && prices ? `<p>Value${yours}</p>` : ''}</div><div class="card-b flush table-wrap"><table class="tbl"><thead><tr><th>Status</th><th class="num">Count</th><th class="num">% of Total</th>${prices ? '<th class="num">Value (MB)</th>' : ''}</tr></thead><tbody>
+          <tr><td><b>Total Projects</b></td><td class="num"><b>${s.total}</b></td><td class="num">${s.total ? '100.0%' : '–'}</td>${prices ? `<td class="num"><b>${U.num(s.value, 1)}</b></td>` : ''}</tr>
+          ${s.status.map((x) => `<tr><td>${U.badge(x.level, x.label)}</td><td class="num">${x.n}</td><td class="num">${pct(x.n)}</td>${prices ? `<td class="num">${U.num(x.value, 1)}</td>` : ''}</tr>`).join('')}</tbody></table></div></div>
+        <div class="card"><div class="card-h"><h2>By Type</h2></div><div class="card-b flush table-wrap"><table class="tbl"><thead><tr><th>Type</th><th class="num">Count</th><th class="num">%</th></tr></thead><tbody>
+          ${s.type.map((x) => `<tr><td>${esc(x.label)}</td><td class="num">${x.n}</td><td class="num">${s.total ? U.num((x.n / s.total) * 100) + '%' : '–'}</td></tr>`).join('')}</tbody></table></div></div>
+        <div class="card"><div class="card-h"><h2>By Priority</h2></div><div class="card-b flush table-wrap"><table class="tbl"><thead><tr><th>Priority</th><th class="num">Count</th></tr></thead><tbody>
+          ${s.priority.map((x) => `<tr><td>${U.badge(x.level, x.label)}</td><td class="num">${x.n}</td></tr>`).join('')}</tbody></table></div></div>
+      </div>`;
+  }
+
+  function proposalPrint(rows) {
+    const P = PM.printDoc, win = P.open();
+    if (!win) return;
+    const s = PM.proposalSummary(rows), prices = PM.seesBidPrices();
+    const cellCls = (lv) => (lv ? ` class="c-${lv}"` : '');
+    const statusRow = (label, n, value, cls) => `<tr><td${cls || ''}><b>${esc(label)}</b></td><td class="r">${n}</td><td class="r">${s.total ? U.num((n / s.total) * 100, 1) : '0.0'}%</td>${prices ? `<td class="r">${U.num(value, 1)}</td>` : ''}</tr>`;
+    P.write(win, {
+      title: `Proposal Status List ${PM.today()}`, bar: 'Proposal Status List', doc: 'proposal-list',
+      head: { title: '<h1>PROPOSAL STATUS LIST</h1><p>EPC Instrumentation Projects</p>', meta: `${esc(PM.COMPANY)}<br>ข้อมูล ณ ${U.date(PM.today())}<br>${rows.length} รายการ` },
+      body: `<style>@page { size: A4 landscape; margin: 8mm; } main { max-width: 281mm; }
+        table.pl { font-size: 8.5px; } table.pl td, table.pl th { padding: 2.5px 4px; border: 1px solid #d5deea; }
+        table.pl tr.band th { background: #1f4e79; color: #fff; text-align: center; } table.pl tr.head th { background: #4472c4; color: #fff; text-align: center; }
+        .c-good { background: #c6efce; } .c-warning { background: #ffeb9c; } .c-critical { background: #ffc7ce; } .c-neutral { background: #d9d9d9; }
+        .pl-sum { display: grid; grid-template-columns: 2fr 1fr 1fr; gap: 10px; margin-top: 10px; break-inside: avoid; }</style>
+  <section class="flow"><table class="pl"><thead>
+    <tr class="band"><th colspan="6">PROJECT INFORMATION</th><th colspan="2">SCHEDULE</th><th colspan="2">TRACKING</th><th colspan="2">TEAM</th><th>SCOPE</th></tr>
+    <tr class="head"><th>No.</th><th>Customer</th><th>Project Name</th><th>Type</th><th>Value (MB)</th><th>Priority</th><th>Due Date</th><th>Start Date</th><th>Progress</th><th>Status</th><th>PM</th><th>Sales</th><th>Deliverables</th></tr></thead><tbody>
+    ${rows.map((x) => { const st = PM.propStatusInfo(x.p.status); return `<tr><td class="r">${x.no}</td><td>${esc(x.b.client)}</td><td>${esc(x.b.name)}</td><td>${esc(x.p.type)}</td>
+      <td class="r">${PM.canSeeBidPrice(x.b) ? mb(x.b.value) : '🔒'}</td><td${cellCls(priLevel(x.p.priority))}>${esc(x.p.priority || '-')}</td><td>${dmy(x.b.dueDate)}</td><td>${dmy(x.b.dates.proposal)}</td>
+      <td class="r">${U.num(x.p.progress)}%</td><td${cellCls(st.level)}>${esc(st.label)}</td><td>${esc(pmOf(x))}</td><td>${esc(salesOf(x))}</td><td>${esc(x.p.deliverables)}</td></tr>`; }).join('')}
+  </tbody></table></section>
+  <div class="pl-sum">
+    <table class="pl"><thead><tr class="band"><th>Status</th><th>Count</th><th>% of Total</th>${prices ? '<th>Value (MB)</th>' : ''}</tr></thead><tbody>
+      ${statusRow('Total Projects:', s.total, s.value)}${s.status.map((x) => statusRow(x.label + ':', x.n, x.value, cellCls(x.level))).join('')}</tbody></table>
+    <table class="pl"><thead><tr class="band"><th>BY TYPE</th><th>Count</th><th>%</th></tr></thead><tbody>${s.type.map((x) => `<tr><td>${esc(x.label)}</td><td class="r">${x.n}</td><td class="r">${s.total ? U.num((x.n / s.total) * 100) : 0}%</td></tr>`).join('')}</tbody></table>
+    <table class="pl"><thead><tr class="band"><th>BY PRIORITY</th><th>Count</th></tr></thead><tbody>${s.priority.map((x) => `<tr><td${cellCls(x.level)}>${esc(x.label)}</td><td class="r">${x.n}</td></tr>`).join('')}</tbody></table>
+  </div>`,
+    });
+  }
+
+  function proposalExcel(rows) {
+    PM.xport.excel({
+      filename: `proposal-status-list-${PM.today()}`, title: 'Proposal Status List', subtitle: `${PM.COMPANY} · ${U.date(PM.today())}`,
+      sheets: [{
+        name: 'Proposal Status List',
+        columns: [{ header: 'No.', type: 'int', width: 6 }, { header: 'Bid No.', width: 22 }, { header: 'Customer', width: 18 }, { header: 'Project Name', width: 48 }, { header: 'Type', width: 11 },
+          { header: 'Value (MB)', type: 'number', width: 11 }, { header: 'Priority', width: 9 }, { header: 'Due Date', type: 'date', width: 11 }, { header: 'Start Date', type: 'date', width: 11 },
+          { header: 'Progress (%)', type: 'int', width: 10 }, { header: 'Status', width: 15 }, { header: 'PM', width: 14 }, { header: 'Sales', width: 14 }, { header: 'Deliverables', width: 36 }],
+        rows: rows.map((x) => [x.no, x.b.code, x.b.client, x.b.name, x.p.type, PM.canSeeBidPrice(x.b) && x.b.value != null ? Number(x.b.value) / 1e6 : '', x.p.priority || '-', x.b.dueDate || '', x.b.dates.proposal || '', x.p.progress, PM.propStatusInfo(x.p.status).label, pmOf(x), salesOf(x), x.p.deliverables]),
+      }],
     });
   }
 

@@ -185,6 +185,7 @@
         ${U.field('หมวด', 'category', c.category, { options: cats })}
         ${U.field('ผู้ขาย / ผู้รับเงิน', 'vendor', c.vendor)}
         ${U.field('เลขที่เอกสาร (Invoice / ใบเสร็จ)', 'ref', c.ref)}
+        <div class="full po-avl" id="cost-avl" hidden></div>
         ${U.field('อ้างอิง PO (ถ้ามี)', 'poId', c.poId, { options: pos.map((po) => ({ value: po.id, label: `${po.poNo} · ${po.supplier}` })), placeholder: '— ไม่ผูกกับ PO —' })}
         <span></span>
         ${U.field('หมายเหตุ', 'note', c.note, { type: 'textarea', full: true, rows: 2 })}
@@ -203,6 +204,7 @@
       } : null,
     });
     PM.approvalFormBind(form, 'cost', c, done); // approve / return buttons for an approver (approvals.js)
+    const avlCheck = PM.avlBind(form, { field: 'vendor', box: '#cost-avl', project: () => p.id, readOnly: !canEdit }); // vendor against the AVL (avl.js)
     if (!canEdit) { form.querySelectorAll('input, select, textarea').forEach((i) => { i.disabled = true; }); return; }
     // picking a PO fills in the vendor, category and phase
     form.poId.addEventListener('change', () => {
@@ -212,6 +214,7 @@
       if (PM.COST_CATEGORIES.includes(po.category)) form.category.value = po.category;
       if (po.phase) form.phase.value = po.phase;
       if (!form.description.value) form.description.value = `Payment — ${po.description || po.poNo}`;
+      avlCheck();
     });
     if (isNew) form.amount.focus();
   };

@@ -177,11 +177,20 @@ ${sheets.map((_, i) => `<Override PartName="/xl/worksheets/sheet${i + 1}.xml" Co
   X.pdf = function (rep) {
     const win = window.open('', '_blank');
     if (!win) { PM.ui.alert('เบราว์เซอร์บล็อกหน้าต่างใหม่ — อนุญาต Pop-up ของเว็บนี้แล้วลองอีกครั้ง'); return; }
-    const right = (c) => (c.type === 'number' || c.type === 'int' ? ' class="r"' : '');
+    const isNum = (c) => c.type === 'number' || c.type === 'int';
+    const right = (c) => (isNum(c) ? ' class="r"' : '');
+    /* sheet.tone(rowIndex, columnIndex) → { tone: 'low' | 'high', strong } colours a cell; sheet.legend explains the colours */
+    const bodyCell = (sh, r, ri, c, i) => {
+      const t = sh.tone ? sh.tone(ri, i) : null;
+      const cls = [isNum(c) && 'r', t && `t-${t.tone}`, t && t.strong && 'strong'].filter(Boolean).join(' ');
+      return `<td${cls ? ` class="${cls}"` : ''}>${fmt(r[i], c.type)}</td>`;
+    };
+    const legend = (sh) => (sh.legend && sh.rows.length ? `<p class="legend">${sh.legend.map((l) => `<span class="t-${esc(l.tone)} strong">${esc(l.label)}</span>`).join('')}${sh.legendNote ? `<small>${esc(sh.legendNote)}</small>` : ''}</p>` : '');
     const section = (sh) => `<section>
       <h2>${esc(sh.title || sh.name)}</h2>
+      ${legend(sh)}
       ${sh.rows.length ? `<table><thead><tr>${sh.columns.map((c) => `<th${right(c)}>${esc(c.header)}</th>`).join('')}</tr></thead>
-      <tbody>${sh.rows.map((r) => `<tr>${sh.columns.map((c, i) => `<td${right(c)}>${fmt(r[i], c.type)}</td>`).join('')}</tr>`).join('')}</tbody>
+      <tbody>${sh.rows.map((r, ri) => `<tr>${sh.columns.map((c, i) => bodyCell(sh, r, ri, c, i)).join('')}</tr>`).join('')}</tbody>
       ${sh.totals ? `<tfoot><tr>${sh.columns.map((c, i) => `<td${right(c)}>${fmt(sh.totals[i], c.type === 'int' ? 'int' : c.type === 'number' ? 'number' : 'text')}</td>`).join('')}</tr></tfoot>` : ''}</table>`
         : '<p class="none">ไม่มีรายการ</p>'}</section>`;
     win.document.write(`<!doctype html><html lang="th"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
@@ -206,6 +215,13 @@ ${sheets.map((_, i) => `<Override PartName="/xl/worksheets/sheet${i + 1}.xml" Co
   th { background: #0b2f6b; color: #fff; font-weight: 700; text-align: left; padding: 5px 6px; font-size: 9.5px; }
   td { padding: 4px 6px; border-bottom: 1px solid #d0d8e4; vertical-align: top; }
   tbody tr:nth-child(even) td { background: #f4f7fb; }
+  tbody tr td.t-low, tbody tr:nth-child(even) td.t-low { background: #e6f6ea; color: #004d1a; }
+  tbody tr td.t-high, tbody tr:nth-child(even) td.t-high { background: #fdeaec; color: #7d0a14; }
+  tbody tr td.t-low.strong, tbody tr:nth-child(even) td.t-low.strong, .legend .t-low { background: #b7e8c4; color: #004d1a; font-weight: 700; }
+  tbody tr td.t-high.strong, tbody tr:nth-child(even) td.t-high.strong, .legend .t-high { background: #fbc4ca; color: #7d0a14; font-weight: 700; }
+  .legend { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 0 0 6px; font-size: 10px; }
+  .legend span { padding: 1px 10px; border-radius: 3px; }
+  .legend small { color: #3f5068; font-size: 9.5px; }
   tfoot td { font-weight: 700; background: #edf2f9; border-top: 1.5px solid #0b2f6b; }
   .r { text-align: right; white-space: nowrap; }
   tr { break-inside: avoid; }

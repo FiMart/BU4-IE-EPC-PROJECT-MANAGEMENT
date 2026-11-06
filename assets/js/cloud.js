@@ -7,7 +7,7 @@
   const U = PM.ui;
   const C = (PM.cloud = { enabled: false, state: 'idle', blocking: false });
   const TABLE = 'app_records';
-  const COLLS = ['bids', 'projects', 'ncrs', 'safety', 'resources', 'levels', 'timesheets', 'plans', 'pos', 'costs', 'prices', 'settings', 'dailies', 'punch', 'meetings'];
+  const COLLS = ['bids', 'projects', 'ncrs', 'safety', 'resources', 'levels', 'timesheets', 'plans', 'pos', 'costs', 'prices', 'settings', 'dailies', 'punch', 'meetings', 'avl', 'qms', 'planrules'];
   // collections accepted by every version of data.sql
   const LEGACY = ['bids', 'projects', 'ncrs', 'safety', 'resources', 'levels', 'timesheets'];
   /* Collections the cloud table doesn't accept yet (older data.sql): their records are "parked" as
@@ -15,6 +15,7 @@
      real collection again first; once data.sql has been re-run they move back automatically. */
   const outdated = new Set();
   const PARK = '@';
+  const PARENTS = ['projects', 'bids', 'resources'];
   const isCheckError = (e) => /app_records_collection_check|violates check constraint/i.test((e && e.message) || '');
   const BASE_KEY = 'epc-pm-sync-base-v1';
   const BACKUP_KEY = 'epc-pm-db-local-backup';
@@ -132,15 +133,24 @@
     }
     const byColl = {};
     dels.forEach((k) => { const i = k.indexOf('|'), c = k.slice(0, i); (byColl[c] = byColl[c] || []).push(k.slice(i + 1)); });
-    for (const c of Object.keys(byColl)) {
+    // a project / bid / person first: the database then removes what belongs to it, also rows this role may not delete itself
+    const colls = Object.keys(byColl).sort((a, b) => PARENTS.includes(b) - PARENTS.includes(a));
+    let refused = 0;
+    for (const c of colls) {
       for (let i = 0; i < byColl[c].length; i += 200) {
         const part = byColl[c].slice(i, i + 200);
-        const { error } = await client().from(TABLE).delete().eq('collection', c).in('id', part);
+        // a row the database refuses to delete gives no error, just nothing deleted: count what is really gone
+        const { data, error } = await client().from(TABLE).delete().eq('collection', c).in('id', part).select('id');
         if (error) throw error;
+        if ((data || []).length < part.length) {
+          const still = await client().from(TABLE).select('id').eq('collection', c).in('id', part);
+          if (!still.error) refused += (still.data || []).length;
+        }
         part.forEach((id) => { delete base[key(c, id)]; delete ords[key(c, id)]; });
         saveBase();
       }
     }
+    if (refused) U.alert(`ฐานข้อมูลไม่ยอมลบ ${refused} รายการ (ไม่มีสิทธิ์) — รายการเหล่านี้จะกลับมาเมื่อโหลดข้อมูลใหม่\nถ้ายังไม่ได้รัน supabase/data.sql เวอร์ชันล่าสุด ให้ Admin รันก่อน`);
     return ups.length + dels.length;
   }
 

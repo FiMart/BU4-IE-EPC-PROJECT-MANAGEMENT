@@ -2,7 +2,34 @@
 (function () {
   const U = PM.ui, V = PM.common, esc = U.esc;
   // the week always opens on the current one; filters and view are remembered
-  const state = U.keep('weekly', { week: null, project: '', person: '', mode: 'calendar', group: 'day' }, ['project', 'person', 'mode', 'group']);
+  const state = U.keep('weekly', { week: null, project: '', person: '', mode: 'calendar', group: 'day', q: '', stFilter: '', lineScope: 'week', lineGroup: 'day', lineDetail: 'full', shotLayout: '' },
+    ['project', 'person', 'mode', 'group', 'stFilter', 'lineScope', 'lineGroup', 'lineDetail', 'shotLayout']);
+  const ST_FILTERS = [{ value: 'open', label: 'ยังไม่เสร็จ' }, { value: 'late', label: 'เลยกำหนด' }, { value: 'done', label: 'เสร็จแล้ว' }, { value: 'not_done', label: 'ไม่เสร็จ' }, { value: 'notready', label: 'ยังเตรียมไม่พร้อม' }];
+  const isLate = (p, T) => p.status !== 'done' && p.status !== 'not_done' && p.dueDate < T;
+  const LOOK_WEEKS = 4; // look-ahead: the chosen week and the next three. Recurring tasks are created this far ahead too
+  /* what a task needs before it can start: p.prep = [{ type, text, owner, due, done }] */
+  const PREP_TYPES = ['วัสดุ / อุปกรณ์', 'แบบ / เอกสาร', 'คน', 'เครื่องมือ', 'ใบอนุญาต / PTW', 'อนุมัติจากลูกค้า', 'งานก่อนหน้า', 'อื่น ๆ'];
+  const prepOf = (p) => (Array.isArray(p.prep) ? p.prep : []);
+  const prepOpen = (p) => prepOf(p).filter((x) => !x.done);
+  const prepLate = (p, T) => prepOpen(p).filter((x) => x.due && x.due < T);
+  const isClosed = (p) => p.status === 'done' || p.status === 'not_done';
+  /* tick several tasks and set them all at once (calendar and task list) */
+  const pick = { on: false, ids: new Set() };
+  const applyStatus = (p, status, reason) => {
+    p.status = status;
+    p.reason = status === 'not_done' ? reason || p.reason || '' : '';
+    if (status === 'done' && p.qtyPlan && (p.qtyDone || 0) < p.qtyPlan) p.qtyDone = p.qtyPlan;
+  };
+  /* a recurring task deleted by hand stays deleted: its date goes on the rule's skip list */
+  const removePlan = (p) => {
+    const rule = p.ruleId && PM.find('planrules', p.ruleId);
+    if (rule && p.ruleDate) rule.skips = (rule.skips || []).concat(p.ruleDate);
+    PM.db.plans = PM.db.plans.filter((x) => x.id !== p.id);
+  };
+  // the tool menus close when something else is clicked, or when one of their items is
+  document.addEventListener('click', (e) => {
+    document.querySelectorAll('details.wp-menu[open]').forEach((d) => { if (!d.contains(e.target) || e.target.closest('[data-action]')) d.open = false; });
+  });
   const PPC_TARGET = 0.8;
   const statusInfo = (k) => PM.PLAN_STATUS.find((s) => s.key === k) || PM.PLAN_STATUS[0];
   const dayName = (d) => PM.parse(d).toLocaleDateString('en-GB', { weekday: 'short' });
@@ -70,13 +97,26 @@
     const weekAll = db.plans.filter((p) => p.week === week);
     const list = weekAll.filter(match).sort((a, b) => (a.dueDate < b.dueDate ? -1 : a.dueDate > b.dueDate ? 1 : a.title.localeCompare(b.title)));
     const st = PM.planStats(list);
+    // search and status narrow what is shown; the tiles and PPC keep counting the whole plan
+    const q = state.q.trim().toLowerCase();
+    const viewMatch = (p) => (!q || [p.title, itemLabel(p), peopleText(p), p.note].join(' ').toLowerCase().includes(q))
+      && (!state.stFilter || (state.stFilter === 'open' ? p.status === 'planned' || p.status === 'in_progress' : state.stFilter === 'late' ? isLate(p, T) : state.stFilter === 'notready' ? !isClosed(p) && prepOpen(p).length > 0 : p.status === state.stFilter));
+    const shown = list.filter(viewMatch);
+    const narrowed = !!(q || state.stFilter);
+    const me = myResource();
+    const lookWeeks = Array.from({ length: LOOK_WEEKS }, (_, i) => PM.addDays(week, 7 * i));
+    const lookRows = db.plans.filter((p) => lookWeeks.includes(p.week) && match(p) && viewMatch(p)).sort(byDue);
+    const out = { week, T, full: (p) => match(p) && viewMatch(p), narrowed, stats: st, note: filterNote(), lookWeeks, lookRows };
+    if (state.mode === 'team' || state.mode === 'lookahead') pick.on = false; // ticking works on the calendar and the task list
+    if (pick.on) { const here = new Set(shown.map((p) => p.id)); pick.ids.forEach((id) => { if (!here.has(id)) pick.ids.delete(id); }); } else pick.ids.clear();
+    const edit = canEdit && !pick.on, status = canStatus && !pick.on;
 
     const reasons = {};
     list.filter((p) => p.status === 'not_done').forEach((p) => { const k = p.reason || 'ไม่ระบุ'; reasons[k] = (reasons[k] || 0) + 1; });
     const topReason = Object.keys(reasons).sort((a, b) => reasons[b] - reasons[a])[0];
 
     // team loading: every task of the person this week (regardless of the work-item filter)
-    const people = db.resources.filter((r) => r.active !== false);
+    const people = db.resources.filter((r) => PM.employedIn(r, week));
     const ts = db.timesheets.filter((t) => t.date >= week && t.date <= end);
     const loading = people.filter((r) => !state.person || r.id === state.person).map((r) => {
       const mine = weekAll.filter((p) => PM.planHas(p, r.id));
@@ -96,8 +136,17 @@
       <div class="row">
         ${V.weekNav(week)}
         <span class="spacer"></span>
-        ${canEdit ? `<button class="btn" data-action="carry">ยกงานค้างจากสัปดาห์ก่อน</button>
-          <button class="btn primary fab" data-action="new" aria-label="เพิ่มงาน"><span class="fab-i">+</span><span class="fab-t">เพิ่มงาน</span></button>` : ''}
+        <details class="wp-menu"><summary class="btn">ส่งแผนงาน ▾</summary><div class="wp-menu-p">
+          <button type="button" data-action="line">คัดลอกส่ง LINE</button>
+          <button type="button" data-action="shot">📷 Screenshot</button>
+          <button type="button" data-action="print">🖨 พิมพ์ / PDF</button>
+        </div></details>
+        <details class="wp-menu"><summary class="btn">จัดการแผน ▾</summary><div class="wp-menu-p">
+          ${canEdit ? '<button type="button" data-action="carry">ยกงานค้างจากสัปดาห์ก่อน</button><button type="button" data-action="copy-week">คัดลอกทั้งสัปดาห์…</button>' : ''}
+          <button type="button" data-action="rules">🔁 งานประจำ${db.planrules.length ? ` (${db.planrules.filter((r) => r.active !== false).length})` : ''}</button>
+          ${canStatus ? `<button type="button" data-action="pick">${pick.on ? 'เลิกเลือกหลายงาน' : '☑ เลือกหลายงาน'}</button>` : ''}
+        </div></details>
+        ${edit ? '<button class="btn primary fab" data-action="new" aria-label="เพิ่มงาน"><span class="fab-i">+</span><span class="fab-t">เพิ่มงาน</span></button>' : ''}
       </div>
       <div class="row">
         <select id="wp-project" aria-label="Filter work item">
@@ -107,7 +156,10 @@
           <option value="__overhead"${state.project === '__overhead' ? ' selected' : ''}>Overhead</option>
         </select>
         <select id="wp-person" aria-label="Filter person">${U.options(people.map((r) => ({ value: r.id, label: r.name })), state.person, 'ทุกคน')}</select>
-        ${V.seg('mode', [{ key: 'calendar', label: 'ปฏิทิน' }, { key: 'tasks', label: 'รายการงาน' }, { key: 'team', label: 'ภาระงานรายคน' }], state.mode)}
+        ${me ? `<button class="btn wp-mine" data-action="mine" aria-pressed="${state.person === me.id}">งานของฉัน</button>` : ''}
+        <select id="wp-status" aria-label="กรองสถานะ" style="width:auto">${U.options(ST_FILTERS, state.stFilter, 'ทุกสถานะ')}</select>
+        <input type="search" id="wp-q" placeholder="ค้นหางาน / คน / โครงการ…" value="${esc(state.q)}" style="width:200px">
+        ${V.seg('mode', [{ key: 'calendar', label: 'ปฏิทิน' }, { key: 'tasks', label: 'รายการงาน' }, { key: 'team', label: 'ภาระงานรายคน' }, { key: 'lookahead', label: `ล่วงหน้า ${LOOK_WEEKS} สัปดาห์` }], state.mode)}
         ${state.mode === 'calendar' ? V.seg('group', [{ key: 'day', label: 'รายวัน' }, { key: 'person', label: 'แยกตามคน' }], state.group) : ''}
       </div>
       <div class="grid cols-5">
@@ -117,16 +169,24 @@
         ${V.tile({ label: 'ชั่วโมงตามแผน', tag: 'Hours', value: `${U.num(st.hours)} <small>h</small>`, sub: `ทีมใช้ ${U.pct(teamCap ? teamPlanned / teamCap : null)} ของ capacity` })}
         ${V.tile({ label: 'สาเหตุหลักที่ไม่เสร็จ', value: st.notDone ? `${reasons[topReason]} <small>งาน</small>` : '–', sub: topReason ? esc(topReason) : 'ยังไม่มี' })}
       </div>
+      ${pick.on ? `<div class="wp-pickbar" data-pickbar role="group" aria-label="อัปเดตหลายงาน">
+        <b data-pick-n>เลือกแล้ว ${pick.ids.size} งาน</b>
+        <button class="btn sm" data-action="pick-all">เลือกทั้งหมดที่แสดง (${shown.length})</button>
+        <span class="spacer"></span>
+        ${PM.PLAN_STATUS.map((s) => `<button class="btn sm" data-bulk="${s.key}">${esc(s.th)}</button>`).join('')}
+        <button class="btn sm danger" data-bulk="delete">ลบ</button>
+        <button class="btn sm ghost" data-action="pick">ยกเลิก</button>
+      </div>` : ''}
       <div class="card">
-        <div class="card-h"><h2>${{ calendar: 'ปฏิทินงานประจำสัปดาห์', tasks: 'งานประจำสัปดาห์', team: 'ภาระงานรายคน' }[state.mode]}</h2>
-          <p>${state.mode === 'calendar'
+        <div class="card-h"><h2>${{ calendar: 'ปฏิทินงานประจำสัปดาห์', tasks: 'งานประจำสัปดาห์', team: 'ภาระงานรายคน', lookahead: `แผนล่วงหน้า ${LOOK_WEEKS} สัปดาห์ (Look-ahead)` }[state.mode]}</h2>
+          <p>${state.mode === 'lookahead' ? lookSummary(lookRows, T) : pick.on ? 'คลิกงานเพื่อเลือก แล้วกดสถานะที่แถบด้านบน' : state.mode === 'calendar'
             ? (canEdit ? 'ลากการ์ดไปวันอื่นเพื่อเลื่อนกำหนด' + (state.group === 'person' ? ' หรือไปแถวคนอื่นเพื่อเปลี่ยนผู้รับผิดชอบ' : '') + ' · กด ＋ เพื่อเพิ่มงานในวันนั้น · คลิกการ์ดเพื่อแก้ไข' : 'อัปเดตสถานะได้จากการ์ด')
             : state.mode === 'tasks'
               ? (canStatus ? 'อัปเดตสถานะได้ทันทีจากตาราง' : '') + (canEdit ? ' · คลิกที่งานเพื่อแก้ไขรายละเอียด' : '')
-              : 'ชั่วโมงตามแผนเทียบกับ capacity (หักวันลา) และชั่วโมงจริงจาก Timesheet · คลิกชื่อเพื่อดูงานของคนนั้น'}</p></div>
-        ${state.mode === 'calendar'
-          ? `<div class="card-b cal-wrap">${state.group === 'person' ? calendarByPerson(list, week, T, canEdit) : calendarByDay(list, week, T, canEdit, canStatus)}</div>`
-          : `<div class="card-b flush table-wrap">${state.mode === 'tasks' ? tasksTable(list, T, canEdit, canStatus) : teamTable(loading)}</div>`}
+              : 'ชั่วโมงตามแผนเทียบกับ capacity (หักวันลา) และชั่วโมงจริงจาก Timesheet · คลิกชื่อเพื่อดูงานของคนนั้น'}${narrowed && state.mode !== 'team' && state.mode !== 'lookahead' ? ` · <b>แสดง ${shown.length} จาก ${list.length} งานตามตัวกรอง</b>` : ''}</p></div>
+        ${state.mode === 'lookahead' ? lookahead(lookWeeks, lookRows, T, canEdit, canStatus) : state.mode === 'calendar'
+          ? `<div class="card-b cal-wrap">${state.group === 'person' ? calendarByPerson(shown, week, T, edit) : calendarByDay(shown, week, T, edit, status)}</div>`
+          : `<div class="card-b flush table-wrap">${state.mode === 'tasks' ? tasksTable(shown, T, edit, status) : teamTable(loading)}</div>`}
       </div>
       <div class="grid cols-2">
         <div class="card"><div class="card-h"><h2>PPC — 8 สัปดาห์ล่าสุด</h2><p>เป้าหมาย ≥ ${U.pct(PPC_TARGET)} · ตาม filter ที่เลือก</p></div><div class="card-b"><div class="chart" id="c-ppc"></div></div></div>
@@ -154,19 +214,42 @@
     /* events */
     const rerender = () => PM.views.weekly(el);
     const findPlan = (id) => PM.find('plans', id);
+    el.querySelector('#wp-q').addEventListener('input', (e) => {
+      state.q = e.target.value;
+      clearTimeout(state.t);
+      state.t = setTimeout(() => { rerender(); const i = el.querySelector('#wp-q'); if (i) { i.focus(); i.setSelectionRange(i.value.length, i.value.length); } }, 250);
+    });
+    const setPick = (id, on) => {
+      if (on) pick.ids.add(id); else pick.ids.delete(id);
+      el.querySelectorAll(`[data-plan="${CSS.escape(id)}"]`).forEach((x) => {
+        x.classList.toggle('picked', on);
+        const box = x.querySelector('.pick-box');
+        if (box) box.checked = on;
+      });
+      const n = el.querySelector('[data-pick-n]');
+      if (n) n.textContent = `เลือกแล้ว ${pick.ids.size} งาน`;
+    };
     el.onchange = (e) => {
       const t = e.target;
+      if (t.matches('.pick-box')) { setPick(t.dataset.pick, t.checked); return; }
+      if (t.dataset.prepDone) {
+        const [id, i] = t.dataset.prepDone.split('|'), p = findPlan(id), item = p && prepOf(p)[+i];
+        if (!item || !PM.can('plan.status')) { rerender(); return; }
+        item.done = t.checked;
+        PM.upsert('plans', p);
+        rerender();
+        return;
+      }
       if (t.id === 'wp-project') { state.project = t.value; rerender(); return; }
       if (t.id === 'wp-person') { state.person = t.value; rerender(); return; }
+      if (t.id === 'wp-status') { state.stFilter = t.value; rerender(); return; }
       if (t.dataset.planStatus) {
         const p = findPlan(t.dataset.planStatus);
         if (!p || !PM.can('plan.status')) return;
         // "ไม่เสร็จ" goes straight to the NCR form (reason + NCR in one step) — the status changes only when it is saved
         if (t.value === 'not_done' && p.status !== 'not_done') { rerender(); notDone(p, rerender); return; }
         const ncr = p.status === 'not_done' && p.ncrId && PM.find('ncrs', p.ncrId);
-        p.status = t.value;
-        if (p.status !== 'not_done') p.reason = '';
-        if (p.status === 'done' && p.qtyPlan && (p.qtyDone || 0) < p.qtyPlan) p.qtyDone = p.qtyPlan;
+        applyStatus(p, t.value);
         PM.upsert('plans', p);
         U.toast(ncr && ncr.status === 'open' ? `อัปเดตเป็น ${statusInfo(p.status).label} — ${ncr.no} ยังเปิดอยู่ ปิดได้ที่หน้าโครงการ → Quality · NCR` : `อัปเดตเป็น ${statusInfo(p.status).label}`, ncr ? 4500 : 2200);
         rerender();
@@ -183,7 +266,14 @@
     el.onclick = (e) => {
       const seg = e.target.closest('[data-seg]');
       if (seg) { state[seg.dataset.seg] = seg.dataset.val; rerender(); return; }
-      if (e.target.closest('select, input, a[href]')) return; // the NCR link opens the project's Quality tab
+      const bulk = e.target.closest('[data-bulk]');
+      if (bulk) { bulkUpdate(bulk.dataset.bulk, Array.from(pick.ids).map(findPlan).filter(Boolean), rerender); return; }
+      if (pick.on && !e.target.closest('[data-action], .wp-menu')) {
+        const item = e.target.closest('[data-plan]');
+        if (item && !e.target.closest('.pick-box')) { e.preventDefault(); setPick(item.dataset.plan, !pick.ids.has(item.dataset.plan)); }
+        return;
+      }
+      if (e.target.closest('select, input, a[href], .prep-item')) return; // the NCR link opens the project's Quality tab
       const ncrBtn = e.target.closest('[data-action="ncr"]');
       if (ncrBtn) { const p = findPlan(ncrBtn.dataset.id); if (p && PM.can('plan.status')) notDone(p, rerender); return; }
       const a = e.target.closest('[data-action]');
@@ -195,6 +285,14 @@
         if (act === 'new' && canEdit) planForm(null, rerender);
         if (act === 'edit' && canEdit) planForm(findPlan(a.dataset.id), rerender);
         if (act === 'carry' && canEdit) carryOver(rerender);
+        if (act === 'line') lineDialog(out);
+        if (act === 'shot') shotDialog(out);
+        if (act === 'print') { if (state.mode === 'lookahead') printLook(out); else printPlan(shown, out); }
+        if (act === 'copy-week' && canEdit) copyWeek(out, rerender);
+        if (act === 'rules') ruleList(rerender);
+        if (act === 'pick') { pick.on = !pick.on; if (pick.on && state.mode !== 'calendar' && state.mode !== 'tasks') state.mode = 'tasks'; rerender(); }
+        if (act === 'pick-all') shown.forEach((p) => setPick(p.id, true));
+        if (act === 'mine' && me) { state.person = state.person === me.id ? '' : me.id; rerender(); }
         if (act === 'new-on' && canEdit) { const who = a.dataset.person || state.person || ''; planForm(null, rerender, { dueDate: a.dataset.day, resourceIds: who ? [who] : null }); }
         return;
       }
@@ -243,6 +341,7 @@
       if (p.dueDate === day && !swap) { el.ondragend(); return; }
       p.dueDate = day;
       p.week = PM.monday(day);
+      if (p.ruleId) p.ruleEdited = true; // moved by hand: a change to the recurring rule leaves it alone
       if (swap) {
         const ids = PM.planPeople(p).map((id) => (id === from ? who : id)).filter((id, i, a) => a.indexOf(id) === i);
         p.resourceIds = ids;
@@ -254,6 +353,522 @@
     };
   };
 
+  /* the signed-in person's employee record (same name) — for "งานของฉัน" */
+  function myResource() {
+    const u = PM.auth && PM.auth.user, name = u ? PM.normName(PM.auth.displayName(u)) : '';
+    return name ? PM.db.resources.find((r) => r.active !== false && PM.normName(r.name) === name) || null : null;
+  }
+
+  /* ---------- sending the plan out: words shared by the LINE text and the printed page ---------- */
+  const thDay = (d) => PM.parse(d).toLocaleDateString('th-TH', { weekday: 'long', day: 'numeric', month: 'short' });
+  const thShortDay = (d) => PM.parse(d).toLocaleDateString('th-TH', { weekday: 'short', day: 'numeric', month: 'short' });
+  const thRange = (w) => {
+    const o = { day: 'numeric', month: 'short' };
+    return `${PM.parse(w).toLocaleDateString('th-TH', o)} – ${PM.parse(PM.addDays(w, 6)).toLocaleDateString('th-TH', { ...o, year: 'numeric' })}`;
+  };
+  const hoursText = (p) => `${U.num(p.plannedHours || 0, (p.plannedHours || 0) % 1 ? 1 : 0)} ชม.${headcount(p) > 1 ? '/คน' : ''}`;
+  const byDue = (a, b) => (a.dueDate < b.dueDate ? -1 : a.dueDate > b.dueDate ? 1 : String(a.title).localeCompare(String(b.title)));
+  function filterNote() {
+    const pj = state.project === '__bids' ? 'Bidding' : state.project === '__overhead' ? 'Overhead' : state.project ? (PM.find('projects', state.project) || {}).code : '';
+    return [pj, state.person && U.resourceName(state.person), state.stFilter && ST_FILTERS.find((f) => f.value === state.stFilter).label, state.q.trim() && `ค้นหา "${state.q.trim()}"`].filter(Boolean).join(' · ');
+  }
+  /* tasks by day, or by person (a shared task is listed under each of its people) */
+  function groupsOf(tasks, by) {
+    if (by !== 'person') return Array.from(new Set(tasks.map((p) => p.dueDate))).sort().map((d) => ({ label: thDay(d), tasks: tasks.filter((p) => p.dueDate === d), icon: '📅' }));
+    const out = PM.db.resources.filter((r) => tasks.some((p) => PM.planHas(p, r.id))).map((r) => {
+      const mine = tasks.filter((p) => PM.planHas(p, r.id));
+      return { label: r.name, tasks: mine, icon: '👤', sub: `${mine.length} งาน · ${U.num(PM.sum(mine, (p) => p.plannedHours || 0), 1)} ชม.` };
+    });
+    const outside = tasks.filter((p) => !PM.planPeople(p).length);
+    if (outside.length) out.push({ label: 'ผู้ร่วมงานนอกแผนก', tasks: outside, icon: '👤', sub: `${outside.length} งาน` });
+    return out;
+  }
+
+  /* ---------- copy for LINE: plain text, no table, short lines so it reads well on a phone ---------- */
+  const LINE_ICON = { planned: '⬜', in_progress: '🔄', done: '✅', not_done: '❌' };
+  const LINE_SCOPES = [{ key: 'week', label: 'ทั้งสัปดาห์' }, { key: 'today', label: 'วันนี้' }, { key: 'tomorrow', label: 'พรุ่งนี้' }, { key: 'late', label: 'เลยกำหนด' }];
+  function lineTasks(scope, ctx) {
+    const all = PM.db.plans.filter(ctx.full), { T, week } = ctx;
+    const hit = { week: (p) => p.week === week, today: (p) => p.dueDate === T, tomorrow: (p) => p.dueDate === PM.addDays(T, 1), late: (p) => p.week === week && isLate(p, T) }[scope];
+    return all.filter(hit).sort(byDue);
+  }
+  function lineTaskText(p, by, oneDay, detail, T) {
+    const head = `${LINE_ICON[p.status] || '⬜'} ${p.title}${isLate(p, T) ? ' ⚠️ เลยกำหนด' : ''}`;
+    const when = by === 'person' && !oneDay ? thShortDay(p.dueDate) : '';
+    const who = by === 'person' ? '' : peopleText(p);
+    if (detail !== 'full') { const extra = [when, who].filter(Boolean).join(' · '); return extra ? `${head} — ${extra}` : head; }
+    const meta = [when, itemLabel(p), who, hoursText(p), p.qtyPlan ? `ปริมาณ ${U.num(p.qtyDone || 0)}/${U.num(p.qtyPlan)}` : ''].filter(Boolean).join(' · ');
+    return [head, `   ${meta}`, p.status === 'not_done' && p.reason ? `   สาเหตุ: ${p.reason}` : ''].filter(Boolean).join('\n');
+  }
+  function lineText(ctx) {
+    const scope = state.lineScope, by = state.lineGroup, detail = state.lineDetail, { T, week } = ctx;
+    const tasks = lineTasks(scope, ctx), oneDay = scope === 'today' || scope === 'tomorrow';
+    const title = { week: `📋 แผนงานสัปดาห์ ${thRange(week)}`, today: `📋 งานวันนี้ · ${thDay(T)}`, tomorrow: `📋 งานพรุ่งนี้ · ${thDay(PM.addDays(T, 1))}`, late: `⚠️ งานเลยกำหนด · สัปดาห์ ${thRange(week)}` }[scope];
+    const s = PM.planStats(tasks);
+    const counts = `งาน ${s.total} · เสร็จ ${s.done} · กำลังทำ ${s.inProgress} · ยังไม่เริ่ม ${s.planned}${s.notDone ? ` · ไม่เสร็จ ${s.notDone}` : ''}`;
+    const head = [title, ctx.note, tasks.length ? (scope === 'late' ? `${s.total} งาน` : counts + (scope === 'week' && !ctx.narrowed ? ` · PPC ${U.pct(s.ppc)}` : '')) : ''].filter(Boolean).join('\n');
+    if (!tasks.length) return `${head}\nไม่มีงาน`;
+    const body = oneDay && by !== 'person'
+      ? tasks.map((p) => lineTaskText(p, by, oneDay, detail, T)).join('\n')
+      : groupsOf(tasks, by).map((g) => `${g.icon} ${g.label}${g.sub ? ` (${g.sub})` : ''}\n${g.tasks.map((p) => lineTaskText(p, by, oneDay, detail, T)).join('\n')}`).join('\n\n');
+    return `${head}\n\n${body}`;
+  }
+  const seg = (name, items, value) => `<div class="seg" role="group" data-seg-of="${name}">${items.map((it) => `<button type="button" data-line="${name}" data-val="${it.key}" class="${it.key === value ? 'on' : ''}">${esc(it.label)}</button>`).join('')}</div>`;
+  /* what still has to be prepared in the next weeks, for the people who prepare it */
+  function linePrepText(ctx) {
+    const rows = ctx.lookRows.filter((p) => !isClosed(p) && prepOpen(p).length);
+    const head = `🧰 สิ่งที่ต้องเตรียม · ${thRange(ctx.lookWeeks[0]).split(' – ')[0]} – ${thRange(ctx.lookWeeks[LOOK_WEEKS - 1]).split(' – ')[1]}${ctx.note ? `\n${ctx.note}` : ''}`;
+    if (!rows.length) return `${head}\nไม่มีรายการที่ต้องเตรียม`;
+    return `${head}\n\n${rows.map((p) => `📌 ${p.title} · ${thShortDay(p.dueDate)}\n   ${itemLabel(p)}\n${prepOpen(p).map((x) => `⬜ ${x.type || 'อื่น ๆ'}: ${x.text}${x.owner ? ` — ${x.owner}` : ''}${x.due ? ` · ภายใน ${thShortDay(x.due)}${x.due < ctx.T ? ' ⚠️' : ''}` : ''}`).join('\n')}`).join('\n\n')}`;
+  }
+  function lineDialog(ctx) {
+    const form = U.modal({
+      title: 'คัดลอกแผนงานส่ง LINE', wide: true, submitLabel: 'คัดลอกข้อความ',
+      body: `
+        <div class="full line-opts">
+          ${seg('lineScope', LINE_SCOPES.concat({ key: 'prep', label: 'สิ่งที่ต้องเตรียม' }), state.lineScope)}
+          ${seg('lineGroup', [{ key: 'day', label: 'เรียงตามวัน' }, { key: 'person', label: 'แยกตามคน' }], state.lineGroup)}
+          ${seg('lineDetail', [{ key: 'full', label: 'แบบละเอียด' }, { key: 'short', label: 'แบบย่อ' }], state.lineDetail)}
+        </div>
+        ${U.field('ข้อความ (แก้ไขก่อนคัดลอกได้)', 'text', '', { type: 'textarea', full: true, rows: 15 })}
+        <div class="full line-foot"><small class="muted" data-line-count></small>${navigator.share ? '<button type="button" class="btn sm" data-line-share>แชร์ไปแอปอื่น</button>' : ''}</div>
+        ${ctx.note ? `<p class="full muted" style="margin:0">ตามตัวกรองในหน้าแผนงาน: ${esc(ctx.note)}</p>` : ''}`,
+      onSubmit: (f, frm) => {
+        U.copyText(frm.text.value).then((ok) => {
+          if (ok) { U.closeModal(); U.toast('คัดลอกแล้ว — ไปวางในแชต LINE ได้เลย', 3000); return; }
+          frm.text.focus(); frm.text.select();
+          U.alert('เบราว์เซอร์ไม่อนุญาตให้คัดลอกอัตโนมัติ — ข้อความถูกเลือกไว้แล้ว กด Ctrl + C (มือถือ: กดค้างแล้วเลือกคัดลอก)');
+        });
+        return false;
+      },
+    });
+    const count = form.querySelector('[data-line-count]');
+    const drawCount = () => { count.textContent = `${U.num(form.text.value.length)} ตัวอักษร`; };
+    const draw = () => {
+      const prep = state.lineScope === 'prep';
+      ['lineGroup', 'lineDetail'].forEach((k) => { form.querySelector(`[data-seg-of="${k}"]`).hidden = prep; });
+      form.text.value = prep ? linePrepText(ctx) : lineText(ctx);
+      drawCount();
+    };
+    form.text.addEventListener('input', drawCount);
+    form.querySelector('.line-opts').addEventListener('click', (e) => {
+      const b = e.target.closest('[data-line]');
+      if (!b) return;
+      state[b.dataset.line] = b.dataset.val;
+      b.parentElement.querySelectorAll('button').forEach((x) => x.classList.toggle('on', x === b));
+      draw();
+    });
+    const share = form.querySelector('[data-line-share]');
+    if (share) share.addEventListener('click', () => navigator.share({ text: form.text.value }).catch(() => { /* closed the share sheet */ }));
+    draw();
+  }
+
+  /* ---------- Screenshot: the plan as a PNG (drawn by weekly-shot.js) to paste or share in a chat ---------- */
+  const SHOT_LAYOUTS = [{ key: 'cal', label: 'ปฏิทิน 7 วัน' }, { key: 'day', label: 'รายการตามวัน' }, { key: 'person', label: 'รายการแยกตามคน' }];
+  function shotData(ctx) {
+    const { T, week } = ctx, cal = state.shotLayout === 'cal', scope = cal ? 'week' : state.lineScope;
+    const tasks = lineTasks(scope, ctx), s = PM.planStats(tasks), by = state.shotLayout === 'person' ? 'person' : 'day';
+    const oneDay = scope === 'today' || scope === 'tomorrow';
+    const task = (p, group) => ({
+      title: p.title, status: p.status, statusLabel: statusInfo(p.status).th, late: isLate(p, T), reason: p.status === 'not_done' ? p.reason : '',
+      lines: [itemLabel(p), group === 'person' ? (oneDay ? '' : thShortDay(p.dueDate)) : peopleText(p), [hoursText(p), p.qtyPlan ? `ปริมาณ ${U.num(p.qtyDone || 0)}/${U.num(p.qtyPlan)}` : ''].filter(Boolean).join(' · ')],
+    });
+    const whole = scope === 'week' && !ctx.narrowed;
+    const d = {
+      company: PM.COMPANY, note: ctx.note, stamp: `ข้อมูล ณ ${new Date().toLocaleString('th-TH', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}`,
+      title: { week: 'แผนงานรายสัปดาห์', today: 'งานวันนี้', tomorrow: 'งานพรุ่งนี้', late: 'งานเลยกำหนด' }[scope],
+      sub: scope === 'today' ? thDay(T) : scope === 'tomorrow' ? thDay(PM.addDays(T, 1)) : `สัปดาห์ ${thRange(week)}`,
+      kpis: [{ label: 'งาน', value: String(s.total), sub: `ยังไม่เริ่ม ${s.planned}` }, { label: 'เสร็จ', value: String(s.done), sub: `กำลังทำ ${s.inProgress}`, level: 'good' }, { label: 'ไม่เสร็จ', value: String(s.notDone), level: s.notDone ? 'critical' : '' }]
+        .concat(whole ? [{ label: 'PPC', value: U.pct(s.ppc), sub: `เป้าหมาย ${U.pct(PPC_TARGET)}`, level: ppcLevel(s.ppc) }] : [{ label: 'ชั่วโมงคน', value: U.num(s.hours, 1) }]),
+    };
+    if (cal) {
+      d.layout = 'cal';
+      // Saturday and Sunday only when something is planned on them, so the working days stay readable
+      d.days = weekDays(week).filter((x, i) => i < 5 || tasks.some((p) => p.dueDate === x)).map((x) => {
+        const mine = tasks.filter((p) => p.dueDate === x);
+        return { head: thShortDay(x), sub: mine.length ? `${mine.length} งาน · ${U.num(PM.sum(mine, manHours), 1)} ชม.` : '', today: x === T, tasks: mine.map((p) => task(p, 'cal')) };
+      });
+    } else {
+      d.layout = 'list';
+      d.groups = groupsOf(tasks, by).map((g) => ({ label: g.label, sub: g.sub || `${g.tasks.length} งาน`, tasks: g.tasks.map((p) => task(p, by)) }));
+    }
+    return d;
+  }
+  function shotDialog(ctx) {
+    if (!state.shotLayout) state.shotLayout = window.innerWidth > 900 ? 'cal' : 'day';
+    if (state.lineScope === 'prep') state.lineScope = 'week'; // a choice of the LINE text only
+    const form = U.modal({
+      title: 'Screenshot แผนงาน', wide: true, submitLabel: 'คัดลอกรูป',
+      body: `
+        <div class="full line-opts">
+          ${seg('shotLayout', SHOT_LAYOUTS, state.shotLayout)}
+          ${seg('lineScope', LINE_SCOPES, state.lineScope)}
+        </div>
+        <div class="full shot-prev" data-shot-box><p class="muted" data-shot-wait>กำลังสร้างรูป…</p><img alt="ตัวอย่างรูปแผนงาน" hidden></div>
+        <div class="full line-foot"><small class="muted" data-shot-size></small><span class="line-btns"><button type="button" class="btn sm" data-shot-save>ดาวน์โหลด PNG</button>${navigator.share ? '<button type="button" class="btn sm" data-shot-share hidden>แชร์ไปแอปอื่น</button>' : ''}</span></div>
+        ${ctx.note ? `<p class="full muted" style="margin:0">ตามตัวกรองในหน้าแผนงาน: ${esc(ctx.note)}</p>` : ''}`,
+      onSubmit: () => { copyShot(); return false; },
+    });
+    const img = form.querySelector('[data-shot-box] img'), wait = form.querySelector('[data-shot-wait]'), size = form.querySelector('[data-shot-size]');
+    const submit = form.querySelector('[type=submit]'), save = form.querySelector('[data-shot-save]'), share = form.querySelector('[data-shot-share]');
+    const scopeSeg = form.querySelector('[data-seg-of="lineScope"]');
+    const fileName = () => `weekly-plan-${ctx.week}.png`;
+    let blob = null, url = '', turn = 0;
+    const draw = async () => {
+      const mine = ++turn;
+      scopeSeg.hidden = state.shotLayout === 'cal'; // the calendar always shows the whole week
+      submit.disabled = true; save.disabled = true;
+      wait.hidden = false;
+      let r = null;
+      try { r = await PM.planShot.render(shotData(ctx)); } catch (e) { console.warn('screenshot:', e); }
+      if (mine !== turn || !form.isConnected) return; // another choice came in meanwhile, or the form was closed
+      wait.hidden = !!(r && r.blob);
+      if (!r || !r.blob) { wait.textContent = 'สร้างรูปไม่สำเร็จ — ลองเลือกแบบรายการ หรือใช้ปุ่มพิมพ์ / PDF'; img.hidden = true; return; }
+      if (url) URL.revokeObjectURL(url);
+      blob = r.blob;
+      url = URL.createObjectURL(blob);
+      img.src = url;
+      img.hidden = false;
+      submit.disabled = false; save.disabled = false;
+      size.textContent = `${U.num(r.width)} × ${U.num(r.height)} px${r.height > r.width * 3 ? ' · รูปยาวมาก อ่านยากในแชต ลองเลือกวันนี้หรือแยกตามคน' : ''}`;
+      if (share) share.hidden = !(navigator.canShare && navigator.canShare({ files: [new File([blob], fileName(), { type: 'image/png' })] }));
+    };
+    async function copyShot() {
+      if (!blob) return;
+      try {
+        await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })]);
+        U.closeModal();
+        U.toast('คัดลอกรูปแล้ว — ไปวางในแชต LINE ได้เลย', 3000);
+      } catch (e) {
+        U.alert('เบราว์เซอร์นี้คัดลอกรูปไม่ได้ — กด "ดาวน์โหลด PNG" แล้วส่งไฟล์รูปแทน');
+      }
+    }
+    save.addEventListener('click', () => {
+      if (!blob) return;
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = fileName();
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+    });
+    if (share) share.addEventListener('click', () => navigator.share({ files: [new File([blob], fileName(), { type: 'image/png' })] }).catch(() => { /* closed the share sheet */ }));
+    form.querySelector('.line-opts').addEventListener('click', (e) => {
+      const b = e.target.closest('[data-line]');
+      if (!b) return;
+      state[b.dataset.line] = b.dataset.val;
+      b.parentElement.querySelectorAll('button').forEach((x) => x.classList.toggle('on', x === b));
+      draw();
+    });
+    draw();
+  }
+
+  /* ---------- printed plan (A4 landscape) ---------- */
+  function printPlan(tasks, ctx) {
+    const P = PM.printDoc, win = P.open();
+    if (!win) return;
+    const { T, week } = ctx, by = state.mode === 'team' || (state.mode === 'calendar' && state.group === 'person') ? 'person' : 'day';
+    const s = ctx.narrowed ? PM.planStats(tasks) : ctx.stats;
+    const row = (p) => {
+      const st = statusInfo(p.status), late = isLate(p, T);
+      return `<tr><td><b>${esc(p.title)}</b>${p.carriedFrom ? '<small>ยกมาจากสัปดาห์ก่อน</small>' : ''}</td><td>${esc(itemLabel(p))}</td><td>${esc(peopleText(p))}</td>
+        <td>${esc(thShortDay(p.dueDate))}${late ? '<small class="neg">เลยกำหนด</small>' : ''}</td><td class="r">${esc(hoursText(p))}</td><td class="r">${p.qtyPlan ? `${U.num(p.qtyDone || 0)} / ${U.num(p.qtyPlan)}` : '–'}</td>
+        <td>${U.badge(st.level, st.th)}</td><td>${esc([p.status === 'not_done' ? p.reason : '', p.note].filter(Boolean).join(' · '))}</td></tr>`;
+    };
+    P.write(win, {
+      title: `Weekly Plan ${week}`, bar: `แผนงานรายสัปดาห์ — ${thRange(week)}`, doc: 'weekly',
+      head: { title: `<h1>แผนงานรายสัปดาห์</h1><p><b>Weekly Plan</b> · ${esc(thRange(week))}</p>${ctx.note ? `<p>${esc(ctx.note)}</p>` : ''}`, meta: `${esc(PM.COMPANY)}<br>ข้อมูล ณ ${U.date(T)}<br>${by === 'person' ? 'แยกตามคน' : 'เรียงตามวัน'}` },
+      body: `<style>@page { size: A4 landscape; } main { max-width: 275mm; } .kpis { margin-bottom: 10px; }
+          tr.grp td { background: #dfe8f5; color: #0b2f6b; font-weight: 700; font-size: 11px; border-bottom: 1px solid #c0ccdc; } tr.grp small { display: inline; margin-left: 8px; font-weight: 400; color: #3f5068; font-size: 10px; }</style>
+        <section class="kpis">${P.kpi('งานในแผน', s.total)}${P.kpi('เสร็จ', s.done, `กำลังทำ ${s.inProgress} · ไม่เสร็จ ${s.notDone}`)}${ctx.narrowed ? P.kpi('ยังไม่เริ่ม', s.planned) : P.kpi('PPC', U.pct(s.ppc), `เป้าหมาย ${U.pct(PPC_TARGET)}`, ppcLevel(s.ppc))}${P.kpi('ชั่วโมงคน', U.num(s.hours, 1))}</section>
+        ${tasks.length ? `<section class="flow"><table><thead><tr><th>งาน</th><th>โครงการ / ขั้นงาน</th><th>ผู้รับผิดชอบ</th><th>กำหนดเสร็จ</th><th class="r">ชั่วโมง</th><th class="r">ปริมาณ</th><th>สถานะ</th><th>สาเหตุ / หมายเหตุ</th></tr></thead><tbody>
+          ${groupsOf(tasks, by).map((g) => `<tr class="grp"><td colspan="8">${esc(g.label)}${g.sub ? `<small>${esc(g.sub)}</small>` : `<small>${g.tasks.length} งาน</small>`}</td></tr>${g.tasks.map(row).join('')}`).join('')}
+        </tbody></table></section>` : '<p class="none">ไม่มีงานตามตัวกรองนี้</p>'}
+        <div class="sign"><div>ผู้จัดทำแผน</div><div>ผู้จัดการโครงการ</div><div>หัวหน้าแผนก</div></div>`,
+    });
+  }
+
+  /* ---------- look-ahead: the coming weeks and what each task still needs ---------- */
+  const readyBadge = (p, T) => {
+    if (isClosed(p)) return U.badge(statusInfo(p.status).level, statusInfo(p.status).th);
+    const all = prepOf(p), open = prepOpen(p), late = prepLate(p, T);
+    if (!all.length) return U.badge('neutral', 'ไม่ได้ระบุ');
+    if (late.length) return U.badge('critical', `เลยกำหนดเตรียม ${late.length}`);
+    return open.length ? U.badge('warning', `ยังขาด ${open.length}`) : U.badge('good', 'พร้อม');
+  };
+  function lookSummary(rows, T) {
+    const live = rows.filter((p) => !isClosed(p));
+    const ready = live.filter((p) => prepOf(p).length && !prepOpen(p).length).length, short = live.filter((p) => prepOpen(p).length).length;
+    const none = live.filter((p) => !prepOf(p).length).length, late = live.filter((p) => prepLate(p, T).length).length;
+    return `งานที่ยังไม่จบ ${live.length} · พร้อม ${ready} · ยังขาด ${short}${late ? ` (เลยกำหนดเตรียม ${late})` : ''} · ยังไม่ได้ระบุสิ่งที่ต้องเตรียม ${none} · ติ๊กเมื่อเตรียมเสร็จ · เปิดงานเพื่อเพิ่มรายการ`;
+  }
+  const prepItems = (p, T, canStatus) => prepOf(p).map((x, i) => `<label class="prep-item${x.done ? ' done' : ''}${!x.done && x.due && x.due < T ? ' late' : ''}">
+      <input type="checkbox" data-prep-done="${esc(p.id)}|${i}"${x.done ? ' checked' : ''}${canStatus ? '' : ' disabled'}>
+      <span><b>${esc(x.type || 'อื่น ๆ')}</b> ${esc(x.text)}${x.owner || x.due ? `<small>${esc([x.owner, x.due && `ภายใน ${U.date(x.due)}`].filter(Boolean).join(' · '))}</small>` : ''}</span></label>`).join('');
+  function lookahead(weeks, rows, T, canEdit, canStatus) {
+    return `<div class="card-b look">${weeks.map((w) => {
+      const mine = rows.filter((p) => p.week === w);
+      const live = mine.filter((p) => !isClosed(p)), short = live.filter((p) => prepOpen(p).length).length;
+      return `<section class="look-week">
+        <header><b>สัปดาห์ที่ ${V.isoWeek(w)}</b><span>${esc(thRange(w))}</span><small>${mine.length} งาน · ${U.num(PM.sum(mine, manHours), 1)} ชม.${short ? ` · ยังขาดของ ${short} งาน` : ''}</small>
+          ${canEdit ? `<button class="btn sm" data-action="new-on" data-day="${PM.addDays(w, 4)}">+ เพิ่มงาน</button>` : ''}</header>
+        ${mine.length ? `<div class="table-wrap"><table class="tbl look-tbl"><thead><tr><th>งาน</th><th>ผู้รับผิดชอบ</th><th>กำหนดเสร็จ</th><th>สิ่งที่ต้องเตรียม</th><th>ความพร้อม</th></tr></thead><tbody>
+          ${mine.map((p) => `<tr class="${canEdit ? 'click' : ''}" data-plan="${esc(p.id)}">
+            <td><span class="title">${p.ruleId ? '🔁 ' : ''}${esc(p.title)}</span><small>${esc(itemLabel(p))}</small></td><td>${peopleChips(p)}</td>
+            <td class="nowrap">${esc(thShortDay(p.dueDate))}</td><td>${prepItems(p, T, canStatus) || '<span class="muted">–</span>'}</td><td>${readyBadge(p, T)}</td></tr>`).join('')}
+        </tbody></table></div>` : '<p class="empty">ยังไม่มีงานในสัปดาห์นี้</p>'}
+      </section>`;
+    }).join('')}</div>`;
+  }
+  function printLook(ctx) {
+    const P = PM.printDoc, win = P.open();
+    if (!win) return;
+    const { T, lookWeeks, lookRows } = ctx, live = lookRows.filter((p) => !isClosed(p));
+    const prepText = (p) => prepOf(p).map((x) => `<div>${x.done ? '☑' : '☐'} ${esc(x.type || '')}: ${esc(x.text)}${x.owner ? ` — ${esc(x.owner)}` : ''}${x.due ? ` · ${esc(U.date(x.due))}` : ''}</div>`).join('') || '–';
+    const ready = (p) => (isClosed(p) ? statusInfo(p.status).th : !prepOf(p).length ? 'ไม่ได้ระบุ' : prepLate(p, T).length ? `เลยกำหนด ${prepLate(p, T).length}` : prepOpen(p).length ? `ยังขาด ${prepOpen(p).length}` : 'พร้อม');
+    P.write(win, {
+      title: `Look-ahead ${ctx.week}`, bar: `แผนล่วงหน้า ${LOOK_WEEKS} สัปดาห์`, doc: 'weekly',
+      head: { title: `<h1>แผนล่วงหน้า ${LOOK_WEEKS} สัปดาห์</h1><p><b>Look-ahead Plan</b></p>${ctx.note ? `<p>${esc(ctx.note)}</p>` : ''}`, meta: `${esc(PM.COMPANY)}<br>ข้อมูล ณ ${U.date(T)}<br>${lookRows.length} งาน` },
+      body: `<style>@page { size: A4 landscape; } main { max-width: 275mm; } .kpis { margin-bottom: 10px; } tr.grp td { background: #dfe8f5; color: #0b2f6b; font-weight: 700; font-size: 11px; }</style>
+        <section class="kpis">${P.kpi('งานที่ยังไม่จบ', live.length)}${P.kpi('พร้อม', live.filter((p) => prepOf(p).length && !prepOpen(p).length).length, '', 'good')}${P.kpi('ยังขาด', live.filter((p) => prepOpen(p).length).length, '', 'warning')}${P.kpi('เลยกำหนดเตรียม', live.filter((p) => prepLate(p, T).length).length, '', 'critical')}</section>
+        <section class="flow"><table><thead><tr><th>งาน</th><th>โครงการ / ขั้นงาน</th><th>ผู้รับผิดชอบ</th><th>กำหนดเสร็จ</th><th>สิ่งที่ต้องเตรียม</th><th>ความพร้อม</th></tr></thead><tbody>
+          ${lookWeeks.map((w) => { const mine = lookRows.filter((p) => p.week === w); return `<tr class="grp"><td colspan="6">สัปดาห์ที่ ${V.isoWeek(w)} · ${esc(thRange(w))} · ${mine.length} งาน</td></tr>${mine.map((p) => `<tr><td><b>${esc(p.title)}</b></td><td>${esc(itemLabel(p))}</td><td>${esc(peopleText(p))}</td><td>${esc(thShortDay(p.dueDate))}</td><td>${prepText(p)}</td><td>${esc(ready(p))}</td></tr>`).join('')}`; }).join('')}
+        </tbody></table></section>
+        <div class="sign"><div>ผู้จัดทำแผน</div><div>ผู้จัดการโครงการ</div><div>หัวหน้าแผนก</div></div>`,
+    });
+  }
+
+  /* ---------- many tasks at once ---------- */
+  function bulkUpdate(action, tasks, done) {
+    if (!tasks.length) { U.toast('ยังไม่ได้เลือกงาน'); return; }
+    if (!PM.can('plan.status')) return;
+    const finish = (msg) => { PM.save(); pick.on = false; pick.ids.clear(); U.toast(msg); done(); };
+    if (action === 'delete') {
+      const mine = tasks.filter(PM.canDeletePlan), others = tasks.length - mine.length;
+      if (!mine.length) { U.alert('ลบได้เฉพาะงานที่คุณเป็นผู้สร้าง — งานที่เลือกไม่มีงานของคุณ'); return; }
+      U.confirm(`ลบ ${mine.length} งาน ออกจากแผน ลบแล้วกู้คืนไม่ได้${others ? `\n\nอีก ${others} งานคนอื่นเป็นผู้สร้าง จะไม่ถูกลบ` : ''}`, { title: 'ลบหลายงาน', ok: 'ลบถาวร', tone: 'danger' })
+        .then((ok) => { if (!ok) return; mine.forEach(removePlan); finish(`ลบแล้ว ${mine.length} งาน`); });
+      return;
+    }
+    const label = statusInfo(action).th;
+    if (action !== 'not_done') { tasks.forEach((p) => applyStatus(p, action)); finish(`อัปเดต ${tasks.length} งานเป็น ${label}`); return; }
+    U.modal({
+      title: `บันทึกไม่เสร็จ ${tasks.length} งาน`, submitLabel: 'บันทึก',
+      body: `${U.field('สาเหตุที่ไม่เสร็จ', 'reason', '', { options: PM.PLAN_REASONS, placeholder: '— เลือกสาเหตุ —', required: true, full: true })}
+        <p class="full muted" style="margin:0">ใช้สาเหตุเดียวกันทุกงาน · ไม่เปิด NCR ให้อัตโนมัติ บันทึก NCR รายงานได้จากปุ่มในรายการงาน</p>`,
+      onSubmit: (f) => { if (!f.reason) { U.alert('กรุณาเลือกสาเหตุ'); return false; } tasks.forEach((p) => applyStatus(p, 'not_done', f.reason)); finish(`บันทึกไม่เสร็จ ${tasks.length} งาน`); },
+    });
+  }
+
+  /* ---------- copy the whole week to a later one ---------- */
+  function copyWeek(ctx, done) {
+    const from = ctx.week, targets = [1, 2, 3, 4].map((i) => PM.addDays(from, 7 * i));
+    const src = PM.db.plans.filter((p) => p.week === from && ctx.full(p));
+    const recurring = src.filter((p) => p.ruleId).length, base = src.filter((p) => !p.ruleId);
+    if (!base.length) { U.toast(recurring ? 'สัปดาห์นี้มีแต่งานประจำ ซึ่งระบบสร้างให้เองอยู่แล้ว' : 'ไม่มีงานให้คัดลอก'); return; }
+    const already = (to) => new Set(PM.db.plans.filter((p) => p.week === to && p.copiedFrom).map((p) => p.copiedFrom));
+    const form = U.modal({
+      title: 'คัดลอกทั้งสัปดาห์', submitLabel: 'คัดลอก',
+      body: `<p class="full" style="margin:0">จากสัปดาห์ <b>${esc(thRange(from))}</b>${ctx.note ? ` ตามตัวกรอง: ${esc(ctx.note)}` : ''}</p>
+        ${U.field('ไปสัปดาห์', 'to', targets[0], { options: targets.map((w) => ({ value: w, label: thRange(w) })), full: true })}
+        <p class="full muted" data-copy-note style="margin:0"></p>`,
+      onSubmit: (f) => {
+        const to = f.to, shift = PM.diffDays(from, to), seen = already(to);
+        const fresh = base.filter((p) => !seen.has(p.id));
+        const stamp = creatorStamp();
+        let skipped = 0;
+        fresh.forEach((p) => {
+          const ids = PM.planPeople(p).filter((id) => { const r = PM.find('resources', id); return r && r.active !== false; });
+          if (!ids.length && !PM.planGuests(p).length) { skipped++; return; }
+          PM.db.plans.push(Object.assign({}, p, stamp, {
+            id: PM.uid('W'), week: to, dueDate: PM.addDays(p.dueDate, shift), resourceIds: ids, resourceId: ids[0] || '', guests: PM.planGuests(p).slice(),
+            qtyDone: 0, status: 'planned', reason: '', ncrId: null, carriedFrom: null, copiedFrom: p.id,
+            prep: prepOf(p).map((x) => Object.assign({}, x, { done: false, due: x.due ? PM.addDays(x.due, shift) : '' })),
+          }));
+        });
+        PM.save();
+        state.week = to;
+        U.toast(`คัดลอก ${fresh.length - skipped} งานแล้ว · สถานะเริ่มใหม่เป็นวางแผน${skipped ? ` · ข้าม ${skipped} งานที่ไม่เหลือผู้รับผิดชอบ` : ''}`, 3500);
+        done();
+      },
+    });
+    const note = form.querySelector('[data-copy-note]');
+    const draw = () => {
+      const dup = base.filter((p) => already(form.to.value).has(p.id)).length;
+      note.textContent = `จะคัดลอก ${base.length - dup} งาน · สถานะเริ่มใหม่ ผลงานเดิมไม่ติดไป${dup ? ` · ข้าม ${dup} งานที่เคยคัดลอกไปแล้ว` : ''}${recurring ? ` · ไม่รวมงานประจำ ${recurring} งาน (ระบบสร้างให้เอง)` : ''}`;
+    };
+    form.to.addEventListener('change', draw);
+    draw();
+  }
+
+  /* ---------- recurring tasks ----------
+     No server runs on a clock, so tasks are created when anyone opens the site (app.js calls this on every page), for this week and
+     the next three. A task's id comes from its rule and date, so two people opening the site at once make one task, not two.
+     rule.generatedUntil: nothing before it is created again, so a task someone moved stays moved.
+     rule.skips: dates deleted by hand, which a change to the rule must not bring back. */
+  const WEEKDAYS = ['จ.', 'อ.', 'พ.', 'พฤ.', 'ศ.', 'ส.', 'อา.'];
+  const weekdayOf = (d) => (PM.parse(d).getDay() + 6) % 7;
+  const ruleAlive = (r) => {
+    if (r.kind === 'project') { const x = PM.find('projects', r.refId); return !!x && x.status !== 'closed'; }
+    if (r.kind === 'bid') { const b = PM.find('bids', r.refId); return !!b && b.result === 'pending'; }
+    return true;
+  };
+  const rulePeople = (r) => (r.resourceIds || []).filter((id) => { const p = PM.find('resources', id); return p && p.active !== false; });
+  const ruleProblem = (r) => (r.active === false ? '' : !ruleAlive(r) ? 'โครงการ / Bid จบแล้ว' : !rulePeople(r).length && !(r.guests || []).length ? 'ไม่มีผู้รับผิดชอบ' : r.endDate && r.endDate < PM.today() ? 'ครบวันสิ้นสุดแล้ว' : '');
+  PM.ensureRecurring = function () {
+    const rules = PM.db.planrules || [];
+    if (!rules.length || (PM.auth && PM.auth.user && !PM.myRole())) return 0;
+    const T = PM.today(), monday = PM.monday(T), until = PM.addDays(monday, 7 * LOOK_WEEKS - 1);
+    let made = 0, touched = false;
+    rules.forEach((r) => {
+      if (r.active === false || (r.generatedUntil || '') >= until || !ruleAlive(r)) return;
+      const next = r.generatedUntil ? PM.max(PM.addDays(r.generatedUntil, 1), monday) : T;
+      const stop = r.endDate ? PM.min(until, r.endDate) : until;
+      const ids = rulePeople(r), guests = (r.guests || []).slice();
+      for (let d = PM.max(next, r.startDate || T); d <= stop; d = PM.addDays(d, 1)) {
+        if (!(r.weekdays || []).includes(weekdayOf(d)) || (r.skips || []).includes(d) || (r.skipHolidays !== false && PM.holidayOf(d))) continue;
+        const id = `W-${r.id}-${d}`;
+        if ((!ids.length && !guests.length) || PM.find('plans', id)) continue;
+        PM.db.plans.push({
+          id, week: PM.monday(d), kind: r.kind, refId: r.refId, phase: r.kind === 'project' ? r.phase : '', title: r.title,
+          resourceId: ids[0] || '', resourceIds: ids.slice(), guests: guests.slice(), plannedHours: r.plannedHours || 0, dueDate: d, qtyPlan: 0, qtyDone: 0,
+          status: 'planned', reason: '', note: r.note || '', carriedFrom: null, ruleId: r.id, ruleDate: d,
+          createdBy: r.createdBy || '', createdByName: r.createdByName || '', createdAt: new Date().toISOString(),
+        });
+        made++;
+      }
+      r.generatedUntil = until;
+      touched = true;
+    });
+    if (touched) PM.save();
+    return made;
+  };
+  PM.canManageRule = (r) => {
+    const u = PM.auth && PM.auth.user;
+    if (!u || !PM.can('plan.edit')) return false;
+    return PM.auth.role === 'admin' || (!!r.createdBy && r.createdBy === u.id);
+  };
+  /* the rule changed: tasks not started yet follow it, except ones edited by hand. Deleting stays with whoever may delete the task */
+  function syncRule(r) {
+    const T = PM.today(), keep = [];
+    PM.db.plans.filter((p) => p.ruleId === r.id && p.dueDate >= T && p.status === 'planned' && !p.ruleEdited).forEach((p) => {
+      const fits = r.active !== false && (r.weekdays || []).includes(weekdayOf(p.ruleDate || p.dueDate)) && (!r.endDate || p.dueDate <= r.endDate) && (!r.startDate || p.dueDate >= r.startDate);
+      if (!fits) {
+        if (PM.canDeletePlan(p)) PM.db.plans = PM.db.plans.filter((x) => x.id !== p.id); else keep.push(p);
+        return;
+      }
+      const ids = rulePeople(r);
+      Object.assign(p, { kind: r.kind, refId: r.refId, phase: r.kind === 'project' ? r.phase : '', title: r.title, resourceIds: ids.slice(), resourceId: ids[0] || '', guests: (r.guests || []).slice(), plannedHours: r.plannedHours || 0, note: r.note || '' });
+    });
+    r.generatedUntil = '';
+    return keep.length;
+  }
+  function ruleList(done) {
+    const T = PM.today(), canAdd = PM.can('plan.edit');
+    const rules = PM.db.planrules.slice().sort((a, b) => (a.active === false) - (b.active === false) || String(a.title).localeCompare(String(b.title)));
+    const nextOf = (r) => PM.db.plans.filter((p) => p.ruleId === r.id && p.dueDate >= T && !isClosed(p)).map((p) => p.dueDate).sort()[0];
+    const form = U.modal({
+      title: 'งานประจำ', wide: true,
+      body: `<div class="full row" style="margin:0"><span class="muted" style="flex:1 1 240px">ระบบสร้างงานให้ล่วงหน้า ${LOOK_WEEKS} สัปดาห์ เมื่อมีคนเปิดเว็บ · แก้งานแต่ละครั้งได้โดยไม่กระทบรอบถัดไป</span>${canAdd ? '<button type="button" class="btn primary sm" data-rule-new>+ เพิ่มงานประจำ</button>' : ''}</div>
+        <div class="full table-wrap">${rules.length ? `<table class="tbl"><thead><tr><th>งาน</th><th>ทุกวัน</th><th>ผู้รับผิดชอบ</th><th class="num">ชม.</th><th>ครั้งถัดไป</th><th>สถานะ</th></tr></thead><tbody>
+          ${rules.map((r) => { const bad = ruleProblem(r), n = nextOf(r); return `<tr class="click" data-rule="${esc(r.id)}"><td><span class="title">${esc(r.title)}</span><small>${esc(itemLabel(r))}</small></td>
+            <td class="nowrap">${esc((r.weekdays || []).slice().sort().map((i) => WEEKDAYS[i]).join(' '))}</td><td>${esc(peopleText({ resourceIds: rulePeople(r), guests: r.guests }))}</td><td class="num">${U.num(r.plannedHours || 0, 1)}</td>
+            <td class="nowrap">${n ? esc(thShortDay(n)) : '–'}</td><td>${r.active === false ? U.badge('neutral', 'หยุดอยู่') : bad ? U.badge('warning', bad) : U.badge('good', 'ทำงานอยู่')}</td></tr>`; }).join('')}
+        </tbody></table>` : '<p class="empty">ยังไม่มีงานประจำ — เช่น ประชุมทีมทุกวันจันทร์</p>'}</div>`,
+    });
+    const reopen = () => { done(); setTimeout(() => ruleList(done), 220); };
+    const add = form.querySelector('[data-rule-new]');
+    if (add) add.addEventListener('click', () => { U.closeModal(); ruleForm(null, reopen); });
+    form.addEventListener('click', (e) => { const row = e.target.closest('[data-rule]'); if (row) { U.closeModal(); ruleForm(PM.find('planrules', row.dataset.rule), reopen); } });
+  }
+  function ruleForm(rule, done, prefill) {
+    const T = PM.today(), isNew = !rule, firstProject = PM.db.projects.find((p) => p.status !== 'closed');
+    const r = rule || Object.assign({
+      id: PM.uid('PR'), title: '', kind: firstProject ? 'project' : 'overhead', refId: firstProject ? firstProject.id : (PM.OVERHEAD[0] || {}).id, phase: 'construction',
+      weekdays: [0], resourceIds: state.person ? [state.person] : [], guests: [], plannedHours: 1, startDate: T, endDate: '', skipHolidays: true, active: true, note: '', skips: [],
+    }, creatorStamp(), prefill || {});
+    const canManage = isNew ? PM.can('plan.edit') : PM.canManageRule(r);
+    const chosen = new Set(r.resourceIds || []), guests = (r.guests || []).slice();
+    const people = PM.db.resources.filter((x) => x.active !== false || chosen.has(x.id));
+    const future = () => PM.db.plans.filter((p) => p.ruleId === r.id && p.dueDate >= T && p.status === 'planned' && !p.ruleEdited);
+    const form = U.modal({
+      title: isNew ? 'เพิ่มงานประจำ' : r.title, wide: true,
+      deleteText: () => `ลบงานประจำ "${r.title}"\n\nงานที่ยังไม่ถึงกำหนดและยังไม่เริ่ม ${future().filter(PM.canDeletePlan).length} งานจะถูกลบด้วย · งานที่ทำไปแล้วยังอยู่`,
+      onDelete: !isNew && canManage ? () => {
+        future().filter(PM.canDeletePlan).forEach((p) => { PM.db.plans = PM.db.plans.filter((x) => x.id !== p.id); });
+        PM.remove('planrules', r.id); U.toast('ลบงานประจำแล้ว'); done();
+      } : null,
+      body: `
+        ${canManage ? '' : `<p class="full perm-note">ดูได้อย่างเดียว — แก้ได้เฉพาะผู้สร้าง${r.createdByName ? ` (${esc(r.createdByName)})` : ''} และ Admin</p>`}
+        ${U.field('งาน / กิจกรรม', 'title', r.title, { required: true, full: true, placeholder: 'เช่น ประชุมทีมประจำสัปดาห์' })}
+        <label><span>Work item (โครงการ / bid)</span>${workItemSelect(r.kind + '|' + r.refId)}</label>
+        ${U.field('Phase', 'phase', r.phase || 'construction', { options: PM.PHASES.map((p) => ({ value: p.key, label: p.label })) })}
+        <div class="full rule-days"><span>ทำซ้ำทุก</span><div>${WEEKDAYS.map((d, i) => `<label class="rule-day"><input type="checkbox" value="${i}"${(r.weekdays || []).includes(i) ? ' checked' : ''}><b>${d}</b></label>`).join('')}</div></div>
+        ${peopleField(people, chosen)}
+        ${U.field('ชั่วโมงตามแผน (ต่อคน)', 'plannedHours', r.plannedHours, { type: 'number', min: 0, step: 0.5 })}
+        ${U.field('เริ่มวันที่', 'startDate', r.startDate, { type: 'date', required: true })}
+        ${U.field('สิ้นสุดวันที่', 'endDate', r.endDate || '', { type: 'date', hint: 'เว้นว่าง = ไม่มีกำหนด' })}
+        ${U.field('วันหยุดนักขัตฤกษ์', 'skipHolidays', r.skipHolidays === false ? 'no' : 'yes', { options: [{ value: 'yes', label: 'ข้าม ไม่สร้างงาน' }, { value: 'no', label: 'สร้างงานตามปกติ' }] })}
+        ${U.field('สถานะ', 'active', r.active === false ? 'no' : 'yes', { options: [{ value: 'yes', label: 'ทำงานอยู่' }, { value: 'no', label: 'หยุดชั่วคราว' }] })}
+        <span></span>
+        ${U.field('หมายเหตุ', 'note', r.note, { type: 'textarea', full: true, rows: 2 })}`,
+      onSubmit: !canManage ? null : (f, frm) => {
+        const [kind, refId] = (f.item || '').split('|');
+        const days = Array.from(frm.querySelectorAll('.rule-day input:checked')).map((i) => Number(i.value));
+        const ids = Array.from(frm.querySelectorAll('.pp-list input:checked')).map((i) => i.value);
+        if (!refId) { U.alert('กรุณาเลือก Work item'); return false; }
+        if (!days.length) { U.alert('กรุณาเลือกวันอย่างน้อย 1 วัน'); return false; }
+        if (!ids.length && !guests.length) { U.alert('กรุณาเลือกผู้รับผิดชอบอย่างน้อย 1 คน'); return false; }
+        if (f.endDate && f.endDate < f.startDate) { U.alert('วันสิ้นสุดต้องไม่ก่อนวันเริ่ม'); return false; }
+        Object.assign(r, {
+          title: f.title, kind, refId, phase: kind === 'project' ? f.phase : '', weekdays: days, resourceIds: ids, guests: guests.slice(), plannedHours: f.plannedHours,
+          startDate: f.startDate, endDate: f.endDate, skipHolidays: f.skipHolidays === 'yes', active: f.active === 'yes', note: f.note,
+        });
+        PM.db.planrules = PM.db.planrules.filter((x) => x.id !== r.id).concat(r);
+        const kept = syncRule(r), made = PM.ensureRecurring();
+        PM.save();
+        U.toast(r.active === false ? 'หยุดงานประจำแล้ว' : `บันทึกแล้ว${made ? ` · สร้างงานใหม่ ${made} งาน` : ''}${kept ? ` · ${kept} งานคนอื่นสร้างไว้ยังอยู่` : ''}`, 3000);
+        done();
+      },
+    });
+    const item = form.querySelector('[name=item]'), phase = form.querySelector('[name=phase]');
+    const sync = () => { phase.disabled = !canManage || !item.value.startsWith('project|'); };
+    item.addEventListener('change', sync);
+    sync();
+    bindPeople(form, guests).draw();
+    if (!canManage) form.querySelectorAll('input, select, textarea').forEach((i) => { i.disabled = true; });
+  }
+  /* demo: two recurring tasks, tasks further ahead, and things to prepare */
+  PM.buildSamplePlanTools = function (db, T) {
+    const r = db.resources, wk = PM.monday(T), oh = (PM.OVERHEAD.find((o) => o.id !== 'leave') || {}).id;
+    const pj = db.projects.find((p) => p.status !== 'closed') || db.projects[0];
+    if (!r.length || !pj) return;
+    db.planrules = [
+      { id: 'PR1', title: 'ประชุมทีมประจำสัปดาห์', kind: 'overhead', refId: oh, phase: '', weekdays: [0], resourceIds: r.slice(0, 3).map((x) => x.id), guests: [], plannedHours: 1, startDate: wk, endDate: '', skipHolidays: true, active: true, note: '', skips: [], createdBy: '', createdByName: '' },
+      { id: 'PR2', title: 'อัปเดตความคืบหน้าโครงการ', kind: 'project', refId: pj.id, phase: 'construction', weekdays: [4], resourceIds: [r[0].id], guests: [], plannedHours: 2, startDate: wk, endDate: '', skipHolidays: true, active: true, note: '', skips: [], createdBy: '', createdByName: '' },
+    ];
+    const prep = (type, text, owner, days, done) => ({ type, text, owner, due: PM.addDays(T, days), done: !!done });
+    const task = (w, day, title, phase, people, hours, items) => db.plans.push({ id: `WF${w}${day}`, week: PM.addDays(wk, 7 * w), kind: 'project', refId: pj.id, phase, title, resourceId: people[0].id, resourceIds: people.map((x) => x.id), guests: [], plannedHours: hours, dueDate: PM.addDays(wk, 7 * w + day), qtyPlan: 0, qtyDone: 0, status: 'planned', reason: '', note: '', carriedFrom: null, prep: items });
+    task(1, 1, 'ติดตั้ง Metering Skid ชุดที่ 1', 'construction', [r[3 % r.length], r[4 % r.length]], 16, [prep('วัสดุ / อุปกรณ์', 'Skid และ Flow Meter ถึงหน้างาน', r[1].name, 3), prep('ใบอนุญาต / PTW', 'ขอ PTW งานยกติดตั้ง', r[3 % r.length].name, 5), prep('เครื่องมือ', 'จองรถเครน 25 ตัน', r[4 % r.length].name, -1)]);
+    task(2, 2, 'เดินท่อ Tie-in เข้า Skid', 'construction', [r[5 % r.length]], 24, [prep('แบบ / เอกสาร', 'แบบ Piping Isometric Rev. ล่าสุด', r[2].name, 7, true), prep('วัสดุ / อุปกรณ์', 'ท่อและ Flange ครบตาม BOM', r[1].name, 10)]);
+    task(3, 3, 'ทดสอบระบบร่วมกับลูกค้า (SAT)', 'closing', [r[0], r[2]], 16, [prep('อนุมัติจากลูกค้า', 'ลูกค้าอนุมัติ SAT Procedure', r[2].name, 14, true), prep('คน', 'นัดผู้แทนลูกค้าเข้าร่วม', r[0].name, 16, true)]);
+  };
+  /* the bell: things to prepare that are overdue, or that a task within a week still waits for */
+  PM.prepAlerts = function (T, I) {
+    const out = [];
+    (PM.db.plans || []).forEach((p) => {
+      if (isClosed(p) || !prepOpen(p).length) return;
+      const late = prepLate(p, T), soon = p.dueDate >= T && PM.diffDays(T, p.dueDate) <= 7;
+      if (!late.length && !soon) return;
+      const mine = Array.from(I.ids).some((id) => PM.planHas(p, id)) || prepOpen(p).some((x) => I.name && PM.normName(x.owner || '') === I.name);
+      const first = late[0] || prepOpen(p)[0];
+      out.push({ id: `prep-${p.id}-${late.length}-${prepOpen(p).length}`, level: 'warning', icon: 'tasks', topic: 'schedule', href: '#/weekly', mine, date: first.due || p.dueDate,
+        title: late.length ? `เตรียมงานเลยกำหนด: ${p.title}` : `งานใน 7 วันยังเตรียมไม่ครบ: ${p.title}`,
+        sub: `${first.text}${first.owner ? ` · ${first.owner}` : ''} · ยังขาด ${prepOpen(p).length} รายการ · งานกำหนด ${U.date(p.dueDate)}` });
+    });
+    return out;
+  };
+
   /* ---------- calendar views ---------- */
   const weekDays = (week) => [0, 1, 2, 3, 4, 5, 6].map((i) => PM.addDays(week, i));
   const firstName = (id) => U.resourceName(id).split(/\s+/)[0];
@@ -263,9 +878,11 @@
     const late = p.status !== 'done' && p.status !== 'not_done' && p.dueDate < T;
     const n = headcount(p);
     const tip = `${p.title}\n${itemLabel(p)}\nผู้รับผิดชอบ: ${peopleText(p)}\n${U.num(p.plannedHours, 1)} h${n > 1 ? ` / คน × ${n} คน = ${U.num(manHours(p), 1)} h` : ''}${p.qtyPlan ? `\nปริมาณ ${U.num(p.qtyDone || 0)} / ${U.num(p.qtyPlan)}` : ''}\nสถานะ: ${s.th}${p.reason ? ' — ' + p.reason : ''}\nสร้างโดย: ${creatorText(p)}`;
-    return `<article class="cal-card st-${esc(p.status)}${mini ? ' mini' : ''}${late ? ' late' : ''}" data-plan="${esc(p.id)}"
-        draggable="${canEdit ? 'true' : 'false'}" ${canEdit ? 'tabindex="0" role="button"' : ''} data-tip="${esc(tip)}">
-      <div class="cal-title">${esc(p.title)}</div>
+    const open = prepOpen(p).length;
+    return `<article class="cal-card st-${esc(p.status)}${mini ? ' mini' : ''}${late ? ' late' : ''}${pick.ids.has(p.id) ? ' picked' : ''}" data-plan="${esc(p.id)}"
+        draggable="${canEdit ? 'true' : 'false'}" ${canEdit ? 'tabindex="0" role="button"' : ''} data-tip="${esc(tip)}${open ? `\nยังเตรียมไม่ครบ ${open} รายการ` : ''}${p.ruleId ? '\nงานประจำ' : ''}">
+      ${pick.on ? `<input type="checkbox" class="pick-box" data-pick="${esc(p.id)}" aria-label="เลือก ${esc(p.title)}"${pick.ids.has(p.id) ? ' checked' : ''}>` : ''}
+      <div class="cal-title">${p.ruleId ? '<span class="cal-rule" title="งานประจำ">🔁</span> ' : ''}${esc(p.title)}${open && !isClosed(p) ? ` <span class="cal-prep" title="ยังเตรียมไม่ครบ">🧰 ${open}</span>` : ''}</div>
       ${mini ? `<div class="cal-meta">${U.num(p.plannedHours, 1)} h · ${esc(s.th)}</div>` : `
       <div class="cal-meta">${esc(itemLabel(p))}</div>
       <div class="cal-foot">
@@ -349,12 +966,13 @@
     if (!list.length) {
       return `<p class="empty">ยังไม่มีงานในสัปดาห์นี้${canEdit ? ' — กด "+ เพิ่มงาน" หรือ "ยกงานค้างจากสัปดาห์ก่อน"' : ''}</p>`;
     }
-    return `<table class="tbl"><thead><tr><th>งาน</th><th>ผู้รับผิดชอบ</th><th>กำหนดเสร็จ</th><th class="num">ชั่วโมง</th><th class="num">ปริมาณ</th><th>สถานะ</th><th>ไม่เสร็จ: สาเหตุ · NCR</th>${canEdit ? '<th></th>' : ''}</tr></thead><tbody>
+    return `<table class="tbl"><thead><tr>${pick.on ? '<th class="pick-col"></th>' : ''}<th>งาน</th><th>ผู้รับผิดชอบ</th><th>กำหนดเสร็จ</th><th class="num">ชั่วโมง</th><th class="num">ปริมาณ</th><th>สถานะ</th><th>ไม่เสร็จ: สาเหตุ · NCR</th>${canEdit ? '<th></th>' : ''}</tr></thead><tbody>
       ${list.map((p) => {
         const s = statusInfo(p.status);
         const late = p.status !== 'done' && p.status !== 'not_done' && p.dueDate < T;
-        return `<tr class="${canEdit ? 'click' : ''}" data-plan="${esc(p.id)}">
-          <td><span class="title">${esc(p.title)}</span><small>${esc(itemLabel(p))}${p.carriedFrom ? ' · ยกมาจากสัปดาห์ก่อน' : ''}</small></td>
+        return `<tr class="${canEdit || pick.on ? 'click' : ''}${pick.ids.has(p.id) ? ' picked' : ''}" data-plan="${esc(p.id)}">
+          ${pick.on ? `<td class="pick-col"><input type="checkbox" class="pick-box" data-pick="${esc(p.id)}" aria-label="เลือก ${esc(p.title)}"${pick.ids.has(p.id) ? ' checked' : ''}></td>` : ''}
+          <td><span class="title">${p.ruleId ? '🔁 ' : ''}${esc(p.title)}</span><small>${esc(itemLabel(p))}${p.carriedFrom ? ' · ยกมาจากสัปดาห์ก่อน' : ''}${prepOpen(p).length && !isClosed(p) ? ` · 🧰 ยังเตรียมไม่ครบ ${prepOpen(p).length}` : ''}</small></td>
           <td>${peopleChips(p)}</td>
           <td>${esc(dayName(p.dueDate))} ${U.date(p.dueDate)} ${late ? U.badge('critical', 'เลยกำหนด') : ''}</td>
           <td class="num">${U.num(p.plannedHours, p.plannedHours % 1 ? 1 : 0)}${headcount(p) > 1 ? `<small>× ${headcount(p)} คน = ${U.num(manHours(p), 1)}</small>` : ''}</td>
@@ -396,30 +1014,9 @@
     </select>`;
   }
 
-  function planForm(plan, done, defaults) {
-    const isNew = !plan;
-    const firstProject = PM.db.projects.find((p) => p.status !== 'closed');
-    const x = plan || Object.assign({
-      id: PM.uid('W'), week: state.week, kind: 'project',
-      refId: state.project && !state.project.startsWith('__') ? state.project : firstProject ? firstProject.id : '',
-      phase: 'construction', title: '', resourceId: state.person || '', plannedHours: 8,
-      dueDate: PM.addDays(state.week, 4), qtyPlan: 0, qtyDone: 0, status: 'planned', reason: '', note: '', carriedFrom: null,
-    }, creatorStamp(), Object.fromEntries(Object.entries(defaults || {}).filter(([, v]) => v)));
-    const chosen = new Set(isNew && defaults && defaults.resourceIds ? defaults.resourceIds : PM.planPeople(x).length ? PM.planPeople(x) : state.person ? [state.person] : []);
-    const people = PM.db.resources.filter((r) => r.active !== false || chosen.has(r.id));
-    const canDelete = !isNew && PM.canDeletePlan(x);
-    const form = U.modal({
-      title: isNew ? 'เพิ่มงานใน Weekly Plan' : x.title, wide: true,
-      onDelete: canDelete ? () => {
-        if (!PM.canDeletePlan(x)) { U.toast('ลบได้เฉพาะผู้สร้างงาน'); return; }
-        PM.remove('plans', x.id); U.toast('ลบงานแล้ว'); done();
-      } : null,
-      body: `
-        ${isNew ? '' : `<p class="full plan-owner">สร้างโดย <b>${esc(creatorText(x))}</b>${canDelete ? '' : ` · <span class="muted">${x.createdBy ? 'ลบได้เฉพาะผู้สร้างงานนี้' : 'งานเดิมไม่มีข้อมูลผู้สร้าง — ลบได้เฉพาะ Admin'}</span>`}</p>`}
-        ${U.field('งาน / กิจกรรม', 'title', x.title, { required: true, full: true, placeholder: 'เช่น Install cable tray – Area A' })}
-        <label><span>Work item (โครงการ / bid)</span>${workItemSelect(x.kind + '|' + x.refId)}</label>
-        ${U.field('Phase', 'phase', x.phase || 'construction', { options: PM.PHASES.map((p) => ({ value: p.key, label: p.label })) })}
-        <div class="full pp" data-pp>
+  /* who is on a task (Weekly Plan task and recurring task): ticked names + typed names from other departments as chips (✕ to remove) ·
+     the box searches the department list; a name that is not in it can be added as "นอกแผนก" (Enter or the button) */
+  const peopleField = (people, chosen) => `<div class="full pp" data-pp>
           <div class="pp-h"><span>ผู้รับผิดชอบ</span><small class="muted">เลือกได้หลายคน · คนแผนกอื่นพิมพ์ชื่อแล้วกด Enter</small></div>
           <div class="pp-chips" data-pp-chips aria-live="polite"></div>
           <div class="pp-qrow">
@@ -428,48 +1025,10 @@
           </div>
           <datalist id="dl-plan-guests">${Array.from(new Set(PM.db.plans.flatMap(PM.planGuests))).sort().map((g) => `<option value="${esc(g)}">`).join('')}</datalist>
           <div class="pp-list" role="group" aria-label="รายชื่อพนักงาน">${people.map((r) => `<label class="pp-opt" data-text="${esc([r.name, PM.levelName(r.level), r.discipline].join(' ').toLowerCase())}">
-            <input type="checkbox" value="${esc(r.id)}"${chosen.has(r.id) ? ' checked' : ''}><span><b>${esc(r.name)}</b><small>${esc(PM.levelName(r.level))}${r.discipline ? ' · ' + esc(r.discipline) : ''}</small></span></label>`).join('')}</div>
-        </div>
-        ${U.field('ชั่วโมงตามแผน (ต่อคน)', 'plannedHours', x.plannedHours, { type: 'number', min: 0, step: 0.5, hint: ' ' })}
-        ${U.field('กำหนดเสร็จ', 'dueDate', x.dueDate, { type: 'date', required: true, hint: 'สัปดาห์ของงานคำนวณจากวันนี้' })}
-        ${U.field('ปริมาณตามแผน', 'qtyPlan', x.qtyPlan, { type: 'number', min: 0, step: 'any' })}
-        ${U.field('ทำได้จริง', 'qtyDone', x.qtyDone, { type: 'number', min: 0, step: 'any' })}
-        ${U.field('สถานะ', 'status', x.status, { options: PM.PLAN_STATUS.map((s) => ({ value: s.key, label: `${s.th} (${s.label})` })) })}
-        ${U.field('สาเหตุ (ถ้าไม่เสร็จ)', 'reason', x.reason, { options: PM.PLAN_REASONS, placeholder: '—' })}
-        ${U.field('หมายเหตุ', 'note', x.note, { type: 'textarea', full: true, rows: 2 })}`,
-      onSubmit: (f, frm) => {
-        const [kind, refId] = (f.item || '').split('|');
-        const ids = Array.from(frm.querySelectorAll('.pp-list input:checked')).map((i) => i.value);
-        if (!refId) { U.alert('กรุณาเลือก Work item'); return false; }
-        if (!ids.length && !guests.length) { U.alert('กรุณาเลือกผู้รับผิดชอบอย่างน้อย 1 คน (คนในแผนก หรือพิมพ์ชื่อคนแผนกอื่น)').then(() => frm.querySelector('.pp-q').focus()); return false; }
-        // newly "ไม่เสร็จ" → save the rest first, then the NCR form takes the reason and sets the status
-        const toNcr = f.status === 'not_done' && x.status !== 'not_done';
-        if (f.status === 'not_done' && !toNcr && !f.reason) { U.alert('งานที่ไม่เสร็จ กรุณาเลือกสาเหตุ'); return false; }
-        Object.assign(x, {
-          title: f.title, kind, refId, phase: kind === 'project' ? f.phase : '',
-          resourceIds: ids, resourceId: ids[0] || '', // resourceId = first person, for older data / pages that read one
-          guests: guests.slice(), // other departments (typed names)
-          plannedHours: f.plannedHours, dueDate: f.dueDate, week: PM.monday(f.dueDate),
-          qtyPlan: f.qtyPlan, qtyDone: f.qtyDone, status: toNcr ? x.status : f.status,
-          reason: f.status === 'not_done' && !toNcr ? f.reason : '', note: f.note,
-        });
-        delete x.unit; // the unit field was removed from Weekly Plan
-        PM.upsert('plans', x);
-        done();
-        if (toNcr) { setTimeout(() => notDone(x, done, { reason: f.reason }), 220); return; } // after this form has closed
-        U.toast(x.week === state.week ? 'บันทึกแล้ว' : `บันทึกแล้ว — ย้ายไปสัปดาห์ ${U.date(x.week)}`);
-      },
-    });
-    const item = form.querySelector('[name=item]'), phase = form.querySelector('[name=phase]');
-    const sync = () => { phase.disabled = !item.value.startsWith('project|'); };
-    item.addEventListener('change', sync);
-    sync();
-
-    /* people picker: ticked names + typed names from other departments show as chips (✕ to remove) ·
-       the box searches the department list; a name that is not in it can be added as "นอกแผนก" (Enter or the button) */
-    const guests = PM.planGuests(x).slice();
+            <input type="checkbox" value="${esc(r.id)}"${chosen.has(r.id) ? ' checked' : ''}><span><b>${esc(r.name)}</b><small>${esc(PM.levelName(r.level))}${r.discipline ? ' · ' + esc(r.discipline) : ''}</small></span><em class="pp-load" data-load="${esc(r.id)}"></em></label>`).join('')}</div>
+        </div>`;
+  function bindPeople(form, guests, onDraw) {
     const pp = form.querySelector('[data-pp]'), chips = pp.querySelector('[data-pp-chips]'), q = pp.querySelector('.pp-q'), addBtn = pp.querySelector('[data-pp-guest]');
-    const hoursHint = form.plannedHours.parentElement.querySelector('small');
     const drawPeople = () => {
       const on = Array.from(pp.querySelectorAll('.pp-list input:checked'));
       chips.innerHTML = on.length || guests.length
@@ -477,8 +1036,7 @@
           + guests.map((g, k) => `<span class="who-chip guest">${esc(g)}<em>นอกแผนก</em><button type="button" data-pp-unguest="${k}" aria-label="เอา ${esc(g)} ออก">✕</button></span>`).join('')
         : '<span class="muted">ยังไม่ได้เลือก — ติ๊กชื่อด้านล่าง หรือพิมพ์ชื่อคนแผนกอื่น</span>';
       pp.querySelectorAll('.pp-opt').forEach((l) => l.classList.toggle('on', l.querySelector('input').checked));
-      const n = on.length + guests.length, h = Number(form.plannedHours.value) || 0;
-      if (hoursHint) hoursHint.textContent = n > 1 ? `รวม ${U.num(h * n, 1)} ชั่วโมงคน (${n} คน × ${U.num(h, 1)} h)` : 'ชั่วโมงที่แต่ละคนใช้กับงานนี้';
+      if (onDraw) onDraw(pp, on.length + guests.length);
     };
     const filterList = () => {
       const raw = q.value.trim(), w = raw.toLowerCase();
@@ -500,7 +1058,6 @@
       q.focus();
     };
     pp.addEventListener('change', drawPeople);
-    form.plannedHours.addEventListener('input', drawPeople);
     chips.addEventListener('click', (e) => {
       const b = e.target.closest('[data-pp-drop]'), g = e.target.closest('[data-pp-unguest]');
       if (g) { guests.splice(+g.dataset.ppUnguest, 1); filterList(); drawPeople(); return; }
@@ -520,7 +1077,131 @@
       else if (!visible.length) addGuest();
     });
     filterList();
-    drawPeople();
+    return { draw: drawPeople };
+  }
+
+  /* what a task needs before it can start: rows in the task form */
+  const prepRow = (x = {}) => `<div class="prep-row">
+      <select data-k="type" aria-label="ประเภท">${U.options(PREP_TYPES, x.type || PREP_TYPES[0])}</select>
+      <input data-k="text" value="${esc(x.text || '')}" placeholder="ต้องเตรียมอะไร เช่น ท่อ 2 นิ้ว 20 เส้น" aria-label="รายการ">
+      <input data-k="owner" list="dl-prep-people" value="${esc(x.owner || '')}" placeholder="ผู้รับผิดชอบ" aria-label="ผู้รับผิดชอบ" autocomplete="off">
+      <input data-k="due" type="date" value="${esc(x.due || '')}" aria-label="ต้องพร้อมภายใน">
+      <label class="prep-ok"><input data-k="done" type="checkbox"${x.done ? ' checked' : ''}> พร้อม</label>
+      <button type="button" class="icon-btn" data-prep-drop aria-label="เอาออก">✕</button>
+    </div>`;
+  const readPrep = (form) => Array.from(form.querySelectorAll('.prep-row')).map((row) => {
+    const v = (k) => row.querySelector(`[data-k="${k}"]`);
+    return { type: v('type').value, text: v('text').value.trim(), owner: v('owner').value.trim(), due: v('due').value, done: v('done').checked };
+  }).filter((x) => x.text);
+
+  function planForm(plan, done, defaults) {
+    const isNew = !plan;
+    const firstProject = PM.db.projects.find((p) => p.status !== 'closed');
+    const x = plan || Object.assign({
+      id: PM.uid('W'), week: state.week, kind: 'project',
+      refId: state.project && !state.project.startsWith('__') ? state.project : firstProject ? firstProject.id : '',
+      phase: 'construction', title: '', resourceId: state.person || '', plannedHours: 8,
+      dueDate: PM.addDays(state.week, 4), qtyPlan: 0, qtyDone: 0, status: 'planned', reason: '', note: '', carriedFrom: null,
+    }, creatorStamp(), Object.fromEntries(Object.entries(defaults || {}).filter(([, v]) => v)));
+    const chosen = new Set(isNew && defaults && defaults.resourceIds ? defaults.resourceIds : PM.planPeople(x).length ? PM.planPeople(x) : state.person ? [state.person] : []);
+    const people = PM.db.resources.filter((r) => r.active !== false || chosen.has(r.id));
+    const canDelete = !isNew && PM.canDeletePlan(x);
+    const rule = !isNew && x.ruleId ? PM.find('planrules', x.ruleId) : null;
+    const form = U.modal({
+      title: isNew ? 'เพิ่มงานใน Weekly Plan' : x.title, wide: true,
+      onDelete: canDelete ? () => {
+        if (!PM.canDeletePlan(x)) { U.toast('ลบได้เฉพาะผู้สร้างงาน'); return; }
+        removePlan(x); PM.save(); U.toast('ลบงานแล้ว'); done();
+      } : null,
+      body: `
+        ${isNew ? '' : `<p class="full plan-owner">สร้างโดย <b>${esc(creatorText(x))}</b>${canDelete ? '' : ` · <span class="muted">${x.createdBy ? 'ลบได้เฉพาะผู้สร้างงานนี้' : 'งานเดิมไม่มีข้อมูลผู้สร้าง — ลบได้เฉพาะ Admin'}</span>`} <button type="button" class="btn sm" data-plan-dup title="เปิดฟอร์มงานใหม่ด้วยข้อมูลเดิม กำหนดเสร็จอีก 7 วัน">ทำซ้ำสัปดาห์หน้า</button>${x.ruleId ? '' : ' <button type="button" class="btn sm" data-plan-rule>🔁 ตั้งเป็นงานประจำ</button>'}</p>`}
+        ${rule ? `<p class="full callout rule-note">🔁 งานนี้สร้างจากงานประจำ — แก้ที่นี่มีผลเฉพาะครั้งนี้ <button type="button" class="link-btn" data-open-rule>แก้งานประจำทุกครั้ง</button></p>` : ''}
+        ${U.field('งาน / กิจกรรม', 'title', x.title, { required: true, full: true, placeholder: 'เช่น Install cable tray – Area A' })}
+        <label><span>Work item (โครงการ / bid)</span>${workItemSelect(x.kind + '|' + x.refId)}</label>
+        ${U.field('Phase', 'phase', x.phase || 'construction', { options: PM.PHASES.map((p) => ({ value: p.key, label: p.label })) })}
+        ${peopleField(people, chosen)}
+        ${U.field('ชั่วโมงตามแผน (ต่อคน)', 'plannedHours', x.plannedHours, { type: 'number', min: 0, step: 0.5, hint: ' ' })}
+        ${U.field('กำหนดเสร็จ', 'dueDate', x.dueDate, { type: 'date', required: true, hint: 'สัปดาห์ของงานคำนวณจากวันนี้' })}
+        ${U.field('ปริมาณตามแผน', 'qtyPlan', x.qtyPlan, { type: 'number', min: 0, step: 'any' })}
+        ${U.field('ทำได้จริง', 'qtyDone', x.qtyDone, { type: 'number', min: 0, step: 'any' })}
+        ${U.field('สถานะ', 'status', x.status, { options: PM.PLAN_STATUS.map((s) => ({ value: s.key, label: `${s.th} (${s.label})` })) })}
+        ${U.field('สาเหตุ (ถ้าไม่เสร็จ)', 'reason', x.reason, { options: PM.PLAN_REASONS, placeholder: '—' })}
+        ${U.field('หมายเหตุ', 'note', x.note, { type: 'textarea', full: true, rows: 2 })}
+        <div class="full prep"><div class="pp-h"><span>สิ่งที่ต้องเตรียมก่อนเริ่มงาน</span><small class="muted">วัสดุ · แบบ · คน · เครื่องมือ · ใบอนุญาต — ดูรวมได้ที่มุมมองล่วงหน้า ${LOOK_WEEKS} สัปดาห์</small></div>
+          <div data-prep-rows>${prepOf(x).map(prepRow).join('')}</div>
+          <datalist id="dl-prep-people">${PM.db.resources.filter((r) => r.active !== false).map((r) => `<option value="${esc(r.name)}">`).join('')}</datalist>
+          <button type="button" class="btn sm" data-prep-add>+ เพิ่มรายการ</button></div>`,
+      onSubmit: (f, frm) => {
+        const [kind, refId] = (f.item || '').split('|');
+        const ids = Array.from(frm.querySelectorAll('.pp-list input:checked')).map((i) => i.value);
+        if (!refId) { U.alert('กรุณาเลือก Work item'); return false; }
+        if (!ids.length && !guests.length) { U.alert('กรุณาเลือกผู้รับผิดชอบอย่างน้อย 1 คน (คนในแผนก หรือพิมพ์ชื่อคนแผนกอื่น)').then(() => frm.querySelector('.pp-q').focus()); return false; }
+        // newly "ไม่เสร็จ" → save the rest first, then the NCR form takes the reason and sets the status
+        const toNcr = f.status === 'not_done' && x.status !== 'not_done';
+        if (f.status === 'not_done' && !toNcr && !f.reason) { U.alert('งานที่ไม่เสร็จ กรุณาเลือกสาเหตุ'); return false; }
+        Object.assign(x, {
+          title: f.title, kind, refId, phase: kind === 'project' ? f.phase : '',
+          resourceIds: ids, resourceId: ids[0] || '', // resourceId = first person, for older data / pages that read one
+          guests: guests.slice(), // other departments (typed names)
+          plannedHours: f.plannedHours, dueDate: f.dueDate, week: PM.monday(f.dueDate),
+          qtyPlan: f.qtyPlan, qtyDone: f.qtyDone, status: toNcr ? x.status : f.status,
+          reason: f.status === 'not_done' && !toNcr ? f.reason : '', note: f.note, prep: readPrep(frm),
+        });
+        if (x.ruleId) x.ruleEdited = true; // edited by hand: a change to the recurring rule leaves it alone
+        delete x.unit; // the unit field was removed from Weekly Plan
+        PM.upsert('plans', x);
+        done();
+        if (toNcr) { setTimeout(() => notDone(x, done, { reason: f.reason }), 220); return; } // after this form has closed
+        U.toast(x.week === state.week ? 'บันทึกแล้ว' : `บันทึกแล้ว — ย้ายไปสัปดาห์ ${U.date(x.week)}`);
+      },
+    });
+    const item = form.querySelector('[name=item]'), phase = form.querySelector('[name=phase]');
+    const sync = () => { phase.disabled = !item.value.startsWith('project|'); };
+    item.addEventListener('change', sync);
+    sync();
+
+    const guests = PM.planGuests(x).slice();
+    const hoursHint = form.plannedHours.parentElement.querySelector('small');
+    const picker = bindPeople(form, guests, (pp, n) => {
+      const h = Number(form.plannedHours.value) || 0;
+      if (hoursHint) hoursHint.textContent = n > 1 ? `รวม ${U.num(h * n, 1)} ชั่วโมงคน (${n} คน × ${U.num(h, 1)} h)` : 'ชั่วโมงที่แต่ละคนใช้กับงานนี้';
+      // each person's planned hours in the task's week (this task included once they are ticked) against their capacity
+      const wk = form.dueDate.value ? PM.monday(form.dueDate.value) : x.week;
+      const weekPlans = PM.db.plans.filter((y) => y.week === wk && y.id !== x.id);
+      pp.querySelectorAll('.pp-load').forEach((m) => {
+        const id = m.dataset.load, r = PM.find('resources', id), box = pp.querySelector(`.pp-list input[value="${CSS.escape(id)}"]`);
+        const planned = PM.sum(weekPlans.filter((y) => PM.planHas(y, id)), (y) => y.plannedHours || 0) + (box && box.checked ? h : 0);
+        const cap = r ? PM.cap(r) : 0;
+        m.textContent = cap ? `${U.num(planned, planned % 1 ? 1 : 0)}/${U.num(cap)} ชม.` : `${U.num(planned, planned % 1 ? 1 : 0)} ชม.`;
+        m.classList.toggle('over', !!cap && planned > cap);
+        m.title = cap && planned > cap ? 'เกิน capacity ของสัปดาห์นี้' : 'ชั่วโมงตามแผนของสัปดาห์นี้ / capacity';
+      });
+    });
+    form.plannedHours.addEventListener('input', picker.draw);
+    form.dueDate.addEventListener('change', picker.draw);
+    const rowsBox = form.querySelector('[data-prep-rows]');
+    form.querySelector('[data-prep-add]').addEventListener('click', () => {
+      rowsBox.insertAdjacentHTML('beforeend', prepRow());
+      rowsBox.lastElementChild.querySelector('[data-k="text"]').focus();
+    });
+    rowsBox.addEventListener('click', (e) => { const d = e.target.closest('[data-prep-drop]'); if (d) d.closest('.prep-row').remove(); });
+    const toRule = form.querySelector('[data-plan-rule]');
+    if (toRule) toRule.addEventListener('click', () => {
+      U.closeModal();
+      ruleForm(null, done, { title: x.title, kind: x.kind, refId: x.refId, phase: x.phase, plannedHours: x.plannedHours, note: x.note, weekdays: [weekdayOf(x.dueDate)], resourceIds: PM.planPeople(x).slice(), guests: PM.planGuests(x).slice(), startDate: PM.addDays(x.dueDate, 7) });
+    });
+    const openRule = form.querySelector('[data-open-rule]');
+    if (openRule) openRule.addEventListener('click', () => { U.closeModal(); ruleForm(rule, done); });
+    const dup = form.querySelector('[data-plan-dup]');
+    if (dup) dup.addEventListener('click', () => {
+      U.closeModal();
+      planForm(null, done, {
+        title: x.title, kind: x.kind, refId: x.refId, phase: x.phase, plannedHours: x.plannedHours, qtyPlan: x.qtyPlan, note: x.note,
+        dueDate: PM.addDays(x.dueDate, 7), resourceIds: PM.planPeople(x).slice(), guests: PM.planGuests(x).slice(),
+        prep: prepOf(x).map((y) => Object.assign({}, y, { done: false, due: y.due ? PM.addDays(y.due, 7) : '' })),
+      });
+    });
+    picker.draw();
   }
 
   /* ---------- "ไม่เสร็จ" → reason + NCR in one step ----------
@@ -584,7 +1265,7 @@
   async function carryOver(done) {
     const prev = PM.addDays(state.week, -7);
     const already = new Set(PM.db.plans.filter((p) => p.week === state.week && p.carriedFrom).map((p) => p.carriedFrom));
-    const open = PM.db.plans.filter((p) => p.week === prev && p.status !== 'done' && !already.has(p.id));
+    const open = PM.db.plans.filter((p) => p.week === prev && p.status !== 'done' && !already.has(p.id) && !p.ruleId); // a recurring task comes round by itself
     if (!open.length) { U.toast('ไม่มีงานค้างจากสัปดาห์ก่อน'); return; }
     if (!(await U.confirm(`ยกงานที่ยังไม่เสร็จ ${open.length} งาน จากสัปดาห์ ${U.date(prev)} มาไว้สัปดาห์นี้?`, { title: 'ยกงานค้างมาสัปดาห์นี้', ok: 'ยกมา' }))) return;
     open.forEach((p) => {

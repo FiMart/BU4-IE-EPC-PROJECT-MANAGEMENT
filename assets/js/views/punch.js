@@ -98,7 +98,7 @@
     const form = U.modal({
       title: item ? `${x.no} · ${x.location || 'Punch item'}` : `เพิ่ม Punch List — ${p.code}`, wide: true,
       onDelete: item && canEdit ? () => {
-        PM.poFiles.remove((x.before || []).concat(x.after || []).map((f) => f.path)).catch(() => { /* already gone */ });
+        PM.poFiles.trash(`${p.id}/punch/${x.id}`, (x.before || []).concat(x.after || []).map((f) => f.path));
         PM.remove('punch', x.id); U.toast('ลบแล้ว'); done();
       } : null,
       body: `
@@ -147,7 +147,7 @@
     const T = PM.today(), s = PM.punchStats(p, T);
     const open = listOf(p).filter((x) => x.status !== 'closed').sort((a, b) => order[a.category] - order[b.category] || String(a.no).localeCompare(String(b.no)));
     P.write(win, {
-      title: `Punch List ${p.code} ${T}`, bar: `Punch List — ${p.code}`,
+      title: `Punch List ${p.code} ${T}`, bar: `Punch List — ${p.code}`, doc: 'punch',
       head: {
         title: `<h1>Punch List — รายการแก้ไขก่อนส่งมอบ</h1><p><b>${esc(p.code)} · ${esc(p.name)}</b></p><p>ลูกค้า ${esc(p.client || '–')} · ข้อมูล ณ ${U.date(T)}</p>`,
         meta: `${esc(PM.COMPANY)}<br>ค้าง ${open.length} จาก ${s.total} รายการ`,

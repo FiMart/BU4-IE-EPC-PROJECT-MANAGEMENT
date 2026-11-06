@@ -84,7 +84,8 @@
     const db = PM.db, T = PM.today();
     if (fromRouter && !state.dirty) state.rows = null; // reload from storage when navigating here
     // only people who log a Timesheet (Level Other / capacity 0 do not — PM.needsTimesheet)
-    const people = db.resources.filter((r) => r.active !== false && PM.needsTimesheet(r));
+    // (someone who resigned stays listed for the weeks up to their last day, so those hours can still be filled in)
+    const people = db.resources.filter((r) => PM.employedIn(r, state.week || PM.monday(T)) && PM.needsTimesheet(r));
     if (!people.length) { el.innerHTML = '<div class="callout">ยังไม่มีพนักงานที่ต้องลง Timesheet — เพิ่มได้ที่ <a href="#/resources">ภาระงานบุคลากร</a> (Level Other ไม่ต้องลง Timesheet)</div>'; return; }
     if (!state.resourceId || !people.some((r) => r.id === state.resourceId)) { state.resourceId = people[0].id; state.rows = null; }
     if (!state.week) state.week = PM.monday(T);
