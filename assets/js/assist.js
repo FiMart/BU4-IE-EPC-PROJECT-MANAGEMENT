@@ -16,7 +16,8 @@
     const one = (list, tab) => (list.length === 1 ? `#/projects/${list[0].p.id}${tab ? '/' + tab : ''}` : null);
 
     // cost
-    const ov = PM.costOverrunRows ? PM.costOverrunRows(rows) : [];
+    const fin = PM.seesProjectFinance(); // overrun amounts and unpaid invoices: the roles that see a project's money
+    const ov = fin && PM.costOverrunRows ? PM.costOverrunRows(rows) : [];
     const over = ov.filter((r) => r.o.status === 'over'), fc = ov.filter((r) => r.o.status === 'forecast');
     add({ level: 'critical', icon: 'coins', count: over.length, title: 'โครงการเกินงบแล้ว', sub: codes(over, (r) => `${r.p.code} +${U.money(r.o.amount)}`), href: one(over, 'cost') || '#/dashboard', jump: '#d-overrun' });
     add({ level: 'warning', icon: 'coins', count: fc.length, title: 'โครงการคาดว่าจะเกินงบ', sub: codes(fc, (r) => `${r.p.code} +${U.money(r.o.forecast)}`), href: one(fc, 'cost') || '#/dashboard', jump: '#d-overrun' });
@@ -46,7 +47,7 @@
     add({ level: 'critical', icon: 'quality', count: ncr.length, title: 'NCR ระดับ Critical ที่ยังเปิดอยู่', sub: codes(ncr, (n) => n.no, 3), href: ncr.length === 1 ? `#/projects/${ncr[0].projectId}/quality` : '#/projects' });
     // billing: invoices issued and past their due date (billing.js)
     const invLate = [];
-    active.forEach((p) => (p.invoices || []).forEach((i) => { if (PM.invOverdue && PM.invOverdue(i, T)) invLate.push({ p, i }); }));
+    if (fin) active.forEach((p) => (p.invoices || []).forEach((i) => { if (PM.invOverdue && PM.invOverdue(i, T)) invLate.push({ p, i }); }));
     add({ level: 'critical', icon: 'coins', count: invLate.length, title: 'ลูกค้าค้างชำระเกินกำหนด', sub: codes(invLate, (y) => `${y.p.code} ${y.i.no} ${U.money(PM.invNet(y.i))}`, 3), href: byProject(invLate).length === 1 ? `#/projects/${invLate[0].p.id}/billing` : '#/projects' });
     // risks (risks.js): very high scores, and actions past their date
     const riskHigh = [], riskLate = [];

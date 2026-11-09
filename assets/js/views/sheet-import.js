@@ -286,17 +286,25 @@
     const dates = s.split(/[\r\n,;]+/).map((x) => S.parseDate(x.trim())).filter(Boolean).sort();
     return dates.length ? { v: last ? dates[dates.length - 1] : dates[0] } : { err: `${f.label} อ่านวันที่ไม่ได้ ("${s}")` };
   }
+  /* a number or date cell that holds no value yet: TBA · N/A · รอราคา · or the column's own heading copied down (Value (MB)) */
+  const PLACEHOLDER = /^(?:[-–—?]+|tba|tbd|tbc|n\/?a|none|nil|pending|wait(?:ing)?|รอ.*|ไม่มี|ไม่ระบุ|ยังไม่ทราบ|ยังไม่มี.*)$/i;
+  const sameText = (a, b) => String(a == null ? '' : a).replace(/\s+/g, ' ').trim().toLowerCase() === String(b == null ? '' : b).replace(/\s+/g, ' ').trim().toLowerCase();
   /* value of a cell for a field → { v } or { err }; blank → {} */
-  function convert(cell, f) {
+  function convert(cell, f, heading) {
     const raw = f.keepMarks ? cell : unmark(cell);
     const s = String(raw == null ? '' : raw).trim();
-    if (s === '' || (f.type !== 'text' && /^[-–—]+$/.test(s))) return {};
+    if (s === '') return {};
+    if (f.type !== 'text' && (PLACEHOLDER.test(s) || (heading != null && sameText(unmark(heading), s)))) return {};
     if (f.type === 'period') return period(raw, f);
     if (f.type === 'date') { const d = S.parseDate(raw); return d ? { v: d } : { err: `${f.label} อ่านวันที่ไม่ได้ ("${s}")` }; }
     if (f.type === 'percent') {
       const pct = s.endsWith('%'), n = toNumber(s.replace('%', ''));
       if (n == null) return { err: `${f.label} ไม่ใช่ตัวเลข ("${s}")` };
       return { v: Math.max(0, Math.min(100, Math.round(!pct && n > 0 && n <= 1 ? n * 100 : n))) };
+    }
+    if (f.type === 'signed') { // may be below zero: (1,234) and 1,234- as accounting writes a loss
+      const neg = /^\(.*\)$|-$/.test(s), n = toNumber(s.replace(/^\(|\)$|-$/g, ''));
+      return n == null ? { err: `${f.label} ไม่ใช่ตัวเลข ("${s}")` } : { v: neg ? -Math.abs(n) : n };
     }
     if (f.type === 'number' || f.type === 'mb') {
       const n = toNumber(raw);
@@ -358,6 +366,7 @@
     function evaluate() {
       const all = rowsOf(), out = [];
       const rowNoCol = st.map.findIndex((k) => (cfg.fields.find((f) => f.key === k) || {}).rowNo);
+      const heading = st.header > 0 ? all[st.header - 1] || [] : [];
       const ctx = { seen: new Set(), rows: out };
       if (cfg.prepare) cfg.prepare(ctx);
       let numbered = false;
@@ -375,7 +384,7 @@
         st.map.forEach((k, c) => {
           const f = cfg.fields.find((x) => x.key === k);
           if (!f || f.rowNo) return;
-          const r = convert(row[c], f);
+          const r = convert(row[c], f, heading[c]);
           if (r.err) errors.push(r.err); else if (r.v !== undefined) values[k] = r.v;
         });
         // under a numbered list, an unnumbered row without the required cells is a total or a note, not a job
@@ -578,6 +587,24 @@
       intro: 'ไฟล์ Proposal Status List ใช้ได้เลย ระบบหาแถวหัวตารางและจับคู่คอลัมน์ให้ ไม่นำตารางสรุปท้ายไฟล์เข้ามา · Status Complete ถือว่ายื่นแล้ว (ไม่มีวันที่ยื่นใช้ Due Date) · ไฟล์เปิดในเครื่องนี้เท่านั้น ยังไม่บันทึกจนกว่าจะกดนำเข้า',
       note: canPrice ? '' : '🔒 คุณไม่มีสิทธิ์เห็นมูลค่า คอลัมน์ Value จึงไม่ถูกนำเข้า — Sales เจ้าของงานหรือ Admin เป็นผู้กรอก',
       fields: BID_FIELDS(canPrice),
+      // the list is kept in Excel and sent again each week: a second upload updates the jobs already in, like the project list
+      updateOnly: true,
+      startMode: () => 'update',
+      overview(rows, mode) {
+        const listed = rows.filter((r) => r.action === 'new' || r.action === 'exists');
+        if (!listed.length) return [];
+        const added = mode === 'updateOnly' ? 0 : rows.filter((r) => r.action === 'new').length, now = PM.db.bids.length;
+        const inFile = new Set(listed.filter((r) => r.old).map((r) => r.old.id));
+        const others = PM.db.bids.filter((b) => !inFile.has(b.id) && (b.proposal || {}).listNo); // jobs that came from an earlier list and are no longer on it
+        const out = [`ไฟล์นี้มี ${listed.length} งาน · ในระบบตอนนี้ ${now} · หลังนำเข้า ${now + added}`];
+        if (mode !== 'skip') {
+          const moves = rows.filter((r) => r.action === 'exists' && r.values.status !== undefined && (lookup(P_STATUS, r.values.status) || 'not_started') !== PM.propOf(r.old).status);
+          if (moves.length) out.push(`Status เปลี่ยน ${moves.length} งาน: ${moves.slice(0, 6).map((r) => `${r.old.code} → ${(PM.propStatusInfo(lookup(P_STATUS, r.values.status) || 'not_started') || {}).label}`).join(', ')}${moves.length > 6 ? ' …' : ''}`);
+          if (rows.some((r) => r.action === 'exists')) out.push('โหมดอัปเดต: Status, Progress, Priority, Due Date, PM, Sales และ Deliverables ของงานเดิมใช้ค่าในไฟล์ · ช่องว่างในไฟล์ไม่ลบข้อมูลเดิม · เรียงตามไฟล์');
+        }
+        if (others.length) out.push(`ในระบบมีอีก ${others.length} งานจากรายการรอบก่อนที่ไม่อยู่ในไฟล์นี้ ระบบไม่ลบให้: ${others.slice(0, 8).map((b) => b.code).join(', ')}${others.length > 8 ? ' …' : ''}`);
+        return out;
+      },
       template: () => ({
         filename: 'proposal-import-template', title: 'Proposal Status List', subtitle: 'กรอกตั้งแต่แถวใต้หัวตาราง · ลบแถวตัวอย่างก่อนนำเข้า',
         sheets: [{ name: 'Proposal', columns: ['No.', 'Customer', 'Project Name', 'Type', 'Value (MB)', 'Priority', 'Due Date', 'Start Date', 'Progress', 'Status', 'PM', 'Sales', 'Deliverables'].map((h) => ({ header: h, width: h === 'Project Name' ? 42 : 14 })),
@@ -599,6 +626,7 @@
       },
       commit(rows) {
         const created = [], updated = [], before = new Map();
+        const reorder = rows.some((r) => r.action === 'exists');
         const nextOrder = PM.db.bids.reduce((m, b) => Math.max(m, Number(((b.proposal || {}).listNo)) || 0), 0);
         const prefix = V.bidNoPrefix();
         const usedCodes = new Set(PM.db.bids.map((b) => String(b.code).trim().toUpperCase()));
@@ -631,7 +659,8 @@
             const id = noOne(v.pm) ? '' : matchPerson(v.pm);
             p.owner = id; p.ownerName = id || noOne(v.pm) ? '' : v.pm;
           }
-          p.listNo = (isNew ? nextOrder + idx + 1 : p.listNo) || undefined;
+          // the whole list again: the file's order holds; new jobs alone go after what is there
+          p.listNo = (reorder ? idx + 1 : isNew ? nextOrder + idx + 1 : p.listNo) || undefined;
           b.proposal = p;
           if (v.sales !== undefined) Object.assign(b, noOne(v.sales) ? { sales: '', salesName: '' } : V.resolveSales(v.sales, isNew ? null : b));
           // dates in the order the workflow expects; the inquiry cannot come after the work it started
@@ -649,6 +678,13 @@
           else b.owner = PM.bidOwnerFor(b.sales, b.salesName);
           if (isNew) { PM.db.bids.push(b); created.push(b); } else updated.push(b);
         });
+        // jobs from an earlier list that this one leaves out keep their order, after the file's own
+        if (reorder) {
+          const inFile = new Set(rows.map((r) => (r.old || {}).id).filter(Boolean));
+          PM.db.bids.filter((b) => !inFile.has(b.id) && !created.includes(b) && (b.proposal || {}).listNo)
+            .sort((a, b) => a.proposal.listNo - b.proposal.listNo)
+            .forEach((b, k) => { before.set(b.id, JSON.parse(JSON.stringify(b))); b.proposal = Object.assign({}, b.proposal, { listNo: rows.length + k + 1 }); });
+        }
         PM.save();
         const unknown = unknownNames(rows, 'pm').concat(unknownNames(rows, 'sales').filter((n) => !PM.db.bids.some((b) => PM.normName(V.salesName(b)) === PM.normName(n) && b.sales)));
         const canUndo = created.every(PM.canSeeBidPrice);
@@ -673,7 +709,7 @@
   // Released / Teco: the status words of the accounting file (Monitor WIP/Accrued), where Teco = completed
   const PJ_STATUS = { active: 'active', released: 'active', ดำเนินการ: 'active', ดำเนินการอยู่: 'active', 'on hold': 'onhold', onhold: 'onhold', hold: 'onhold', พักงาน: 'onhold', closed: 'closed', close: 'closed', teco: 'closed', ปิด: 'closed', ปิดแล้ว: 'closed', ปิดโครงการ: 'closed' };
   /* Monitor WIP/Accrued gives a job two numbers: Job (Odoo) JB26-PROJ-0002 and Order PROJ-22-0004 (its "Project NO." repeats the job). Either finds the project.
-     Only what the system already shows every role comes in. Margin, WIP / Accrued and revenue figures are left out: app_records can be read by every role, whatever a screen hides. */
+     Margin, WIP / Accrued and accumulated revenue go to collection 'projfin', which the database sends to Admin · Dept Manager · PM · Engineer only. */
   const PJ_FIELDS = [
     { key: 'no', label: 'No.', type: 'text', rowNo: true, aliases: ['ลำดับ', 'ลำดับที่', 'item'] },
     { key: 'code', label: 'Project No.', type: 'text', aliases: ['projectno', 'projectcode', 'code', 'jobno', 'รหัสโครงการ', 'เลขที่โครงการ'] },
@@ -692,6 +728,13 @@
     { key: 'budget', label: 'Plan cost (บาท)', type: 'number', aliases: ['costinproject', 'plancostvc', 'plancost', 'budget', 'งบประมาณ', 'งบต้นทุน', 'ต้นทุนแผน'] },
     { key: 'poc', label: 'POC %', type: 'percent', aliases: ['percentofcompletion'] },
     { key: 'accCost', label: 'ต้นทุนสะสม (Accum. Cost)', type: 'number', aliases: ['accumcost', 'accumulatedcost', 'ต้นทุนสะสม'] },
+    // the accounting figures: kept in 'projfin', which the database shows to Admin · Dept Manager · PM · Engineer only
+    { key: 'accRevenue', label: 'รายได้สะสม (Accum. Revenue)', type: 'signed', finance: true, aliases: ['accumrevenue', 'accumulatedrevenue', 'revenueaccum', 'accumrev', 'รายได้สะสม'] },
+    { key: 'wip', label: 'WIP / Accrued', type: 'signed', finance: true, aliases: ['wipaccrued', 'wipaccrual', 'wip', 'accrued', 'งานระหว่างทำ'] },
+    // cMargin = (Plan Revenue − Plan cost) ÷ Plan Revenue: worked out from the two, so the column is only recognised, never stored
+    { key: 'cMargin', label: 'cMargin (Plan) — คำนวณเอง', type: 'text', aliases: ['cmargin', 'cmarginplan', 'planmargin'] },
+    { key: 'margin', label: 'Margin (บาท)', type: 'signed', finance: true, aliases: ['margin', 'actualmargin', 'actmargin', 'grossmargin', 'กำไรขั้นต้น'] },
+    { key: 'marginPct', label: 'Margin %', type: 'signed', finance: true, aliases: ['marginpercent', 'marginpct', 'percentmargin', 'gpm'] },
     { key: 'start', label: 'Start date', type: 'period', pick: 'first', aliases: ['workstart', 'startdate', 'start', 'วันเริ่ม', 'วันที่เริ่ม'] },
     { key: 'end', label: 'Finish date', type: 'period', pick: 'last', aliases: ['endstart', 'workend', 'finishdate', 'enddate', 'finish', 'end', 'วันจบ', 'วันสิ้นสุด', 'วันที่สิ้นสุด'] },
     { key: 'status', label: 'Status', type: 'text', aliases: ['สถานะ'] },
@@ -793,7 +836,8 @@
         const ledger = listed.some((r) => r.values.job !== undefined);
         if (toClose && mode === 'skip') out.push(`${toClose} โครงการในไฟล์เป็น Completed แต่ในระบบยังไม่ปิด — เลือก "อัปเดตงานเดิม" เพื่อปิดให้`);
         if (ledger) {
-          out.push('ไฟล์ Monitor: อัปเดตลูกค้า มูลค่าสัญญา (Plan Revenue) Plan cost POC ต้นทุนสะสม และ Job No. · ไม่ทับชื่อโครงการและวันที่ · Released ไม่เปิดงานที่ปิดแล้ว · ไม่เก็บ Margin, WIP/Accrued และรายได้สะสม');
+          const finCols = listed.some((r) => ['accRevenue', 'wip', 'margin', 'marginPct'].some((k) => r.values[k] !== undefined));
+          out.push(`ไฟล์ Monitor: อัปเดตลูกค้า มูลค่าสัญญา (Plan Revenue) Plan cost POC ต้นทุนสะสม และ Job No. · ไม่ทับชื่อโครงการและวันที่ · Released ไม่เปิดงานที่ปิดแล้ว${finCols ? ' · Margin · WIP/Accrued · รายได้สะสม เก็บแยก เห็นเฉพาะ Admin · Dept Manager · PM · Engineer' : ''}`);
           const names = `${notIn.slice(0, 8).map((r) => r.values.code).join(', ')}${notIn.length > 8 ? ' …' : ''}`;
           if (notIn.length && mode === 'updateOnly') out.push(`${notIn.length} งานในไฟล์ไม่อยู่ในระบบ ไม่เพิ่มให้: ${names} — ถ้าต้องการให้เลือก "อัปเดตงานเดิม"`);
           if (notIn.length && mode === 'update') out.push(`เพิ่มงานใหม่ ${notIn.length} งานที่ยังไม่อยู่ในระบบ: ${names} — ถ้าไม่ต้องการให้เลือก "อัปเดตอย่างเดียว ไม่เพิ่มใหม่"`);
@@ -842,6 +886,8 @@
         let listNo = PM.db.projects.reduce((m, p) => Math.max(m, p.listNo || 0), 0), estimated = 0;
         const reorder = rows.some((r) => r.action === 'exists'); // the whole list again: the file's order holds, or added rows would all land at the end
         const costsBefore = PM.db.costs.slice(), pocKept = [], costAbove = [];
+        const finBefore = JSON.parse(JSON.stringify(PM.db.projfin || []));
+        let finRows = 0, finSkipped = 0;
         rows.forEach((r, at) => {
           const v = r.values, isNew = r.action === 'new', d = r.dates, ledger = v.job !== undefined;
           const contract = v.contractMB !== undefined ? v.contractMB : v.contract, budget = v.budgetMB !== undefined ? v.budgetMB : v.budget;
@@ -899,6 +945,17 @@
           }
           if (v.poc !== undefined && !applyPoc(p, v.poc)) pocKept.push(p.code);
           if (v.accCost !== undefined) { const above = applyAccumCost(p, v.accCost); if (above) costAbove.push(`${p.code} (${U.money(above)})`); }
+          // Margin · WIP/Accrued · accumulated revenue: their own row, never on the project every role can read
+          const fin = { accRevenue: v.accRevenue, wip: v.wip, margin: v.margin, marginPct: v.marginPct };
+          if (Object.keys(fin).some((k) => fin[k] !== undefined)) {
+            if (!PM.seesProjectFinance()) finSkipped++;
+            else {
+              const row = PM.db.projfin.find((x) => x.id === p.id) || (PM.db.projfin.push({ id: p.id }), PM.db.projfin[PM.db.projfin.length - 1]);
+              Object.keys(fin).forEach((k) => { if (fin[k] !== undefined) row[k] = fin[k]; });
+              row.asOf = PM.today();
+              finRows++;
+            }
+          }
         });
         PM.save();
         const unknown = Array.from(new Set(unknownNames(rows, 'pm').concat(unknownNames(rows, 'sales'))));
@@ -910,11 +967,14 @@
             pocKept.length ? `คงความคืบหน้าที่กรอกเองไว้ ไม่ใช้ POC จากไฟล์: ${pocKept.join(', ')}` : '',
             costAbove.length ? `ค่าใช้จ่ายในระบบสูงกว่า Accum. Cost ในไฟล์ ตรวจรายการ: ${costAbove.join(', ')}` : '',
             updated.length ? 'โครงการที่อัปเดตไม่เปลี่ยนแผนของแต่ละขั้นงาน แก้ได้ที่การ์ดขั้นงาน' : '',
+            finRows ? `Margin · WIP/Accrued · รายได้สะสม ${finRows} โครงการ — เห็นเฉพาะ Admin · Dept Manager · PM · Engineer (ดูที่มุมมอง Monitor)` : '',
+            finSkipped ? `ไม่ได้เก็บ Margin · WIP/Accrued · รายได้สะสม ${finSkipped} โครงการ เพราะ Role ของคุณไม่เห็นตัวเลขเหล่านี้` : '',
           ].filter(Boolean),
           undo: () => {
             const gone = new Set(created.map((p) => p.id));
             PM.db.projects = PM.db.projects.filter((p) => !gone.has(p.id)).map((p) => (before.has(p.id) ? before.get(p.id) : p));
             PM.db.costs = costsBefore;
+            PM.db.projfin = finBefore;
             PM.save();
           },
         };

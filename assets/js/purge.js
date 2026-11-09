@@ -39,6 +39,7 @@
       d.timesheets = list('timesheets').filter((t) => !worksOn('project', id)(t));
       d.plans = list('plans').filter((x) => !worksOn('project', id)(x));
       d.planrules = list('planrules').filter((x) => !worksOn('project', id)(x));
+      d.projfin = list('projfin').filter((x) => x.id !== id); // the database removes it too (data.sql cascade)
       list('bids').forEach((b) => { if (b.projectId === id) delete b.projectId; }); // the bid can make a new project
       d.projects = list('projects').filter((x) => x.id !== id);
       PM.save();

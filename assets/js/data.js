@@ -10,6 +10,8 @@
      so on dark backgrounds it sits on a white plate (.logo-plate) */
   PM.LOGO = { web: 'assets/img/flowlab-logo.png', full: 'assets/img/flowlab-logo-full.png' };
   PM.logoUrl = (full) => new URL(full ? PM.LOGO.full : PM.LOGO.web, document.baseURI).href; // absolute — works inside report windows
+  // the app's own mark (BU4, the same square as the browser tab / home-screen icon): device notifications show this, not the company logo
+  PM.appIconUrl = () => new URL('assets/img/icon-192.png', document.baseURI).href;
   PM.logoImg = (cls, full) => `<img class="${cls || ''}" src="${full ? PM.logoUrl(true) : PM.LOGO.web}" alt="${PM.COMPANY}" decoding="async">`;
 
   /* ---------- constants ---------- */
@@ -134,6 +136,11 @@
   };
   /* does this role see any bid price at all (Sales: their own)? — decides whether money columns are shown */
   PM.seesBidPrices = () => PM.myRole() === 'admin' || PM.myRole() === 'sales';
+  /* a project's money — Plan Revenue, Plan cost, accumulated cost, billing (roles.js → 'project.finance'): Admin · Dept Manager · PM · Engineer.
+     Margin · WIP/Accrued · accumulated revenue from the accounting file sit in collection 'projfin' (one row per project id),
+     which the database sends to these roles only (supabase/data.sql → can_see_project_finance). */
+  PM.seesProjectFinance = () => PM.can('project.finance');
+  PM.projFin = (p) => (PM.seesProjectFinance() && (PM.db.projfin || []).find((x) => x.id === p.id)) || null;
   PM.BID_RESULTS = { pending: 'Pending', won: 'Won', lost: 'Lost', nobid: 'No-bid' };
   PM.SECTORS = ['Industrial', 'Energy', 'Oil & Gas', 'Infrastructure', 'Building'];
   PM.SCOPES = ['EPC', 'EP', 'E', 'C', 'Design & Build'];
@@ -320,7 +327,7 @@
   };
   /* data saved by older versions may miss newer collections */
   PM.ensureShape = () => {
-    ['bids', 'projects', 'ncrs', 'safety', 'resources', 'levels', 'timesheets', 'plans', 'pos', 'costs', 'prices', 'settings', 'dailies', 'punch', 'meetings', 'avl', 'qms', 'planrules'].forEach((c) => { if (!Array.isArray(PM.db[c])) PM.db[c] = []; });
+    ['bids', 'projects', 'ncrs', 'safety', 'resources', 'levels', 'timesheets', 'plans', 'pos', 'costs', 'prices', 'settings', 'dailies', 'punch', 'meetings', 'avl', 'qms', 'planrules', 'projfin'].forEach((c) => { if (!Array.isArray(PM.db[c])) PM.db[c] = []; });
     // fixed person levels: Engineer, Technician & Other (only these three exist)
     PM.PERSON_LEVELS.forEach((l) => { if (!PM.db.levels.some((x) => x.id === l.id)) PM.db.levels.push(Object.assign({}, l)); });
     const allowed = PM.PERSON_LEVELS.map((l) => l.id);
@@ -354,7 +361,7 @@
   PM.emptyDb = () => ({
     meta: { version: 1, company: PM.COMPANY, created: PM.today() },
     levels: PM.PERSON_LEVELS.map((l) => Object.assign({}, l)),
-    resources: [], bids: [], projects: [], ncrs: [], safety: [], timesheets: [], plans: [], pos: [], costs: [], prices: [], settings: [], dailies: [], punch: [], meetings: [], avl: [], qms: [], planrules: [],
+    resources: [], bids: [], projects: [], ncrs: [], safety: [], timesheets: [], plans: [], pos: [], costs: [], prices: [], settings: [], dailies: [], punch: [], meetings: [], avl: [], qms: [], planrules: [], projfin: [],
   });
 
   /* Build the 4 EPC phases for a new project from its dates and budget */
@@ -531,6 +538,13 @@
         || (b.o.amount - a.o.amount) || (b.o.forecast - a.o.forecast));
   };
 
+  /* bids still to be handed in: overdue, or due within `days` — what someone can act on today; soonest first */
+  PM.bidsDueSoon = (bids, T, days = 14) => bids
+    .filter((b) => b.result === 'pending' && !b.dates.submit && b.dueDate && PM.propOf(b).work !== 'complete' && PM.diffDays(T, b.dueDate) <= days)
+    .sort((a, b) => String(a.dueDate).localeCompare(String(b.dueDate)));
+  // a span of days that a mistyped date (2569 for 2026, 0026) cannot push into the averages: 0 … 3 years
+  const sane = (d) => d != null && isFinite(d) && d >= 0 && d <= 1095;
+
   PM.bidStats = function (bids, from, to) {
     const list = bids.filter((b) => (!from || b.dates.inquiry >= from) && (!to || b.dates.inquiry <= to));
     const reached = {};
@@ -544,13 +558,13 @@
           const z = next ? b.dates[next.key] : b.result === 'won' || b.result === 'lost' ? b.resultDate : null;
           return a && z ? PM.diffDays(a, z) : null;
         })
-        .filter((v) => v != null);
+        .filter(sane);
       return { key: s.key, label: next ? s.label : 'Submit → Award', avg: avg(vals), n: vals.length };
     });
     const submitted = list.filter((b) => b.dates.submit);
     const dated = submitted.filter((b) => !b.submitAssumed); // a date we assumed says nothing about timing
     const onTime = dated.filter((b) => !b.dueDate || b.dates.submit <= b.dueDate).length;
-    const cycles = dated.map((b) => PM.diffDays(b.dates.inquiry, b.dates.submit));
+    const cycles = dated.filter((b) => b.dates.inquiry).map((b) => PM.diffDays(b.dates.inquiry, b.dates.submit)).filter(sane);
     const won = list.filter((b) => b.result === 'won');
     const lost = list.filter((b) => b.result === 'lost');
     const pending = list.filter((b) => b.result === 'pending');

@@ -47,6 +47,7 @@
     'qms.edit': { label: 'เพิ่ม / แก้ไขบันทึก ISO 9001 (เอกสาร · Audit · CAR · สอบเทียบ · อบรม · ประเมินผู้ขาย · เสียงลูกค้า · ทบทวนโดยฝ่ายบริหาร)', roles: ['admin', 'dept_manager', 'project_manager', 'engineer', 'doc_control'] },
     'qms.delete': { label: 'ลบบันทึก ISO 9001 — บังคับในฐานข้อมูล', roles: ['admin', 'dept_manager'] },
     'qms.audit': { label: 'ดูประวัติการแก้ไขข้อมูล (Audit trail) — บังคับในฐานข้อมูล', roles: ['admin', 'dept_manager'] },
+    'project.finance': { label: 'เห็นตัวเงินของโครงการ: Plan Revenue (มูลค่าสัญญา) · Plan cost · ต้นทุนสะสม · งวดเงิน · Margin · WIP/Accrued · รายได้สะสม (Margin · WIP/Accrued · รายได้สะสม บังคับในฐานข้อมูล)', roles: ['admin', 'dept_manager', 'project_manager', 'engineer'] },
     'cost.edit': { label: 'บันทึก / แก้ไขค่าใช้จ่ายโครงการ (Actual cost)', roles: ['admin', 'dept_manager', 'project_manager'] },
     'roles.manage': { label: 'กำหนด Role ให้ผู้ใช้ (ยกเว้น Role ของตัวเอง และ Role ที่สูงกว่า — ดูกติกาด้านล่างตาราง)', roles: ['admin', 'dept_manager', 'project_manager'] },
     'users.delete': { label: 'ลบบัญชีผู้ใช้', roles: ['admin'] },

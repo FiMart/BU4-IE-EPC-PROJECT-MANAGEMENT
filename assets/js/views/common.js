@@ -621,6 +621,7 @@
       startDate: T, endDate: PM.addDays(T, 365), pm: '', status: 'active', bidId: fromBid ? fromBid.id : null, phases: null, progressLog: [],
       sales: fromBid ? fromBid.sales || '' : '', salesName: fromBid ? fromBid.salesName || '' : '', costMode: 'ledger',
     };
+    const fin = PM.seesProjectFinance(); // without it the money fields are left out and the figures stay as they are
     const planNow = p.phases ? PM.sum(p.phases, (ph) => ph.budget || 0) : p.budget;
     const actualNow = p.phases ? PM.sum(p.phases, (ph) => ph.actualCost || 0) : 0;
     const body = `
@@ -634,9 +635,10 @@
       ${U.field('PO ลูกค้า (PO No.)', 'clientPo', p.clientPo || '', { type: 'textarea', rows: 2, hint: 'มีหลายเลขใส่บรรทัดละเลข' })}
       ${U.field('Plant / Contact', 'plant', p.plant || '', { placeholder: 'เช่น MOC, ROC, TPC', hint: 'โรงงานหรือหน้างานของลูกค้า และผู้ติดต่อ' })}
       ${U.field('Eng / Tech — ทีมงาน', 'engTech', p.engTech || '', { full: true, placeholder: "เช่น P'Pong / Montree / Phet" })}
+      ${!fin ? '<p class="full muted" style="margin:0">มูลค่าสัญญา · Plan cost · ต้นทุนจริง กรอกและดูได้เฉพาะ Admin · Department Manager · Project Manager · Engineer</p>' : `
       ${U.field('มูลค่าสัญญา (THB)', 'contractValue', p.contractValue, { type: 'number', min: 0, step: 'any' })}
       ${U.field('Plan cost — งบประมาณต้นทุน (THB)', 'budget', planNow, { type: 'number', min: 0, step: 'any', hint: isNew ? 'ระบบแบ่งให้ E / P / C / Closing อัตโนมัติ (แก้รายละเอียดได้ที่ "ต้นทุน Plan / Actual")' : 'ถ้าเปลี่ยน ระบบปรับงบของแต่ละ phase ตามสัดส่วนเดิม' })}
-      ${isNew ? '' : `<label><span>Actual cost — ต้นทุนจริง (THB)</span><input value="${esc(U.num(actualNow))}" disabled><small class="muted">รวมจากรายการในแท็บ "ค่าใช้จ่าย" ของโครงการ</small></label>`}
+      ${isNew ? '' : `<label><span>Actual cost — ต้นทุนจริง (THB)</span><input value="${esc(U.num(actualNow))}" disabled><small class="muted">รวมจากรายการในแท็บ "ค่าใช้จ่าย" ของโครงการ</small></label>`}`}
       ${U.field('Start date', 'startDate', p.startDate, { type: 'date', required: true })}
       ${U.field('Finish date', 'endDate', p.endDate, { type: 'date', required: true })}
       ${p.datesEstimated ? '<p class="full neg" style="margin:0">ไฟล์ที่นำเข้าไม่มีวันที่ครบ ระบบตั้งวันที่นี้ชั่วคราว — แก้ให้ถูกแล้วบันทึก</p>' : ''}
@@ -655,7 +657,7 @@
         if (PM.db.projects.some((x) => x.id !== p.id && String(x.code).toUpperCase() === f.code.toUpperCase())) {
           U.alert(`Project No. ${f.code} ถูกใช้แล้ว`); return false;
         }
-        const planChanged = p.phases && Math.round(f.budget) !== Math.round(planNow);
+        const planChanged = p.phases && f.budget !== undefined && Math.round(f.budget) !== Math.round(planNow);
         // names are kept next to the ids so they still show offline
         const names = Object.assign({ pmName: V.personLabel(f.pm, p.pm, p.pmName) }, V.resolveSales(f.salesName, p));
         if (p.datesEstimated && (f.startDate !== p.startDate || f.endDate !== p.endDate)) delete p.datesEstimated; // someone has now set the real dates

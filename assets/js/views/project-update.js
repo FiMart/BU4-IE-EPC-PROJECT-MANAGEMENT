@@ -184,13 +184,13 @@
     if (!rows.length) return filtered
       ? '<p class="empty">ไม่พบโครงการที่ตรงกับคำค้นหา / ตัวกรอง — <button type="button" class="link-btn" data-action="clear-filters">ล้างตัวกรอง</button></p>'
       : '<p class="empty">ไม่มีโครงการในมุมมองนี้</p>';
-    const can = PM.can('project.update');
-    return `<table class="tbl pu-table"><thead><tr><th class="num">No.</th><th>Project</th><th>PO ลูกค้า</th><th class="num">Cost in Project</th><th>Start – End</th><th>Plant / Contact</th><th>Eng / Tech</th><th>Activity &amp; Progress</th><th>Remark</th><th>Payment / Invoice</th></tr></thead><tbody>
+    const can = PM.can('project.update'), fin = PM.seesProjectFinance();
+    return `<table class="tbl pu-table"><thead><tr><th class="num">No.</th><th>Project</th><th>PO ลูกค้า</th>${fin ? '<th class="num">Cost in Project</th>' : ''}<th>Start – End</th><th>Plant / Contact</th><th>Eng / Tech</th><th>Activity &amp; Progress</th><th>Remark</th><th>Payment / Invoice</th></tr></thead><tbody>
       ${PM.projectListSort(rows).map(({ p }, i) => `<tr class="click${p.status === 'closed' ? ' pu-closed' : ''}" data-id="${esc(p.id)}">
         <td class="num">${i + 1}</td>
         <td class="pu-name"><span class="title">${esc(p.code)}</span><small>${esc(p.name)}</small>${p.status === 'closed' ? U.badge('good', 'Completed') : p.status === 'onhold' ? U.badge('warning', 'On hold') : ''}</td>
         <td class="pu-po">${text(p.clientPo) || '–'}</td>
-        <td class="num">${planCost(p) ? U.num(planCost(p)) : '–'}</td>
+        ${fin ? `<td class="num">${planCost(p) ? U.num(planCost(p)) : '–'}</td>` : ''}
         <td class="nowrap">${U.date(p.startDate)}<small>${U.date(p.endDate)}</small>${p.datesEstimated ? '<small class="neg" title="ไฟล์ที่นำเข้าไม่มีวันที่ ระบบตั้งชั่วคราว แก้ได้ที่แก้ไขโครงการ">วันที่ชั่วคราว</small>' : ''}</td>
         <td>${esc(p.plant || '–')}</td>
         <td class="pu-team">${esc(p.engTech || '–')}</td>
@@ -202,12 +202,12 @@
   PM.projectListPrint = function (rows) {
     const P = PM.printDoc, win = P.open();
     if (!win) return;
-    const list = PM.projectListSort(rows), nl = (s) => esc(lines(s)).replace(/\n/g, '<br>');
+    const list = PM.projectListSort(rows), nl = (s) => esc(lines(s)).replace(/\n/g, '<br>'), fin = PM.seesProjectFinance();
     const part = (h, v) => (lines(v) ? `<b>${h}</b><br>${nl(v)}<br>` : '');
     const body = list.map(({ p }, i) => {
       const u = p.update || {};
       const pay = (p.payTerms || []).map((t) => { const l = `${U.num(t.pct, t.pct % 1 ? 1 : 0)}% ${esc(t.text || '')}`; return PM.payTermState(p, t).done ? `<s>${l}</s>` : l; }).concat(lines(p.payNote) ? [nl(p.payNote)] : []).join('<br>');
-      return `<tr class="${p.status === 'closed' ? 'done' : ''}"><td class="r">${i + 1}</td><td>${esc(p.code)}</td><td>${esc(p.name)}</td><td>${nl(p.clientPo)}</td><td class="r">${planCost(p) ? U.num(planCost(p), 2) : ''}</td><td class="n">${U.date(p.startDate)}</td><td class="n">${U.date(p.endDate)}</td><td>${esc(p.plant || '')}</td><td>${esc(p.engTech || '')}</td><td>${p.status === 'closed' && !lines(u.activity) ? 'Completed' : part('Activity', u.activity) + part('Next', u.next)}</td><td>${nl(u.remark)}</td><td>${pay}</td></tr>`;
+      return `<tr class="${p.status === 'closed' ? 'done' : ''}"><td class="r">${i + 1}</td><td>${esc(p.code)}</td><td>${esc(p.name)}</td><td>${nl(p.clientPo)}</td>${fin ? `<td class="r">${planCost(p) ? U.num(planCost(p), 2) : ''}</td>` : ''}<td class="n">${U.date(p.startDate)}</td><td class="n">${U.date(p.endDate)}</td><td>${esc(p.plant || '')}</td><td>${esc(p.engTech || '')}</td><td>${p.status === 'closed' && !lines(u.activity) ? 'Completed' : part('Activity', u.activity) + part('Next', u.next)}</td><td>${nl(u.remark)}</td><td>${pay}</td></tr>`;
     }).join('');
     P.write(win, {
       title: `Project list ${PM.today()}`, bar: 'Project list for IE_EPC PROJECT', doc: 'project-list',
@@ -215,11 +215,12 @@
       body: `<style>@page { size: A3 landscape; margin: 8mm; } main { max-width: 404mm; }
           table.pl { font-size: 8.5px; table-layout: fixed; } table.pl th, table.pl td { padding: 3px 4px; border: 1px solid #c0ccdc; overflow-wrap: anywhere; }
           table.pl th { background: #f8cbad; color: #0b1b33; text-align: center; } table.pl .n { white-space: nowrap; } table.pl tr.done td { background: #c6efce; }</style>
-        <section class="flow"><table class="pl"><colgroup><col style="width:2.2%"><col style="width:6.4%"><col style="width:11%"><col style="width:6%"><col style="width:5.4%"><col style="width:4%"><col style="width:4%"><col style="width:4%"><col style="width:5.6%"><col style="width:21%"><col style="width:15%"><col style="width:15.4%"></colgroup>
-        <thead><tr><th>NO.</th><th>PROJECT NO.</th><th>PROJECT NAME</th><th>PO NO.</th><th>COST IN PROJECT</th><th>WORK START</th><th>END</th><th>PLANT / CONTACT</th><th>ENG / TECH</th><th>DAILY ACTIVITY &amp; PROGRESS</th><th>REMARK</th><th>PAYMENT / INVOICE</th></tr></thead><tbody>${body}</tbody></table></section>`,
+        <section class="flow"><table class="pl"><colgroup><col style="width:2.2%"><col style="width:6.4%"><col style="width:11%"><col style="width:6%">${fin ? '<col style="width:5.4%">' : ''}<col style="width:4%"><col style="width:4%"><col style="width:4%"><col style="width:5.6%"><col style="width:21%"><col style="width:15%"><col style="width:15.4%"></colgroup>
+        <thead><tr><th>NO.</th><th>PROJECT NO.</th><th>PROJECT NAME</th><th>PO NO.</th>${fin ? '<th>COST IN PROJECT</th>' : ''}<th>WORK START</th><th>END</th><th>PLANT / CONTACT</th><th>ENG / TECH</th><th>DAILY ACTIVITY &amp; PROGRESS</th><th>REMARK</th><th>PAYMENT / INVOICE</th></tr></thead><tbody>${body}</tbody></table></section>`,
     });
   };
   PM.projectListExcel = function (rows) {
+    const fin = PM.seesProjectFinance();
     const cell = (p) => {
       const u = p.update || {};
       const activity = [p.status === 'closed' ? 'Completed' : '', lines(u.activity) ? `Activity\n${lines(u.activity)}` : '', lines(u.next) ? `Next\n${lines(u.next)}` : ''].filter(Boolean).join('\n');
@@ -230,9 +231,75 @@
       filename: `project-list-${PM.today()}`, title: 'Project list for IE_EPC PROJECT', subtitle: `${PM.COMPANY} · ${U.date(PM.today())} · FLS-F-IE-EPC-004`,
       sheets: [{
         name: 'Project list',
-        columns: [{ header: 'NO.', type: 'int', width: 6 }, { header: 'PROJECT NO.', width: 17 }, { header: 'PROJECT NAME', width: 40 }, { header: 'PO NO.', width: 14 }, { header: 'COST IN PROJECT', type: 'number', width: 15 }, { header: 'PLAN REVENUE', type: 'number', width: 15 }, { header: 'WORK START', type: 'date', width: 12 }, { header: 'END START', type: 'date', width: 12 },
-          { header: 'CUSTOMER', width: 20 }, { header: 'PLANT / CONTACT', width: 14 }, { header: 'ENG / TECH', width: 20 }, { header: 'DAILY ACTIVITY & PROGRESS', width: 60 }, { header: 'REMARK', width: 44 }, { header: 'PAYMENT / INVOICE', width: 48 }],
-        rows: PM.projectListSort(rows).map(({ p }, i) => { const c = cell(p); return [i + 1, p.code, p.name, lines(p.clientPo), planCost(p) || '', p.contractValue || '', p.startDate, p.endDate, p.client, p.plant || '', p.engTech || '', c.activity, c.remark, c.pay]; }),
+        // the money columns only for the roles that see a project's money: the file may be passed on
+        columns: [{ header: 'NO.', type: 'int', width: 6 }, { header: 'PROJECT NO.', width: 17 }, { header: 'PROJECT NAME', width: 40 }, { header: 'PO NO.', width: 14 }]
+          .concat(fin ? [{ header: 'COST IN PROJECT', type: 'number', width: 15 }, { header: 'PLAN REVENUE', type: 'number', width: 15 }] : [])
+          .concat([{ header: 'WORK START', type: 'date', width: 12 }, { header: 'END START', type: 'date', width: 12 },
+            { header: 'CUSTOMER', width: 20 }, { header: 'PLANT / CONTACT', width: 14 }, { header: 'ENG / TECH', width: 20 }, { header: 'DAILY ACTIVITY & PROGRESS', width: 60 }, { header: 'REMARK', width: 44 }, { header: 'PAYMENT / INVOICE', width: 48 }]),
+        rows: PM.projectListSort(rows).map(({ p }, i) => { const c = cell(p); return [i + 1, p.code, p.name, lines(p.clientPo)].concat(fin ? [planCost(p) || '', p.contractValue || ''] : []).concat([p.startDate, p.endDate, p.client, p.plant || '', p.engTech || '', c.activity, c.remark, c.pay]); }),
+      }],
+    });
+  };
+
+  /* ---------- Monitor view: the accounting file's columns ----------
+     Plan Revenue = contract value · Plan Cost-VC = plan cost · POC = progress · Accum. Cost = actual cost — on the project.
+     Accum. Revenue · WIP/Accrued · Margin come from the Monitor file into 'projfin' (PM.projFin): the database sends them to
+     Admin · Dept Manager · PM · Engineer only — the same roles that see this view at all (PM.seesProjectFinance). */
+  const jobOf = (p) => p.jobNo || (/^JB\d/i.test(p.code) ? p.code : '');
+  const orderOf = (p) => (p.code && p.code !== jobOf(p) ? p.code : '');
+  const ledgerStatus = (p) => (p.status === 'closed' ? 'Closed' : p.status === 'onhold' ? 'On hold' : 'Released');
+  const monitorSort = (rows) => rows.slice().sort((a, b) => (jobOf(a.p) ? 0 : 1) - (jobOf(b.p) ? 0 : 1) || String(jobOf(a.p) || a.p.code).localeCompare(String(jobOf(b.p) || b.p.code)));
+  const numOr = (v) => (v == null || v === '' || !isFinite(Number(v)) ? null : Number(v));
+  const monitorRow = (r) => {
+    const p = r.p, m = r.m || PM.projectMetrics(p), plan = planCost(p), rev = Number(p.contractValue) || 0, f = PM.projFin(p) || {};
+    const accRev = numOr(f.accRevenue), margin = numOr(f.margin);
+    const marginPct = numOr(f.marginPct) != null ? numOr(f.marginPct) / 100 : margin != null && accRev ? margin / accRev : null;
+    return { p, job: jobOf(p), order: orderOf(p), rev, plan, cMargin: rev && plan ? (rev - plan) / rev : null, poc: m.act, ac: m.ac, left: plan - m.ac,
+      accRev, wip: numOr(f.wip), margin, marginPct, asOf: f.asOf || '' };
+  };
+  const signed = (v) => (v == null ? '–' : `<span class="${v < 0 ? 'neg' : ''}">${v < 0 ? '−' : ''}${U.num(Math.abs(Math.round(v)))}</span>`);
+  PM.monitorTable = function (rows, filtered) {
+    if (!PM.seesProjectFinance()) return '<p class="empty">ตัวเลขของโครงการเห็นเฉพาะ Admin · Department Manager · Project Manager · Engineer</p>';
+    if (!rows.length) return filtered
+      ? '<p class="empty">ไม่พบโครงการที่ตรงกับคำค้นหา / ตัวกรอง — <button type="button" class="link-btn" data-action="clear-filters">ล้างตัวกรอง</button></p>'
+      : '<p class="empty">ไม่มีโครงการในมุมมองนี้</p>';
+    const list = monitorSort(rows).map(monitorRow);
+    const sum = (k) => PM.sum(list, (x) => x[k] || 0);
+    const has = (k) => list.some((x) => x[k] != null);
+    const money = (v) => (v ? U.num(Math.round(v)) : '–');
+    const sumMarginPct = sum('accRev') && has('margin') ? sum('margin') / sum('accRev') : null;
+    return `<table class="tbl mon-table"><thead><tr><th class="num">No.</th><th>Job (Odoo)</th><th>Order</th><th>Customer</th><th>Description</th><th>Work Start</th><th>Work End</th><th>Status</th>
+      <th class="num">Plan Revenue</th><th class="num">Plan Cost-VC</th><th class="num" title="(Plan Revenue − Plan Cost) ÷ Plan Revenue">cMargin (Plan)</th><th class="num">POC</th><th class="num">Accum. Cost</th><th class="num" title="Plan Cost − Accum. Cost">คงเหลือจาก Plan</th>
+      <th class="num mon-fin" title="จากไฟล์ Monitor">Accum. Revenue</th><th class="num mon-fin" title="จากไฟล์ Monitor">WIP / Accrued</th><th class="num mon-fin" title="จากไฟล์ Monitor">Margin</th><th class="num mon-fin" title="Margin ÷ Accum. Revenue (หรือ % จากไฟล์)">Margin %</th></tr></thead><tbody>
+      ${list.map((x, i) => `<tr class="click${x.p.status === 'closed' ? ' pu-closed' : ''}" data-id="${esc(x.p.id)}">
+        <td class="num">${i + 1}</td><td class="nowrap">${esc(x.job || '–')}</td><td class="nowrap">${esc(x.order || '–')}</td>
+        <td class="mon-cust">${esc(x.p.client || '–')}</td><td class="mon-desc">${esc(x.p.name)}</td>
+        <td class="nowrap">${U.date(x.p.startDate)}</td><td class="nowrap">${U.date(x.p.endDate)}</td>
+        <td>${x.p.status === 'closed' ? U.badge('neutral', 'Closed') : x.p.status === 'onhold' ? U.badge('warning', 'On hold') : U.badge('info', 'Released')}</td>
+        <td class="num">${money(x.rev)}</td><td class="num">${money(x.plan)}</td><td class="num">${x.cMargin == null ? '–' : U.pct(x.cMargin)}</td>
+        <td class="num">${U.pct(x.poc)}</td><td class="num">${money(x.ac)}</td>
+        <td class="num${x.left < 0 ? ' neg' : ''}">${x.plan || x.ac ? (x.left < 0 ? '−' : '') + U.num(Math.abs(Math.round(x.left))) : '–'}</td>
+        <td class="num mon-fin">${signed(x.accRev)}</td><td class="num mon-fin">${signed(x.wip)}</td><td class="num mon-fin">${signed(x.margin)}</td>
+        <td class="num mon-fin${x.marginPct != null && x.marginPct < 0 ? ' neg' : ''}">${x.marginPct == null ? '–' : U.pct(x.marginPct)}</td></tr>`).join('')}</tbody>
+      <tfoot><tr><td></td><td colspan="7">รวม ${list.length} โครงการ</td><td class="num">${money(sum('rev'))}</td><td class="num">${money(sum('plan'))}</td><td class="num">${sum('rev') ? U.pct((sum('rev') - sum('plan')) / sum('rev')) : '–'}</td><td></td><td class="num">${money(sum('ac'))}</td><td class="num${sum('left') < 0 ? ' neg' : ''}">${money(sum('left'))}</td>
+        <td class="num mon-fin">${has('accRev') ? signed(sum('accRev')) : '–'}</td><td class="num mon-fin">${has('wip') ? signed(sum('wip')) : '–'}</td><td class="num mon-fin">${has('margin') ? signed(sum('margin')) : '–'}</td><td class="num mon-fin">${sumMarginPct == null ? '–' : U.pct(sumMarginPct)}</td></tr></tfoot></table>`;
+  };
+  /* the same columns to Excel; dropped back on the import it updates the projects again */
+  PM.monitorExcel = function (rows) {
+    if (!PM.seesProjectFinance()) return;
+    const list = monitorSort(rows).map(monitorRow);
+    const cols = [{ header: 'No.', type: 'int', width: 6 }, { header: 'Job (Odoo)', width: 17 }, { header: 'Order', width: 15 }, { header: 'Customer name', width: 34 }, { header: 'Description', width: 44 },
+      { header: 'Work Start', type: 'date', width: 12 }, { header: 'Work End', type: 'date', width: 12 }, { header: 'Status', width: 10 }, { header: 'Plan Revenue', type: 'number', width: 15 }, { header: 'Plan Cost-VC', type: 'number', width: 15 },
+      { header: 'cMargin (Plan) %', type: 'number', width: 12 }, { header: 'POC', width: 8 }, { header: 'Accum. Cost', type: 'number', width: 15 }, { header: 'Plan − Accum. Cost', type: 'number', width: 16 },
+      { header: 'Accum. Revenue', type: 'number', width: 15 }, { header: 'WIP / Accrued', type: 'number', width: 15 }, { header: 'Margin', type: 'number', width: 15 }, { header: 'Margin %', type: 'number', width: 10 }];
+    const r2 = (v) => (v == null ? '' : Math.round(v * 100) / 100);
+    PM.xport.excel({
+      filename: `monitor-${PM.today()}`, title: 'Monitor — Plan vs Accum. Cost · WIP / Accrued', subtitle: `${PM.COMPANY} · ${U.date(PM.today())} · ข้อมูลลับ: Admin · Dept Manager · PM · Engineer`,
+      sheets: [{
+        name: 'Monitor', columns: cols,
+        rows: list.map((x, i) => [i + 1, x.job, x.order, x.p.client || '', x.p.name, x.p.startDate, x.p.endDate, ledgerStatus(x.p), x.rev || '', x.plan || '',
+          x.cMargin == null ? '' : Math.round(x.cMargin * 1000) / 10, `${Math.round(x.poc * 100)}%`, Math.round(x.ac * 100) / 100 || '', Math.round(x.left * 100) / 100,
+          r2(x.accRev), r2(x.wip), r2(x.margin), x.marginPct == null ? '' : Math.round(x.marginPct * 1000) / 10]),
       }],
     });
   };

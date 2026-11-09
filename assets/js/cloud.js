@@ -7,7 +7,9 @@
   const U = PM.ui;
   const C = (PM.cloud = { enabled: false, state: 'idle', blocking: false });
   const TABLE = 'app_records';
-  const COLLS = ['bids', 'projects', 'ncrs', 'safety', 'resources', 'levels', 'timesheets', 'plans', 'pos', 'costs', 'prices', 'settings', 'dailies', 'punch', 'meetings', 'avl', 'qms', 'planrules'];
+  const COLLS = ['bids', 'projects', 'ncrs', 'safety', 'resources', 'levels', 'timesheets', 'plans', 'pos', 'costs', 'prices', 'settings', 'dailies', 'punch', 'meetings', 'avl', 'qms', 'planrules', 'projfin'];
+  /* rows the database shows to some roles only: never parked under 'meta', which every role can read */
+  const SECRET = ['bidprices', 'projfin'];
   // collections accepted by every version of data.sql
   const LEGACY = ['bids', 'projects', 'ncrs', 'safety', 'resources', 'levels', 'timesheets'];
   /* Collections the cloud table doesn't accept yet (older data.sql): their records are "parked" as
@@ -72,7 +74,10 @@
     COLLS.forEach((c) => (db[c] || []).forEach((r) => {
       if (r == null || r.id == null) return;
       (c === 'bids' ? bidRecords(r, all) : [{ collection: c, id: String(r.id), data: r }]).forEach((rec) => {
-        if (outdated.has(rec.collection)) rec = { collection: 'meta', id: PARK + rec.collection + '/' + rec.id, data: rec.data };
+        if (outdated.has(rec.collection)) {
+          if (SECRET.includes(rec.collection)) return; // stays in this browser until data.sql is re-run
+          rec = { collection: 'meta', id: PARK + rec.collection + '/' + rec.id, data: rec.data };
+        }
         map.set(key(rec.collection, rec.id), rec);
       });
     }));
@@ -91,7 +96,7 @@
 
   /* collections this role may not write (data.sql refuses them too): never sent, the cloud copy wins on the next load.
      Bid price rows: only Admin / Sales ever hold them (the database sends them to no one else). */
-  const readOnly = (c) => (c === 'timesheets' && !PM.can('timesheet.edit')) || (c === 'bidprices' && !PM.seesBidPrices());
+  const readOnly = (c) => (c === 'timesheets' && !PM.can('timesheet.edit')) || (c === 'bidprices' && !PM.seesBidPrices()) || (c === 'projfin' && !PM.seesProjectFinance());
 
   function diff() {
     const cur = {}, ups = [];
@@ -107,9 +112,20 @@
   }
   const hasLocalChanges = () => { const d = diff(); return d.ups.length + d.dels.length > 0; };
 
+  /* A project's accounting figures go up only once the database guards them: data.sql v1.78 adds can_see_project_finance()
+     and the policy that uses it. Without it the table would take the rows and show them to every role — so they wait here. */
+  let finReady = null;
+  async function secretReady() {
+    if (finReady || !(PM.db.projfin || []).length) return;
+    const { error } = await client().rpc('can_see_project_finance');
+    finReady = !error;
+    if (finReady) outdated.delete('projfin'); else outdated.add('projfin');
+  }
+
   /* ---------- network operations ---------- */
   async function push() {
     if (!synced) return 0; // never upload before the cloud copy has been loaded once
+    await secretReady();
     const { ups, dels } = diff();
     if (!ups.length && !dels.length) return 0;
     setState('saving');
@@ -205,6 +221,11 @@
       if (p) { b.value = p.value; b.margin = p.margin; b.files = p.files || []; }
       else if (!hasPrice(b)) { b.value = null; b.margin = null; b.files = []; }
     });
+    // accounting figures still waiting for data.sql (see secretReady) are kept, not dropped by the cloud copy
+    if (outdated.has('projfin') && PM.seesProjectFinance()) {
+      const inCloud = new Set(db.projfin.map((x) => x.id));
+      (PM.db.projfin || []).forEach((x) => { if (!inCloud.has(x.id)) db.projfin.push(x); });
+    }
     const changed = Object.keys(nb).length !== Object.keys(base).length || Object.keys(nb).some((k) => nb[k] !== base[k]);
     base = nb; ords = no; saveBase();
     synced = true;
@@ -225,12 +246,14 @@
     denied: ['warn', 'ไม่มีสิทธิ์บันทึกข้อมูลบน Cloud (บัญชียังไม่มี Role)'],
     forbidden: ['warn', 'Import บน Cloud ได้เฉพาะ Admin, Department Manager และ Project Manager (Reset เฉพาะ Admin)'],
     outdated: ['ok', 'บันทึกบน Cloud แล้ว (โหมดสำรอง — แนะนำรัน supabase/data.sql อีกครั้ง)'],
+    finwait: ['warn', 'บันทึกแล้ว ยกเว้น Margin / WIP / รายได้สะสม — ให้ Admin รัน supabase/data.sql อีกครั้ง'],
     waiting: ['warn', 'ยังเชื่อมต่อ Cloud ไม่ได้ — กำลังลองใหม่'],
     setup: ['warn', 'ยังไม่ได้ติดตั้ง Cloud (รัน supabase/data.sql) — ข้อมูลเก็บเฉพาะเครื่องนี้'],
     local: ['warn', 'ข้อมูลเก็บเฉพาะเครื่องนี้'],
   };
   function setState(s, detail) {
-    if (s === 'saved' && outdated.size) { s = 'outdated'; detail = 'Saved in backup mode (parked under meta) — the cloud table does not accept yet: ' + Array.from(outdated).join(', ') + '. Re-run supabase/data.sql.'; }
+    if (s === 'saved' && outdated.has('projfin')) { s = 'finwait'; detail = 'Margin / WIP / revenue figures stay in this browser until supabase/data.sql (v1.78) is re-run — then they go up by themselves.'; }
+    else if (s === 'saved' && outdated.size) { s = 'outdated'; detail = 'Saved in backup mode (parked under meta) — the cloud table does not accept yet: ' + Array.from(outdated).join(', ') + '. Re-run supabase/data.sql.'; }
     C.state = s;
     C.detail = detail || '';
     // thin progress bar at the top of the page while talking to the cloud (index.html .top-progress)
@@ -311,6 +334,7 @@
     setState('saving');
     return enqueue(async () => {
       try {
+        await secretReady();
         const send = async () => {
           const list = records(PM.db, true).map((r, i) => ({ collection: r.collection, id: r.id, data: r.data, ord: i }));
           return { list, error: (await client().rpc('app_replace_all', { payload: list })).error };

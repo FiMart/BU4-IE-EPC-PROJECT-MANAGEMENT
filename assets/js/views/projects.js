@@ -47,9 +47,11 @@
     const pmLabel = (k) => (k === '-' ? 'ไม่ระบุ PM' : 'PM: ' + V.pmName(db.projects.find((p) => pmOf(p) === k)));
     const opt = (v, label, cur) => `<option value="${esc(v)}"${cur === v ? ' selected' : ''}>${esc(label)}</option>`;
 
+    const fin = PM.seesProjectFinance(); // the Monitor view is all money: Admin · Dept Manager · PM · Engineer
+    if (state.view === 'monitor' && !fin) state.view = 'kpi';
     el.innerHTML = `
       <div class="row">
-        ${V.seg('view', [{ key: 'kpi', label: 'ภาพรวม KPI' }, { key: 'update', label: 'Progress Update' }], state.view)}
+        ${V.seg('view', [{ key: 'kpi', label: 'ภาพรวม KPI' }, { key: 'update', label: 'Progress Update' }].concat(fin ? [{ key: 'monitor', label: 'Monitor' }] : []), state.view)}
         ${V.seg('status', [{ key: 'active', label: `ดำเนินการอยู่ ${activeRows.length}` }, { key: 'closed', label: `ปิดแล้ว ${all.length - activeRows.length}` }, { key: 'all', label: `ทั้งหมด ${all.length}` }], state.status)}
         <input type="search" id="prj-q" placeholder="ค้นหา Project No. / ชื่อ / ลูกค้า / PO / Plant / ทีมงาน…" value="${esc(state.q)}" aria-label="ค้นหาโครงการ" style="width:300px">
         <span class="spacer"></span>
@@ -69,7 +71,13 @@
           <p>คอลัมน์ตามฟอร์ม FLS-F-IE-EPC-004 · คลิกแถวเพื่อเปิดโครงการ · Payment ที่ขีดฆ่า = วางบิลแล้ว · ไฟล์ Excel ที่ส่งออก แก้แล้วนำเข้ากลับได้</p></div>
         <div class="card-b flush table-wrap">${PM.projectListTable(rows, filtered)}</div>
       </div>` : ''}
-      ${state.view === 'update' ? '' : `${state.status === 'closed' ? '' /* a closed project is in no phase: the cards would count other projects than the table below */ : V.flow(PM.PHASES.map((ph) => {
+      ${state.view === 'monitor' ? `<div class="card">
+        <div class="card-h pu-head"><h2>Monitor — Plan เทียบต้นทุนสะสม</h2><span class="chip">${filtered ? `พบ ${rows.length} จาก ${byStatus.length} โครงการ` : `${rows.length} โครงการ`}</span><span class="spacer"></span>
+          <button class="btn sm" data-action="mon-excel">⬇ Excel</button>
+          <p>คอลัมน์ตามไฟล์ Monitor WIP/Accrued · อัปเดตโดยวางไฟล์ Monitor ที่ปุ่มนำเข้า Excel · ต้นทุนคงเหลือติดลบ = ต้นทุนสะสมเกิน Plan cost · Accum. Revenue · WIP / Accrued · Margin มาจากไฟล์ Monitor ล่าสุด · เห็นเฉพาะ Admin · Dept Manager · PM · Engineer</p></div>
+        <div class="card-b flush table-wrap">${PM.monitorTable(rows, filtered)}</div>
+      </div>` : ''}
+      ${state.view !== 'kpi' ? '' : `${state.status === 'closed' ? '' /* a closed project is in no phase: the cards would count other projects than the table below */ : V.flow(PM.PHASES.map((ph) => {
         const inPh = activeRows.filter((r) => r.m.current && r.m.current.key === ph.key);
         const avgAct = activeRows.length ? PM.sum(activeRows, (r) => r.m.phases.find((x) => x.key === ph.key).actualPct) / activeRows.length : null;
         return { label: ph.label, th: ph.th, big: `${inPh.length} <small class="muted" style="font-size:12px">โครงการ</small>`,
@@ -90,9 +98,9 @@
       </div>`}`;
 
     // both ratios of a project on one plot, judged against 1.0 — reads "late and over budget" at a glance
-    if (state.view !== 'update') PM.charts.quadrant(document.getElementById('c-health'), PM.healthQuadrant(rows.filter((r) => r.p.status !== 'closed')));
+    if (state.view === 'kpi') PM.charts.quadrant(document.getElementById('c-health'), PM.healthQuadrant(rows.filter((r) => r.p.status !== 'closed')));
     // ahead of / behind plan, in progress points — a diverging bar around 0
-    if (state.view !== 'update') PM.charts.diverging(document.getElementById('c-gap'), {
+    if (state.view === 'kpi') PM.charts.diverging(document.getElementById('c-gap'), {
       neg: { label: 'ช้ากว่าแผน', color: 'var(--s2)' }, pos: { label: 'เร็วกว่าแผน', color: 'var(--s1)' },
       items: rows.filter((r) => r.p.status !== 'closed' && r.m.plan != null).map((r) => {
         const gap = (r.m.act - r.m.plan) * 100;
@@ -121,6 +129,7 @@
         if (act === 'import') PM.sheetImport.openProjects(rerender);
         if (act === 'list-print') PM.projectListPrint(rows);
         if (act === 'list-excel') PM.projectListExcel(rows);
+        if (act === 'mon-excel') PM.monitorExcel(rows);
         if (act === 'pu-edit') PM.projectUpdateForm(PM.find('projects', a.dataset.id), rerender);
         if (act === 'clear-filters') { Object.assign(state, { phase: '', sales: '', pm: '', health: '', q: '' }); rerender(); }
         if (act.startsWith('phase:')) { const k = act.slice(6); state.phase = state.phase === k ? '' : k; rerender(); }
@@ -139,9 +148,10 @@
       : '<p class="empty">ไม่มีโครงการในมุมมองนี้</p>';
     // Health sits right after Project (always in view without scrolling); SPI / CPI are shown under it as the reason
     const ratio = (label, v) => `<span class="hm-${U.health(v)}">${label} ${U.ratio(v)}</span>`;
+    const fin = PM.seesProjectFinance();
     return `<table class="tbl prj-table"><thead><tr>
       <th>Project</th><th>Health</th><th>Phase</th><th>Progress (actual vs plan)</th>
-      <th class="num">Contract / Cost</th><th class="num" title="NCR ที่ยังเปิด / ทั้งหมด">NCR</th><th class="num">LTIFR</th><th>Client / PM / Sales</th></tr></thead><tbody>
+      ${fin ? '<th class="num">Contract / Cost</th>' : ''}<th class="num" title="NCR ที่ยังเปิด / ทั้งหมด">NCR</th><th class="num">LTIFR</th><th>Client / PM / Sales</th></tr></thead><tbody>
       ${rows.map(({ p, m }) => {
         const h = p.status === 'closed' ? 'neutral' : U.worst(U.health(m.spi), U.health(m.cpi));
         return `<tr class="click" data-id="${esc(p.id)}">
@@ -150,8 +160,8 @@
             <small>${ratio('SPI', m.spi)} · ${ratio('CPI', m.cpi)}</small></td>
           <td class="nowrap">${m.current ? `<span class="chip">${esc(U.phaseLabel(m.current.key))}</span>` : '<span class="chip">Closed</span>'}<small>จบ ${U.date(p.endDate)}</small></td>
           <td class="prj-progress"><div class="pbar-wrap">${U.progress(m.act, p.status === 'closed' ? null : m.plan)}<span class="num">${U.pct(m.act)}</span></div></td>
-          <td class="num" data-tip="${esc(`Contract ${U.money(p.contractValue)}\nPlan cost ${U.money(m.bac)}\nActual cost ${U.money(m.ac)}\n${m.ac > m.bac ? 'เกินงบ' : 'คงเหลือ'} ${U.money(Math.abs(m.bac - m.ac))}`)}">${U.money(p.contractValue)}
-            <small>Plan ${U.money(m.bac)}</small><small class="${m.ac > m.bac ? 'neg' : ''}">Actual ${U.money(m.ac)} · ${U.pct(m.bac ? m.ac / m.bac : null)}</small></td>
+          ${fin ? `<td class="num" data-tip="${esc(`Contract ${U.money(p.contractValue)}\nPlan cost ${U.money(m.bac)}\nActual cost ${U.money(m.ac)}\n${m.ac > m.bac ? 'เกินงบ' : 'คงเหลือ'} ${U.money(Math.abs(m.bac - m.ac))}`)}">${U.money(p.contractValue)}
+            <small>Plan ${U.money(m.bac)}</small><small class="${m.ac > m.bac ? 'neg' : ''}">Actual ${U.money(m.ac)} · ${U.pct(m.bac ? m.ac / m.bac : null)}</small></td>` : ''}
           <td class="num">${m.ncrOpen} <small style="display:inline">/ ${m.ncrTotal}</small></td>
           <td class="num">${U.num(m.ltifr, 2)}</td>
           <td class="prj-client">${esc(p.client)}${p.plant && p.plant !== p.client ? `<small>Plant: ${esc(p.plant)}</small>` : ''}<small>PM: ${esc(V.pmName(p))}</small><small>Sales: ${esc(V.salesName(p))}</small>${p.engTech ? `<small>ทีม: ${esc(p.engTech)}</small>` : ''}</td></tr>`;

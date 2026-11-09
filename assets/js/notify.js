@@ -50,7 +50,8 @@
 
     active.forEach((p) => {
       const m = PM.projectMetrics(p), mine = mineProject(p), at = (tab) => `#/projects/${p.id}${tab ? '/' + tab : ''}`;
-      const o = PM.costOverrun ? PM.costOverrun(m, false) : null;
+      const fin = PM.seesProjectFinance(); // overrun amounts and unpaid invoices: the roles that see a project's money
+      const o = fin && PM.costOverrun ? PM.costOverrun(m, false) : null;
       if (o && o.status === 'over') add({ id: `over-${p.id}`, level: 'critical', icon: 'coins', title: `${p.code} ต้นทุนเกินงบแล้ว +${U.money(o.amount)}`, sub: `${p.name} · ใช้ไป ${U.pct(o.used)} ของงบ`, href: at('cost'), mine });
       else if (o && o.status === 'forecast') add({ id: `fc-${p.id}`, level: 'warning', icon: 'coins', title: `${p.code} คาดว่าจะเกินงบ +${U.money(o.forecast)}`, sub: `${p.name} · CPI ${U.ratio(m.cpi)}`, href: at('cost'), mine });
       if (p.status !== 'onhold' && m.spi != null && m.spi < 0.9) add({ id: `spi-${p.id}`, level: 'critical', icon: 'clock', title: `${p.code} ช้ากว่าแผน (SPI ${U.ratio(m.spi)})`, sub: `${p.name} · จริง ${U.pct(m.act)} / แผน ${U.pct(m.plan)}`, href: at('timeline'), mine });
@@ -59,7 +60,7 @@
         else if (!x.actual && x.date >= T && PM.diffDays(T, x.date) <= 7) add({ id: `ms7-${x.id}`, level: 'info', icon: 'calendar', title: `Milestone ใน 7 วัน: ${x.name}`, sub: `${p.code} · ${U.date(x.date)}`, href: at('timeline'), mine, date: x.date });
       });
       (p.tasks || []).forEach((t) => { if (PM.taskLate(t, T)) add({ id: `task-${t.id}`, level: 'warning', icon: 'tasks', title: `กิจกรรมล่าช้า: ${t.name}`, sub: `${p.code} · กำหนดเสร็จ ${U.date(t.end)} · ${U.num(t.progress || 0)}%`, href: at('timeline'), mine: mine || I.ids.has(t.owner), date: t.end }); });
-      (p.invoices || []).forEach((i) => { if (PM.invOverdue && PM.invOverdue(i, T)) add({ id: `inv-${i.id}`, level: 'critical', icon: 'coins', title: `ลูกค้าค้างชำระ ${i.no} ${U.money(PM.invNet(i))}`, sub: `${p.code} · ครบกำหนด ${U.date(i.dueDate)}`, href: at('billing'), mine, date: i.dueDate }); });
+      if (fin) (p.invoices || []).forEach((i) => { if (PM.invOverdue && PM.invOverdue(i, T)) add({ id: `inv-${i.id}`, level: 'critical', icon: 'coins', title: `ลูกค้าค้างชำระ ${i.no} ${U.money(PM.invNet(i))}`, sub: `${p.code} · ครบกำหนด ${U.date(i.dueDate)}`, href: at('billing'), mine, date: i.dueDate }); });
       (p.risks || []).forEach((r) => {
         if (!PM.riskOpen || !PM.riskOpen(r)) return;
         const mineR = mine || (I.name && PM.normName(r.owner || '') === I.name);
@@ -156,7 +157,7 @@
       else if (s.desktop && 'Notification' in window && Notification.permission === 'granted') {
         const fresh = items.filter((x) => x.level === 'critical' && !s.seen[x.id] && !s.read[x.id]);
         if (fresh.length) {
-          try { new Notification(fresh.length === 1 ? fresh[0].title : `เรื่องด่วนใหม่ ${fresh.length} เรื่อง`, { body: fresh.length === 1 ? fresh[0].sub : fresh.slice(0, 3).map((x) => x.title).join('\n'), icon: PM.logoUrl && PM.logoUrl() }); } catch (e) { /* not allowed here */ }
+          try { new Notification(fresh.length === 1 ? fresh[0].title : `เรื่องด่วนใหม่ ${fresh.length} เรื่อง`, { body: fresh.length === 1 ? fresh[0].sub : fresh.slice(0, 3).map((x) => x.title).join('\n'), icon: PM.appIconUrl(), badge: PM.appIconUrl() }); } catch (e) { /* not allowed here */ }
         }
       }
       s.seen = {}; items.forEach((x) => (s.seen[x.id] = 1));

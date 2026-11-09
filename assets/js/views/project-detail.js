@@ -19,9 +19,12 @@
     { key: 'safety', label: 'Safety', icon: 'safety', group: 'หน้างานและทีม' },
     { key: 'team', label: 'ทีม & ชั่วโมง', icon: 'people', group: 'หน้างานและทีม' },
   ];
+  // tabs that are a project's money: BOQ prices · expense ledger · VO values · billing — Admin · Dept Manager · PM · Engineer (roles.js → 'project.finance')
+  const MONEY_TABS = ['boq', 'cost', 'changes', 'billing'];
+  const tabsFor = () => TABS.filter((t) => PM.seesProjectFinance() || !MONEY_TABS.includes(t.key));
   const tabsNav = (p, tab) => {
     let last = '';
-    return `<nav class="tabs ptabs" aria-label="ส่วนของโครงการ">${TABS.map((t) => {
+    return `<nav class="tabs ptabs" aria-label="ส่วนของโครงการ">${tabsFor().map((t) => {
       const sep = t.group !== last && last ? '<span class="ptabs-sep" aria-hidden="true"></span>' : '';
       last = t.group;
       return `${sep}<a href="#/projects/${p.id}/${t.key}" class="${t.key === tab ? 'active' : ''}" title="${esc(t.group)}"${t.key === tab ? ' aria-current="page"' : ''}>${PM.illus.svg(t.icon)}<span>${esc(t.label)}</span></a>`;
@@ -37,7 +40,7 @@
       <div><small>ระยะเวลา</small><b>${U.date(p.startDate)} – ${U.date(p.endDate)}</b></div>
       <div class="grow"><small>ความคืบหน้า · จริง ${U.pct(m.act)} / แผน ${U.pct(m.plan)}</small>${U.progress(m.act, p.status === 'closed' ? null : m.plan)}</div>
       <div><small>Phase ปัจจุบัน</small><b>${m.current ? esc(U.phaseLabel(m.current.key)) : 'ปิดโครงการ'}</b></div>
-      <div><small>ใช้งบไป</small><b class="${m.ac > m.bac ? 'neg' : ''}">${U.pct(used)}</b></div>
+      ${PM.seesProjectFinance() ? `<div><small>ใช้งบไป</small><b class="${m.ac > m.bac ? 'neg' : ''}">${U.pct(used)}</b></div>` : ''}
       <div><small>สถานะ</small>${p.status === 'closed' ? U.badge('neutral', 'Closed') : p.status === 'onhold' ? U.badge('warning', 'On hold') : U.badge(h, U.healthLabel[h])}</div>
     </div></div>`;
   }
@@ -45,13 +48,14 @@
   PM.views.project = function (el, params) {
     const p = PM.find('projects', params[0]);
     if (!p) { el.innerHTML = '<div class="callout">ไม่พบโครงการ · <a href="#/projects">กลับไปหน้า Projects</a></div>'; return; }
-    const tab = params[1] || 'overview';
+    const fin = PM.seesProjectFinance();
+    const tab = params[1] && (fin || !MONEY_TABS.includes(params[1])) ? params[1] : 'overview';
     const m = PM.projectMetrics(p);
     const bid = p.bidId && PM.find('bids', p.bidId);
     document.getElementById('page-title').textContent = `${p.code} · ${p.name}`;
     const h = p.status === 'closed' ? 'neutral' : U.worst(U.health(m.spi), U.health(m.cpi));
 
-    const full = tab === 'overview' || !TABS.some((t) => t.key === tab);
+    const full = tab === 'overview' || !tabsFor().some((t) => t.key === tab);
     // the phase whose line items are listed under the phase cards: the one clicked, else the current phase
     const sel = phaseSel[p.id] || (m.current && m.current.key) || 'engineering';
     el.innerHTML = `
@@ -60,15 +64,15 @@
         <span class="spacer"></span>
         ${full ? (p.status === 'closed' ? U.badge('neutral', 'Closed') : p.status === 'onhold' ? U.badge('warning', 'On hold') : U.badge(h, U.healthLabel[h])) : ''}
         ${PM.can('cost.edit') ? '<button class="btn" data-action="new-cost">+ ค่าใช้จ่าย</button>' : ''}
-        <button class="btn" data-action="edit-costs">Plan cost</button>
-        <button class="btn" data-action="report" title="รายงานความคืบหน้าประจำเดือน — พิมพ์ / บันทึก PDF">📄 รายงานประจำเดือน</button>
+        ${fin ? '<button class="btn" data-action="edit-costs">Plan cost</button>' : ''}
+        ${fin ? '<button class="btn" data-action="report" title="รายงานความคืบหน้าประจำเดือน — พิมพ์ / บันทึก PDF">📄 รายงานประจำเดือน</button>' : ''}
         <button class="btn" data-action="edit-project">แก้ไขโครงการ</button>
       </div>
       ${full ? `<div class="card"><div class="card-b">
         <dl class="kv kv-4">
           <dt>Client</dt><dd>${esc(p.client)}</dd>
           <dt>Project Manager</dt><dd>${esc(V.pmName(p))}</dd>
-          <dt>Contract value</dt><dd>${U.money(p.contractValue)}</dd>
+          ${fin ? `<dt>Contract value</dt><dd>${U.money(p.contractValue)}</dd>` : ''}
           <dt>From bid</dt><dd>${bid ? `${esc(bid.code)} ${PM.canSeeBidPrice(bid) ? PM.poFiles.clip(bid.files, `data-action="bid-files" data-id="${esc(bid.id)}"`) : ''}` : '–'}</dd>
           <dt>Start</dt><dd>${U.date(p.startDate)}</dd>
           <dt>Finish</dt><dd>${U.date(p.endDate)}</dd>
@@ -77,9 +81,9 @@
           <dt>PO ลูกค้า</dt><dd>${esc(String(p.clientPo || '–').trim().replace(/\s*\n\s*/g, ', '))}${p.jobNo ? `<small class="muted" style="display:block">Job ${esc(p.jobNo)}</small>` : ''}</dd>
           <dt>Plant / Contact</dt><dd>${esc(p.plant || '–')}</dd>
           <dt>Eng / Tech</dt><dd>${esc(p.engTech || '–')}</dd>
-          <dt>Payment Term</dt><dd>${(p.payTerms || []).length ? `<a href="#/projects/${esc(p.id)}/billing">${esc(PM.paySummary(p))}</a>` : `<a href="#/projects/${esc(p.id)}/billing">ยังไม่ได้ตั้ง</a>`}</dd>
+          ${fin ? `<dt>Payment Term</dt><dd>${(p.payTerms || []).length ? `<a href="#/projects/${esc(p.id)}/billing">${esc(PM.paySummary(p))}</a>` : `<a href="#/projects/${esc(p.id)}/billing">ยังไม่ได้ตั้ง</a>`}</dd>` : ''}
         </dl>
-        ${costStrip(m, PM.poStats(PM.db.pos.filter((po) => po.projectId === p.id)), PM.projectCosts(p.id).length)}
+        ${fin ? costStrip(m, PM.poStats(PM.db.pos.filter((po) => po.projectId === p.id)), PM.projectCosts(p.id).length) : ''}
       </div></div>` : compactHeader(p, m, h)}
       ${tabsNav(p, tab)}
       <div id="tab" class="prj-tab"></div>`;
@@ -101,7 +105,7 @@
       if (act === 'pu-edit') PM.projectUpdateForm(p, rerender);
       if (act === 'report') PM.projectReport(p); // report.js
       if (act === 'bid-files') { const b = PM.find('bids', id); if (b && PM.canSeeBidPrice(b)) PM.poFiles.showList(`ไฟล์แนบของ ${b.code} (ใบเสนอราคา / Inquiry)`, b.files); }
-      if (act === 'edit-costs') costForm(p, rerender);
+      if (act === 'edit-costs' && fin) costForm(p, rerender);
       if (act === 'new-cost') PM.costEntryForm(p, null, rerender);
       if (act === 'phase') phaseForm(p, a.dataset.key, rerender);
       if (act === 'new-ncr') ncrForm(p, null, rerender);
@@ -124,7 +128,7 @@
     const st = PM.poStats(list);
     const canEdit = PM.can('po.edit');
     el.innerHTML = `
-      <div class="row"><p class="muted" style="margin:0">PO ที่สั่งแล้ว ${U.money(st.value)} = ${U.pct(m.bac ? st.value / m.bac : null)} ของ Plan cost ทั้งโครงการ</p>
+      <div class="row"><p class="muted" style="margin:0">PO ที่สั่งแล้ว ${U.money(st.value)}${PM.seesProjectFinance() ? ` = ${U.pct(m.bac ? st.value / m.bac : null)} ของ Plan cost ทั้งโครงการ` : ''}</p>
         <span class="spacer"></span>${canEdit ? '<button class="btn primary" data-action="new-po">+ New PO</button>' : ''}</div>
       ${PM.poTiles(st)}
       <div class="card"><div class="card-h"><h2>Purchase Orders — ${esc(p.code)}</h2><p>คลิกที่ PO เพื่อดูรายละเอียดและไฟล์แนบ</p></div>
@@ -195,26 +199,28 @@
         big: U.pct(ph.actualPct),
         meta: `<div class="pbar-wrap" style="margin:6px 0">${U.progress(ph.actualPct, ph.plannedPct)}</div>Plan ${U.pct(ph.plannedPct)} · ${st}
           <div class="pi-count">${it ? `${esc(c.noun)} ${c.steps.done.split(' (')[0]} ${it.done} / ${it.total}${it.late ? ` · <b class="neg">เลยกำหนด ${it.late}</b>` : ''}` : `ยังไม่มีรายการ${esc(c.noun)}`}</div>`,
-        tip: `${def.label} (น้ำหนัก ${ph.weight}%)\nแผน ${U.date(ph.planStart)} – ${U.date(ph.planEnd)}\nจริง ${U.date(ph.actStart)} – ${ph.actEnd ? U.date(ph.actEnd) : ph.actStart ? 'กำลังทำ' : '–'}\nปริมาณงาน ${U.num(ph.qtyDone)} / ${U.num(ph.qtyPlan)} ${ph.qtyUnit || ''}\nต้นทุนตามแผน ${U.money(ph.budget)} · จริง ${U.money(ph.actualCost)} · คงเหลือ ${U.money((ph.budget || 0) - (ph.actualCost || 0))}\nSPI ${U.ratio(ph.spi)} · CPI ${U.ratio(ph.cpi)}\nคลิกเพื่อดูรายการ${c.noun}ของขั้นนี้`,
+        tip: `${def.label} (น้ำหนัก ${ph.weight}%)\nแผน ${U.date(ph.planStart)} – ${U.date(ph.planEnd)}\nจริง ${U.date(ph.actStart)} – ${ph.actEnd ? U.date(ph.actEnd) : ph.actStart ? 'กำลังทำ' : '–'}\nปริมาณงาน ${U.num(ph.qtyDone)} / ${U.num(ph.qtyPlan)} ${ph.qtyUnit || ''}${PM.seesProjectFinance() ? `\nต้นทุนตามแผน ${U.money(ph.budget)} · จริง ${U.money(ph.actualCost)} · คงเหลือ ${U.money((ph.budget || 0) - (ph.actualCost || 0))}` : ''}\nSPI ${U.ratio(ph.spi)} · CPI ${U.ratio(ph.cpi)}\nคลิกเพื่อดูรายการ${c.noun}ของขั้นนี้`,
       };
     }));
   }
 
   /* ---------------- Overview ---------------- */
   function overview(el, p, m) {
+    const fin = PM.seesProjectFinance();
     const cur = m.current || m.phases[m.phases.length - 1];
     const T = PM.today();
     el.innerHTML = `
       <div class="grid cols-5">
         ${V.tile({ label: 'Quantity', tag: U.phaseLabel(cur.key), value: U.pct(cur.qtyPct), sub: `${U.num(cur.qtyDone)} / ${U.num(cur.qtyPlan)} ${esc(cur.qtyUnit)}`, tip: m.phases.map((ph) => `${U.phaseLabel(ph.key)}: ${U.num(ph.qtyDone)} / ${U.num(ph.qtyPlan)} ${ph.qtyUnit}`).join('\n') })}
         ${V.tile({ label: 'Time', tag: 'SPI', value: U.ratio(m.spi), sub: `${U.badge(U.health(m.spi), U.healthLabel[U.health(m.spi)])} Plan ${U.pct(m.plan, 1)} · Act ${U.pct(m.act, 1)}` })}
-        ${V.tile({ label: 'Cost', tag: 'CPI', value: U.ratio(m.cpi), sub: `${U.badge(U.health(m.cpi), U.healthLabel[U.health(m.cpi)])} EAC ${U.money(m.eac)}`, tip: `BAC ${U.money(m.bac)}\nPV ${U.money(m.pv)}\nEV ${U.money(m.ev)}\nAC ${U.money(m.ac)}\nEAC = BAC / CPI = ${U.money(m.eac)}\nVAC = ${U.money(m.bac - m.eac)}` })}
+        ${fin ? V.tile({ label: 'Cost', tag: 'CPI', value: U.ratio(m.cpi), sub: `${U.badge(U.health(m.cpi), U.healthLabel[U.health(m.cpi)])} EAC ${U.money(m.eac)}`, tip: `BAC ${U.money(m.bac)}\nPV ${U.money(m.pv)}\nEV ${U.money(m.ev)}\nAC ${U.money(m.ac)}\nEAC = BAC / CPI = ${U.money(m.eac)}\nVAC = ${U.money(m.bac - m.eac)}` })
+          : V.tile({ label: 'Cost', tag: 'CPI', value: U.ratio(m.cpi), sub: U.badge(U.health(m.cpi), U.healthLabel[U.health(m.cpi)]), tip: 'CPI = มูลค่างานที่ทำได้ ÷ ต้นทุนจริง · ตัวเงินเห็นเฉพาะ Admin – Engineer' })}
         ${V.tile({ label: 'Quality', tag: 'NCR', value: `${m.ncrOpen} <small>open / ${m.ncrTotal}</small>`, sub: m.ncrCriticalOpen ? U.badge('critical', `${m.ncrCriticalOpen} critical open`) : m.ncrOpen ? U.badge('warning', 'Follow up') : U.badge('good', 'All closed') })}
         ${V.tile({ label: 'Safety', tag: 'LTIFR', value: U.num(m.ltifr, 2), sub: `${m.lti ? U.badge('critical', m.lti + ' LTI') : U.badge('good', 'Zero LTI')} ${U.num(m.manhours)} MH` })}
       </div>
       <div class="grid cols-2">
         <div class="card"><div class="card-h"><h2>S-Curve</h2><p>Cumulative progress — Planned vs Actual (weighted by phase)</p></div><div class="card-b"><div class="chart" id="c-scurve"></div></div></div>
-        <div class="card"><div class="card-h"><h2>Cost by phase</h2><p>Plan cost vs Earned value vs Actual cost</p></div><div class="card-b"><div class="chart" id="c-cost"></div></div></div>
+        ${fin ? '<div class="card"><div class="card-h"><h2>Cost by phase</h2><p>Plan cost vs Earned value vs Actual cost</p></div><div class="card-b"><div class="chart" id="c-cost"></div></div></div>' : ''}
       </div>`;
 
     /* S-curve */
@@ -240,7 +246,7 @@
         { name: 'Actual', color: 'var(--s2)', values: actual },
       ],
     });
-    PM.charts.columns(document.getElementById('c-cost'), {
+    if (fin) PM.charts.columns(document.getElementById('c-cost'), {
       stacked: false, categories: m.phases.map((ph) => U.phaseLabel(ph.key)), fmt: U.money, axisFmt: U.money, label: 'Cost by phase',
       series: [
         { name: 'Plan cost', color: 'var(--s1)', values: m.phases.map((ph) => ph.budget) },
@@ -253,6 +259,7 @@
   function phaseForm(p, key, done) {
     const ph = p.phases.find((x) => x.key === key);
     const def = PM.PHASES.find((x) => x.key === key);
+    const fin = PM.seesProjectFinance(); // without it the form has no budget field, so the plan cost stays as it is
     U.modal({
       title: `${p.code} · ${def.label}`, wide: true,
       body: `
@@ -261,14 +268,14 @@
         ${U.field('Quantity unit', 'qtyUnit', ph.qtyUnit)}
         ${U.field('Quantity — planned', 'qtyPlan', ph.qtyPlan, { type: 'number', min: 0, step: 'any' })}
         ${U.field('Quantity — done', 'qtyDone', ph.qtyDone, { type: 'number', min: 0, step: 'any' })}
-        <label><span>Actual cost (THB)</span><input value="${esc(U.num(ph.actualCost || 0))}" disabled><small class="muted">รวมจากรายการค่าใช้จ่ายของ phase นี้ (แท็บ "ค่าใช้จ่าย")</small></label>
+        ${fin ? `<label><span>Actual cost (THB)</span><input value="${esc(U.num(ph.actualCost || 0))}" disabled><small class="muted">รวมจากรายการค่าใช้จ่ายของ phase นี้ (แท็บ "ค่าใช้จ่าย")</small></label>` : ''}
         <div class="sub-h">Plan / Baseline</div>
         ${U.field('Plan start', 'planStart', ph.planStart, { type: 'date', required: true })}
         ${U.field('Plan finish', 'planEnd', ph.planEnd, { type: 'date', required: true })}
         ${U.field('Actual start', 'actStart', ph.actStart, { type: 'date' })}
         ${U.field('Actual finish', 'actEnd', ph.actEnd, { type: 'date' })}
         ${U.field('Weight (%)', 'weight', ph.weight, { type: 'number', min: 0, max: 100, hint: 'น้ำหนักของ phase ในความคืบหน้ารวม' })}
-        ${U.field('Plan cost (THB)', 'budget', ph.budget, { type: 'number', min: 0, step: 'any' })}`,
+        ${fin ? U.field('Plan cost (THB)', 'budget', ph.budget, { type: 'number', min: 0, step: 'any' }) : ''}`,
       onSubmit: (f) => {
         if (f.planEnd < f.planStart) { U.alert('Plan finish ต้องอยู่หลัง Plan start'); return false; }
         f.progress = Math.max(0, Math.min(100, f.progress));

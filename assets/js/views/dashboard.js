@@ -33,8 +33,7 @@
     const over = ut.people.filter((p) => p.util > 1.05).length;
     const under = ut.people.filter((p) => p.util != null && p.util < p.target - 0.25).length;
     // bids still to be handed in: overdue, or due within two weeks — what someone can act on today
-    const dueList = db.bids.filter((b) => b.result === 'pending' && !b.dates.submit && b.dueDate && PM.propOf(b).work !== 'complete' && PM.diffDays(T, b.dueDate) <= 14)
-      .sort((a, b) => String(a.dueDate).localeCompare(String(b.dueDate)));
+    const dueList = PM.bidsDueSoon(db.bids, T);
     const dueTable = dueList.length ? `<table class="tbl"><thead><tr><th>งาน</th><th>ลูกค้า</th><th>Type</th><th>Priority</th><th>กำหนดยื่น</th><th class="num">Progress</th><th>Status</th></tr></thead><tbody>
       ${dueList.slice(0, 10).map((b) => { const p = PM.propOf(b), st = PM.propStatusInfo(p.status), lv = (PM.PROP_PRIORITY.find((x) => x.key === p.priority) || {}).level; return `<tr class="click" data-bid-link>
         <td><span class="title">${esc(b.name)}</span><small>${esc(b.code)}</small></td><td>${esc(b.client)}</td><td>${esc(p.type)}</td><td>${lv ? U.badge(lv, p.priority) : '-'}</td>
@@ -44,13 +43,14 @@
     const overrun = PM.costOverrunRows(db.projects.map((p) => (p.status === 'closed' ? { p, m: PM.projectMetrics(p) } : rows.find((r) => r.p === p))));
 
     const seesResources = PM.can('resource.view'); // section 4: Admin · Department Manager · Project Manager only
+    const fin = PM.seesProjectFinance(); // contract value · plan cost · actual cost: Admin · Dept Manager · PM · Engineer
     // "ต้องดำเนินการวันนี้": one bar with the counts and the most urgent items — the full list is the bell (notify.js)
     const nt = PM.notify ? PM.notify.list() : [];
     const nBy = (lv) => nt.filter((x) => x.level === lv).length;
     const top = nt.filter((x) => x.level === 'critical').slice(0, 3);
     el.innerHTML = `
       <div class="row dash-tools"><span class="muted">ข้อมูลทุกส่วน ณ ${U.date(T)}</span><span class="spacer"></span>
-        <button class="btn" data-action="dash-report" title="รายงานภาพรวมแผนกขนาด A4 — พิมพ์ หรือบันทึกเป็น PDF">📄 พิมพ์รายงาน PDF</button></div>
+        ${fin ? '<button class="btn" data-action="dash-report" title="รายงานภาพรวมแผนกขนาด A4 — พิมพ์ หรือบันทึกเป็น PDF">📄 พิมพ์รายงาน PDF</button>' : ''}</div>
       <button type="button" class="att-bar${nBy('critical') ? ' crit' : ''}" data-open-bell title="เปิดรายการทั้งหมดที่กระดิ่ง">
         <span class="att-bar-h"><b>ต้องดำเนินการวันนี้</b>${nt.length
           ? `${nBy('critical') ? U.badge('critical', `ด่วน ${nBy('critical')}`) : ''}${nBy('warning') ? U.badge('warning', `ติดตาม ${nBy('warning')}`) : ''}${nBy('info') ? U.badge('info', `แจ้งให้ทราบ ${nBy('info')}`) : ''}`
@@ -85,7 +85,7 @@
 
       <div class="section-h" id="sec-exec"><span class="idx">2</span><h2>Execution (EPC)</h2><p>KPI: Quantity · Time · Cost · Quality (NCR) · Safety</p><span class="spacer"></span><a href="#/projects">เปิด Projects →</a></div>
       <div class="grid cols-6">
-        ${V.tile({ label: 'Active projects', value: active.length, sub: `Backlog ${U.money(PM.sum(rows, (r) => r.p.contractValue * (1 - r.m.act)))}` })}
+        ${V.tile({ label: 'Active projects', value: active.length, sub: fin ? `Backlog ${U.money(PM.sum(rows, (r) => r.p.contractValue * (1 - r.m.act)))}` : `ปิดแล้ว ${db.projects.length - active.length} โครงการ` })}
         ${V.tile({ label: 'Portfolio SPI', tag: 'Time', value: U.ratio(pSPI), sub: U.badge(U.health(pSPI), U.healthLabel[U.health(pSPI)]), tip: 'SPI = EV / PV (Earned Value ÷ Planned Value)' })}
         ${V.tile({ label: 'Portfolio CPI', tag: 'Cost', value: U.ratio(pCPI), sub: U.badge(U.health(pCPI), U.healthLabel[U.health(pCPI)]), tip: 'CPI = EV / AC (Earned Value ÷ Actual Cost)' })}
         ${V.tile({ label: 'Quantity progress', tag: 'Quantity', value: U.pct(PM.sum(rows, (r) => r.m.act * r.p.contractValue) / (PM.sum(rows, (r) => r.p.contractValue) || 1)), sub: 'weighted by contract value' })}
@@ -95,20 +95,20 @@
       <div class="grid cols-2">
         ${chartCard('c-progress', 'ความคืบหน้าแต่ละโครงการ', 'แท่ง = ทำได้จริง · เส้นดำ = ตามแผน ณ วันนี้ · คลิกเพื่อเปิดโครงการ')}
         ${chartCard('c-health', 'สุขภาพโครงการ SPI × CPI', 'จุดละ 1 โครงการ · ขวาบน = ตามแผนและในงบ · ซ้ายล่างสีแดง = ช้าและเกินงบ ต้องดูก่อน · คลิกจุดเพื่อเปิดโครงการ')}
-        ${chartCard('c-scurve', 'ต้นทุนสะสมทุกโครงการ Active', 'PV ตามแผน · EV มูลค่างานที่ทำได้ · AC จ่ายจริง')}
+        ${fin ? `${chartCard('c-scurve', 'ต้นทุนสะสมทุกโครงการ Active', 'PV ตามแผน · EV มูลค่างานที่ทำได้ · AC จ่ายจริง')}
         ${chartCard('c-spend', 'ค่าใช้จ่ายรายเดือน', 'ผลรวมรายการค่าใช้จ่ายทุกโครงการ 12 เดือน แยกตาม phase')}
         ${chartCard('c-actual', 'Actual cost เทียบ Plan cost', 'โครงการ Active · เส้นดำ = Plan cost (งบ) · คลิกเพื่อเปิดค่าใช้จ่าย')}
-        <div class="card" id="d-overrun">${overrunCard(overrun)}</div>
+        <div class="card" id="d-overrun">${overrunCard(overrun)}</div>` : ''}
         ${chartCard('c-ncr', 'NCR ของแต่ละโครงการ', 'เปิดอยู่ / ปิดแล้ว')}
         ${chartCard('c-safety', 'เหตุการณ์ความปลอดภัยต่อเดือน', 'ทุกโครงการ 12 เดือน · สีเข้มขึ้น = รุนแรงขึ้น')}
       </div>
       ${tableBox('สถานะโครงการ', projectTable(rows))}
-      <div id="d-overrun-table">${tableBox('ต้นทุนเกินงบ', overrunTable(overrunList(overrun)))}</div>
+      ${fin ? `<div id="d-overrun-table">${tableBox('ต้นทุนเกินงบ', overrunTable(overrunList(overrun)))}</div>` : ''}
 
       <div class="section-h" id="sec-po"><span class="idx">3</span><h2>Purchase Orders</h2><p>ติดตาม PO ทุกโครงการ · ส่งของ · การจ่ายเงิน</p><span class="spacer"></span><a href="#/pos">เปิด Purchase Orders →</a></div>
       ${PM.poTiles(po)}
       <div class="grid cols-2">
-        ${chartCard('c-po-proj', 'มูลค่า PO ตามโครงการ', 'สั่งแล้ว (Committed) · เส้นดำ = Plan cost')}
+        ${chartCard('c-po-proj', 'มูลค่า PO ตามโครงการ', fin ? 'สั่งแล้ว (Committed) · เส้นดำ = Plan cost' : 'สั่งแล้ว (Committed)')}
         ${chartCard('c-po-due', 'มูลค่า PO ที่รอส่งของ', 'PO ที่ยังส่งไม่ครบ ตามเดือนที่กำหนดส่ง')}
         ${chartCard('c-po-status', 'สถานะ PO', 'จำนวน PO ทุกโครงการ ไม่รวมที่ยกเลิก')}
         ${chartCard('c-po-supplier', 'ผู้ขายรายใหญ่', 'มูลค่า PO ที่สั่งแล้ว 6 อันดับแรก')}
@@ -185,6 +185,8 @@
       })),
     });
     PM.charts.quadrant(document.getElementById('c-health'), Object.assign(PM.healthQuadrant(rows), { height: 280 }));
+    if (fin) drawCostCharts();
+    function drawCostCharts() {
     drawPortfolioCurve(rows, T);
     const spend = (db.costs || []).filter((c) => c.date.slice(0, 7) >= months[0] && c.date <= T && PM.costCounts(c));
     PM.charts.columns(document.getElementById('c-spend'), {
@@ -199,6 +201,7 @@
       })),
     });
     drawOverrun(el, overrun);
+    }
     if (rows.length) PM.charts.columns(document.getElementById('c-ncr'), {
       categories: rows.map((r) => r.p.code), label: 'NCR by project',
       series: [
@@ -221,6 +224,7 @@
     PM.charts.hbars(document.getElementById('c-po-proj'), {
       items: rows.map((r) => {
         const v = PM.sum(committed.filter((x) => x.projectId === r.p.id), (x) => x.amount || 0);
+        if (!fin) return { label: r.p.code, value: v, display: U.money(v), href: `#/projects/${r.p.id}/po`, tip: `${r.p.code} ${r.p.name}\nPO committed ${U.money(v)}` };
         return { label: r.p.code, sub: U.pct(r.m.bac ? v / r.m.bac : null) + ' ของแผน', value: v, target: r.m.bac, display: U.money(v), href: `#/projects/${r.p.id}/po`,
           tip: `${r.p.code} ${r.p.name}\nPO committed ${U.money(v)}\nPlan cost ${U.money(r.m.bac)}` };
       }),

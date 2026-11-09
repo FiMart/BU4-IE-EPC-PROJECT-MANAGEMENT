@@ -8,7 +8,9 @@
 --  - Any signed-in user who has a role (row in public.profiles) can read & edit records
 --    (except timesheets: Project Manager only — see can_write_record();
 --     and bidprices — value / margin / quotation files of a bid: only Admin and the Sales who owns the bid,
---     see can_see_bid_price(). Re-running this file also moves prices off bids saved before v1.26.)
+--     see can_see_bid_price(). Re-running this file also moves prices off bids saved before v1.26;
+--     and projfin — Margin · WIP/Accrued · accumulated revenue of a project: only Admin, Department Manager,
+--     Project Manager and Engineer, see can_see_project_finance() — v1.78)
 --  - Bulk replace (Reset / Import) goes through app_replace_all() — Admin, Department Manager & Project Manager only.
 --  - PO file attachments: private Storage bucket "po-files" (section at the end).
 -- =====================================================================
@@ -72,19 +74,32 @@ returns boolean language sql stable security definer set search_path = public as
      where collection = 'bidprices' and id = bid_id and public.can_see_bid_price(data ->> 'owner'));
 $$;
 
+-- A project's accounting figures (collection 'projfin': Margin · WIP/Accrued · accumulated revenue from the
+-- Monitor WIP/Accrued file, one row per project id) are read and written ONLY by Admin, Department Manager,
+-- Project Manager and Engineer. Everyone else still sees the project itself (collection 'projects').
+create or replace function public.can_see_project_finance()
+returns boolean language sql stable security definer set search_path = public as $$
+  select exists (select 1 from public.profiles where id = auth.uid() and role::text in ('admin', 'dept_manager', 'project_manager', 'engineer'));
+$$;
+
 create policy "records: read"   on public.app_records for select to authenticated using (
-  public.has_app_role() and (collection <> 'bidprices' or public.can_see_bid_price(data ->> 'owner')));
+  public.has_app_role() and (collection <> 'bidprices' or public.can_see_bid_price(data ->> 'owner'))
+  and (collection <> 'projfin' or public.can_see_project_finance()));
 create policy "records: insert" on public.app_records for insert to authenticated with check (
-  public.can_write_record(collection) and (collection <> 'bidprices' or public.can_see_bid_price(data ->> 'owner')));
+  public.can_write_record(collection) and (collection <> 'bidprices' or public.can_see_bid_price(data ->> 'owner'))
+  and (collection <> 'projfin' or public.can_see_project_finance()));
 create policy "records: update" on public.app_records for update to authenticated
-  using (public.can_write_record(collection) and (collection <> 'bidprices' or public.can_see_bid_price(data ->> 'owner')))
-  with check (public.can_write_record(collection) and (collection <> 'bidprices' or public.can_see_bid_price(data ->> 'owner')));
+  using (public.can_write_record(collection) and (collection <> 'bidprices' or public.can_see_bid_price(data ->> 'owner'))
+         and (collection <> 'projfin' or public.can_see_project_finance()))
+  with check (public.can_write_record(collection) and (collection <> 'bidprices' or public.can_see_bid_price(data ->> 'owner'))
+         and (collection <> 'projfin' or public.can_see_project_finance()));
 -- Weekly Plan tasks can only be deleted by the person who created them
 -- (tasks without a recorded creator — older data / demo — only by Admin)
 -- A project (with everything in it): Admin, Department Manager & Project Manager only.
 -- A bid: Admin and the Sales who owns it — the only people who may see its price and quotation files, which go with it.
 create policy "records: delete" on public.app_records for delete to authenticated using (
-  public.can_write_record(collection) and (collection <> 'bidprices' or public.can_see_bid_price(data ->> 'owner')) and (
+  public.can_write_record(collection) and (collection <> 'bidprices' or public.can_see_bid_price(data ->> 'owner'))
+  and (collection <> 'projfin' or public.can_see_project_finance()) and (
     collection <> 'plans'
     or data ->> 'createdBy' = auth.uid()::text
     or (coalesce(data ->> 'createdBy', '') = '' and public.is_admin())
@@ -109,6 +124,7 @@ begin
   if old.collection = 'projects' then
     delete from public.app_records
      where (collection in ('ncrs', 'safety', 'pos', 'costs', 'avl', 'punch', 'meetings', 'dailies') and data ->> 'projectId' = old.id)
+        or (collection = 'projfin' and id = old.id)
         or (collection in ('timesheets', 'plans') and data ->> 'kind' = 'project' and data ->> 'refId' = old.id);
   elsif old.collection = 'bids' then
     delete from public.app_records
@@ -228,7 +244,7 @@ returns trigger language plpgsql security definer set search_path = public as $$
 declare
   rec jsonb := case when tg_op = 'DELETE' then old.data else new.data end;
   changed text[] := '{}';
-  is_price boolean := (case when tg_op = 'DELETE' then old.collection else new.collection end) = 'bidprices';
+  is_price boolean := (case when tg_op = 'DELETE' then old.collection else new.collection end) in ('bidprices', 'projfin');
 begin
   if coalesce(current_setting('app.bulk', true), '') = '1' then return null; end if; -- Reset / Import writes one line of its own
   if (case when tg_op = 'DELETE' then old.collection else new.collection end) = 'meta' then return null; end if;

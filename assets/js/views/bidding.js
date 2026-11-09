@@ -4,6 +4,17 @@
   const state = U.keep('bidding', { period: '12m', mode: 'kanban', q: '', sales: '' }, ['period', 'mode', 'sales']); // sales: '' = everyone, '-' = no salesperson
   PM.biddingState = state; // the step pages (bid-stage.js) share the period / Sales / search filters
 
+  /* what is still to be handed in: overdue + due within 14 days (not tied to the period — it is today's work) */
+  function dueTile(bids, T) {
+    const due = PM.bidsDueSoon(bids, T), late = due.filter((b) => b.dueDate < T).length;
+    const tip = due.length ? due.slice(0, 8).map((b) => `${U.date(b.dueDate)} · ${b.name}`).join('\n') + (due.length > 8 ? `\nและอีก ${due.length - 8} งาน` : '') : 'ไม่มีงานที่ต้องยื่นใน 14 วัน';
+    return V.tile({
+      label: 'ใกล้ถึงกำหนดยื่น', tag: 'Time', icon: 'clock', tip,
+      value: `${due.length} <small>งาน</small>`,
+      sub: due.length ? `${late ? `<b style="color:var(--critical-text)">เลยกำหนด ${late} งาน</b><br>` : ''}ต้องยื่นใน 14 วัน ${due.length - late} งาน` : 'ไม่มีงานค้างยื่นใน 14 วัน',
+    });
+  }
+
   PM.views.bidding = function (el) {
     const db = PM.db, T = PM.today();
     const { from, to } = V.periodRange(state.period);
@@ -42,7 +53,7 @@
       <div class="grid cols-6">
         ${V.tile({ label: 'Inquiries received', tag: 'Quantity', value: bs.total, sub: `${bs.pipeline} ยังอยู่ระหว่างดำเนินการ` })}
         ${V.tile({ label: 'Proposals submitted', tag: 'Quantity', value: bs.submitted, sub: `Submit ratio ${U.pct(bs.total ? bs.submitted / bs.total : null)}` })}
-        ${V.tile({ label: 'Avg cycle time', tag: 'Time', value: `${U.num(bs.avgCycle, 1)} <small>days</small>`, sub: 'Inquiry → Submit' })}
+        ${dueTile(bids.filter(match), T)}
         ${V.tile({ label: 'On-time submission', tag: 'Time', value: U.pct(bs.onTimeRate), sub: `ยื่นก่อน / ตรง due date${bs.assumedSubmit ? ` · ไม่นับ ${bs.assumedSubmit} งานที่ไม่มีวันยื่นจริง` : ''}` })}
         ${V.tile({ label: 'Win rate', value: U.pct(bs.winRate), sub: `${bs.won} won / ${bs.won + bs.lost} decided` })}
         ${PM.seesBidPrices()

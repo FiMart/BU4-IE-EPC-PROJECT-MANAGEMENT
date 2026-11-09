@@ -109,7 +109,9 @@
   PM.printDoc = { open: newWindow, write: writePage, kpi, tbl };
   const th = (s) => (PM.i18n && PM.i18n.tr(s)) || s; // Thai label (the report window has no i18n layer of its own)
 
+  // both reports are built around contract value, cost and billing: the roles that see a project's money only (roles.js → 'project.finance')
   PM.projectReport = function (p) {
+    if (!PM.seesProjectFinance()) return;
     const win = newWindow();
     if (!win) return;
     const T = PM.today(), ym = T.slice(0, 7);
@@ -218,6 +220,7 @@
      Follows the reader's rights like the Dashboard does: bid values only for Admin / Sales,
      the Resource section only for roles that may open Resources. */
   PM.dashboardReport = function () {
+    if (!PM.seesProjectFinance()) return;
     const win = newWindow();
     if (!win) return;
     const db = PM.db, T = PM.today(), ym = T.slice(0, 7), V = PM.common;
