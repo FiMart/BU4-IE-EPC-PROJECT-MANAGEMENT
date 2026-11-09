@@ -104,7 +104,7 @@
       if (act === 'edit-project') V.projectForm(p, null, rerender);
       if (act === 'pu-edit') PM.projectUpdateForm(p, rerender);
       if (act === 'report') PM.projectReport(p); // report.js
-      if (act === 'bid-files') { const b = PM.find('bids', id); if (b && PM.canSeeBidPrice(b)) PM.poFiles.showList(`ไฟล์แนบของ ${b.code} (ใบเสนอราคา / Inquiry)`, b.files); }
+      if (act === 'bid-files') { const b = PM.find('bids', id); if (b && PM.canSeeBidPrice(b)) PM.poFiles.showList(`ไฟล์แนบของ ${PM.dash(b.code)} (ใบเสนอราคา / Inquiry)`, b.files); }
       if (act === 'edit-costs' && fin) costForm(p, rerender);
       if (act === 'new-cost') PM.costEntryForm(p, null, rerender);
       if (act === 'phase') phaseForm(p, a.dataset.key, rerender);

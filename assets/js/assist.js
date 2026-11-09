@@ -64,8 +64,8 @@
     // bidding: proposals due soon / overdue, not submitted yet
     const bids = (db.bids || []).filter((b) => b.result === 'pending' && !(b.dates && b.dates.submit) && b.dueDate);
     const bidLate = bids.filter((b) => b.dueDate < T), bidSoon = bids.filter((b) => b.dueDate >= T && PM.diffDays(T, b.dueDate) <= 3);
-    add({ level: 'critical', icon: 'submit', count: bidLate.length, title: 'Bid เลย Due date แต่ยังไม่ยื่น', sub: codes(bidLate, (b) => b.code, 3), href: '#/bidding' });
-    add({ level: 'warning', icon: 'submit', count: bidSoon.length, title: 'Bid ต้องยื่นภายใน 3 วัน', sub: codes(bidSoon, (b) => `${b.code} ${U.date(b.dueDate)}`, 3), href: '#/bidding' });
+    add({ level: 'critical', icon: 'submit', count: bidLate.length, title: 'Bid เลย Due date แต่ยังไม่ยื่น', sub: codes(bidLate, (b) => PM.dash(b.code), 3), href: '#/bidding' });
+    add({ level: 'warning', icon: 'submit', count: bidSoon.length, title: 'Bid ต้องยื่นภายใน 3 วัน', sub: codes(bidSoon, (b) => `${PM.dash(b.code)} ${U.date(b.dueDate)}`, 3), href: '#/bidding' });
     // weekly plan: this week's work past its due date
     const wk = PM.monday(T);
     const wpLate = (db.plans || []).filter((x) => x.week === wk && x.status !== 'done' && x.status !== 'not_done' && x.dueDate && x.dueDate < T);
@@ -89,7 +89,7 @@
     const db = PM.db;
     return pages().concat(
       db.projects.map((p) => ({ group: 'โครงการ', title: `${p.code} · ${p.name}`, sub: [p.client, p.status === 'closed' ? 'Closed' : ''].filter(Boolean).join(' · '), href: `#/projects/${p.id}`, icon: 'building', text: [p.code, p.jobNo, p.name, p.client, p.clientPo, p.plant, p.engTech].join(' ') })),
-      (db.bids || []).map((b) => ({ group: 'Bid', title: `${b.code} · ${b.name}`, sub: `${b.client || ''} · ${b.result === 'pending' ? PM.bidStageLabel(b.stage) : PM.BID_RESULTS[b.result] || b.result}`, href: `#/bidding/${b.result === 'pending' ? b.stage : 'award'}`, icon: 'proposal', text: [b.code, b.name, b.client].join(' ') })),
+      (db.bids || []).map((b) => ({ group: 'Bid', title: `${PM.dash(b.code)} · ${PM.dash(b.name)}`, sub: `${PM.dash(b.client)} · ${b.result === 'pending' ? PM.bidStageLabel(b.stage) : PM.BID_RESULTS[b.result] || b.result}`, href: `#/bidding/${b.result === 'pending' ? b.stage : 'award'}`, icon: 'proposal', text: [b.code, b.name, b.client].join(' ') })),
       (db.pos || []).map((x) => { const p = PM.find('projects', x.projectId); return { group: 'PO', title: `${x.poNo} · ${x.supplier || ''}`, sub: `${p ? p.code : ''} · ${x.description || ''}`, href: '#/pos', po: x.id, icon: 'truck', text: [x.poNo, x.supplier, x.description, p && p.code].join(' ') }; }),
     );
   }

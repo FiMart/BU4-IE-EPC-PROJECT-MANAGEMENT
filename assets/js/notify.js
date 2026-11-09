@@ -122,8 +122,8 @@
     // bids not submitted yet
     (db.bids || []).filter((b) => b.result === 'pending' && !(b.dates && b.dates.submit) && b.dueDate).forEach((b) => {
       const mine = I.ids.has(b.sales) || I.ids.has(b.estimator) || (PM.myUid && b.owner === PM.myUid());
-      if (b.dueDate < T) add({ id: `bid-${b.id}`, level: 'critical', icon: 'submit', title: `Bid เลย Due date ยังไม่ยื่น: ${b.code}`, sub: `${b.name} · Due ${U.date(b.dueDate)}`, href: '#/bidding', mine, date: b.dueDate });
-      else if (PM.diffDays(T, b.dueDate) <= 3) add({ id: `bid3-${b.id}`, level: 'warning', icon: 'submit', title: `Bid ต้องยื่นใน ${PM.diffDays(T, b.dueDate)} วัน: ${b.code}`, sub: `${b.name} · Due ${U.date(b.dueDate)}`, href: '#/bidding', mine, date: b.dueDate });
+      if (b.dueDate < T) add({ id: `bid-${b.id}`, level: 'critical', icon: 'submit', title: `Bid เลย Due date ยังไม่ยื่น: ${PM.dash(b.code)}`, sub: `${PM.dash(b.name)} · Due ${U.date(b.dueDate)}`, href: '#/bidding', mine, date: b.dueDate });
+      else if (PM.diffDays(T, b.dueDate) <= 3) add({ id: `bid3-${b.id}`, level: 'warning', icon: 'submit', title: `Bid ต้องยื่นใน ${PM.diffDays(T, b.dueDate)} วัน: ${PM.dash(b.code)}`, sub: `${PM.dash(b.name)} · Due ${U.date(b.dueDate)}`, href: '#/bidding', mine, date: b.dueDate });
     });
 
     // my Weekly Plan tasks of this week that are past their date

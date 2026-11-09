@@ -47,7 +47,7 @@
 
     bidText(b) {
       const rows = [['Timesheet', list('timesheets').filter(worksOn('bid', b.id)).length], ['งาน Weekly Plan', list('plans').filter(worksOn('bid', b.id)).length]];
-      return `ลบงานประมูล ${b.code} พร้อมราคา ไฟล์ใบเสนอราคา ไฟล์งานของทีม และ:\n${summary(rows)}\n\n${NOTE}`;
+      return `ลบงานประมูล ${PM.dash(b.code)} พร้อมราคา ไฟล์ใบเสนอราคา ไฟล์งานของทีม และ:\n${summary(rows)}\n\n${NOTE}`;
     },
     async bid(b) {
       const id = b.id;

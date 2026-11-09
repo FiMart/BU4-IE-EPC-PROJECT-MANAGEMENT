@@ -118,7 +118,7 @@
     if (a === 'bid-files' && !PM.canSeeBidPrice(b)) return true;
     if (a === 'bid-files') { // 📎 on a card / row: open the attachments list (one file → open it directly)
       if ((b.files || []).length === 1) PM.poFiles.open(b.files[0].path);
-      else PM.poFiles.showList(`ไฟล์แนบ — ${b.code}`, b.files);
+      else PM.poFiles.showList(`ไฟล์แนบ — ${PM.dash(b.code)}`, b.files);
       return true;
     }
     if (a === 'next') {
@@ -129,7 +129,7 @@
       if (nx.key === 'submit') b.submitAssumed = false;
       b.stage = nx.key;
       PM.upsert('bids', b);
-      U.toast(`${b.code} → ${nx.label}`);
+      U.toast(`${PM.dash(b.code)} → ${nx.label}`);
       done();
       return true;
     }
@@ -138,33 +138,33 @@
       if (!prev) return true;
       // Complete means handed in, so a job taken back from Submit is no longer Complete
       const reopenWork = b.stage === 'submit' && PM.propOf(b).work === 'complete';
-      U.confirm(`ย้อน ${b.code} จาก ${cur.label} กลับไป ${prev.label}?\n\nวันที่เข้าขั้น ${cur.label} (${U.date(b.dates[b.stage])}) จะถูกล้าง${reopenWork ? ' · Status เปลี่ยนจาก Complete เป็น In Progress' : ''} · ข้อมูลอื่นของงานและชั่วโมง Timesheet ยังอยู่`, { title: 'ย้อนกลับขั้นก่อนหน้า', ok: 'ย้อนกลับ', tone: 'question' }).then((ok) => {
+      U.confirm(`ย้อน ${PM.dash(b.code)} จาก ${cur.label} กลับไป ${prev.label}?\n\nวันที่เข้าขั้น ${cur.label} (${U.date(b.dates[b.stage])}) จะถูกล้าง${reopenWork ? ' · Status เปลี่ยนจาก Complete เป็น In Progress' : ''} · ข้อมูลอื่นของงานและชั่วโมง Timesheet ยังอยู่`, { title: 'ย้อนกลับขั้นก่อนหน้า', ok: 'ย้อนกลับ', tone: 'question' }).then((ok) => {
         if (!ok) return;
         if (reopenWork) { b.proposal = Object.assign({}, b.proposal, { status: 'in_progress' }); delete b.submitAssumed; }
         b.dates[b.stage] = '';
         b.stage = V.stageOf(b);
         PM.upsert('bids', b);
-        U.toast(`${b.code} ← ${prev.label}`);
+        U.toast(`${PM.dash(b.code)} ← ${prev.label}`);
         done();
       });
       return true;
     }
     if (a === 'reopen') {
       if (b.projectId && PM.find('projects', b.projectId)) { U.alert('งานนี้สร้างโครงการแล้ว ยกเลิกผลไม่ได้'); return true; }
-      U.confirm(`ยกเลิกผล ${PM.BID_RESULTS[b.result]} ของ ${b.code}?\n\nงานจะกลับไปอยู่ขั้น ${PM.bidStageLabel(b.stage)} และ Win rate จะคำนวณใหม่`, { title: 'ยกเลิกผลการประมูล', ok: 'ยกเลิกผล', cancel: 'ไม่ยกเลิก', tone: 'question' }).then((ok) => {
+      U.confirm(`ยกเลิกผล ${PM.BID_RESULTS[b.result]} ของ ${PM.dash(b.code)}?\n\nงานจะกลับไปอยู่ขั้น ${PM.bidStageLabel(b.stage)} และ Win rate จะคำนวณใหม่`, { title: 'ยกเลิกผลการประมูล', ok: 'ยกเลิกผล', cancel: 'ไม่ยกเลิก', tone: 'question' }).then((ok) => {
         if (!ok) return;
         b.result = 'pending'; b.resultDate = '';
         PM.upsert('bids', b);
-        U.toast(`${b.code} กลับมารอผลแล้ว`);
+        U.toast(`${PM.dash(b.code)} กลับมารอผลแล้ว`);
         done();
       });
       return true;
     }
     if (a === 'won' || a === 'lost' || a === 'nobid') {
       b.result = a; b.resultDate = T; PM.upsert('bids', b);
-      U.toast(`${b.code} → ${PM.BID_RESULTS[a]}`);
+      U.toast(`${PM.dash(b.code)} → ${PM.BID_RESULTS[a]}`);
       if (a === 'won') {
-        U.confirm(`${b.code} ได้งานแล้ว — สร้าง Project จาก Bid นี้เลยหรือไม่?`, { title: 'ยินดีด้วย! ได้งานแล้ว', ok: 'สร้าง Project', cancel: 'ภายหลัง', tone: 'success' })
+        U.confirm(`${PM.dash(b.code)} ได้งานแล้ว — สร้าง Project จาก Bid นี้เลยหรือไม่?`, { title: 'ยินดีด้วย! ได้งานแล้ว', ok: 'สร้าง Project', cancel: 'ภายหลัง', tone: 'success' })
           .then((ok) => { if (ok) V.projectForm(null, b, (p) => (location.hash = '#/projects/' + p.id)); });
       }
       done();
@@ -249,10 +249,11 @@
       ${canEdit ? '' : '<p class="full perm-note">ดูได้อย่างเดียว — เพิ่ม / แก้ไข Inquiry, เลื่อนขั้น และบันทึกผล Won / Lost ได้เฉพาะ Admin · Project Manager · Engineer และ Sales ผู้รับผิดชอบงานนี้</p>'}
       ${pane('inquiry', `
       <div class="sub-h">ข้อมูลงานประมูล</div>
-      ${U.field('Bid No.', 'code', b.code, { required: true })}
-      ${U.field('ลูกค้า (Client)', 'client', b.client, { required: true })}
-      ${U.field('ชื่องาน / Scope of work', 'name', b.name, { required: true, full: true })}
-      ${U.field('Inquiry received', 'd_inquiry', b.dates.inquiry, { type: 'date', required: true })}
+      ${U.field('Bid No.', 'code', b.code, { hint: 'ไม่บังคับ — เว้นว่างได้ แสดงเป็น "-"' })}
+      ${U.field('ลูกค้า (Client)', 'client', b.client)}
+      ${U.field('ชื่องาน / Scope of work', 'name', b.name, { full: true })}
+      ${U.field('Inquiry received', 'd_inquiry', b.dates.inquiry, { type: 'date' })}
+      <p class="full muted" style="margin:0">ทุกช่องไม่บังคับ — ช่องที่เว้นว่างแสดงเป็น "-" และกลับมากรอกภายหลังได้</p>
       ${U.field('กำหนดยื่นใบเสนอราคา (Due date)', 'dueDate', b.dueDate, { type: 'date' })}
       <div class="sub-h">Sales — ผู้หาลูกค้า / งานนี้มาจากไหน</div>
       <label><span>Sales ผู้รับผิดชอบลูกค้า</span>${V.salesInput(b)}<small class="muted">${PM.teamError ? esc(PM.teamError) : 'พิมพ์ชื่อได้เลย หรือเลือกจากรายชื่อที่ขึ้นมา'}</small></label>
@@ -318,20 +319,29 @@
       ${PM.poFiles.boxHtml(canEdit, 'ไฟล์งานของทีม — ถอดปริมาณ / ประมาณราคา / ข้อเสนอทางเทคนิค', 'ทุกคนในทีมเห็นได้ · ใบเสนอราคาที่ส่งลูกค้าอยู่ในแท็บ "ราคาขาย"', 'work')}`)}`;
     let files = null;
     const form = U.modal({
-      title: isNew ? (opts.tab === 'proposal' ? 'New proposal' : 'New inquiry') : `${b.code} · ${b.name}`, body, wide: true,
+      title: isNew ? (opts.tab === 'proposal' ? 'New proposal' : 'New inquiry') : `${PM.dash(b.code)} · ${PM.dash(b.name)}`, body, wide: true,
       // only who may see this bid's quotation files: deleting has to remove them, and the names stay hidden from everyone else
       deleteText: () => PM.purge.bidText(b),
       onDelete: isNew || !canEdit || !PM.canSeeBidPrice(b) ? null : async () => { await PM.purge.bid(b); U.toast('ลบแล้ว'); if (onSaved) onSaved(); },
       onSubmit: !canEdit ? null : (f, frm) => {
         const toCode = () => { showTab('inquiry'); frm.code.focus(); };
-        if (f.code === V.bidNoPrefix()) { U.alert(`พิมพ์เลขต่อท้าย Bid No. ก่อนบันทึก (เช่น ${V.bidNoPrefix()}1)`).then(toCode); return false; }
-        if (PM.db.bids.some((x) => x.id !== b.id && String(x.code).trim().toUpperCase() === f.code.toUpperCase())) {
+        // Bid No. is optional: only the prefix that a new inquiry starts with, or nothing, = no number yet (shown as "-")
+        f.code = String(f.code || '').trim();
+        if (f.code === V.bidNoPrefix().trim() || f.code === '-') f.code = '';
+        ['client', 'name'].forEach((k) => { f[k] = String(f[k] || '').trim(); if (f[k] === '-') f[k] = ''; });
+        if (f.code && PM.db.bids.some((x) => x.id !== b.id && String(x.code || '').trim().toUpperCase() === f.code.toUpperCase())) {
           U.alert(`Bid No. ${f.code} ถูกใช้แล้ว`).then(toCode); return false;
         }
         const dates = { inquiry: f.d_inquiry, estimate: f.d_estimate, proposal: f.d_proposal, submit: f.d_submit };
         if (!dates.submit && ['complete', 'win', 'lose'].includes(f.prop_status)) dates.submit = autoSubmit = assumedNow(); // Status Complete = handed in
         const order = PM.BID_STAGES.map((s) => dates[s.key]).filter(Boolean);
         if (order.some((d, i) => i && d < order[i - 1])) { U.alert('วันที่แต่ละขั้นต้องเรียงตามลำดับ Inquiry → Estimate → Proposal → Submit (วันที่อยู่ในแท็บของแต่ละขั้น)'); return false; }
+        // nothing to tell the bid by at all: ask once, it may be a slip — but it is allowed
+        if (!f.code && !f.client && !f.name) {
+          U.confirm('ยังไม่ได้กรอก Bid No. ลูกค้า และชื่องาน — งานนี้จะแสดงเป็น "-" ทั้งหมด\nบันทึกเลยหรือไม่?', { title: 'บันทึกโดยไม่มีชื่องาน', ok: 'บันทึก', cancel: 'กลับไปกรอก', tone: 'question' })
+            .then((ok) => { if (ok) save(f, dates, frm); else toCode(); });
+          return false;
+        }
         save(f, dates, frm);
         return false; // closed by save() once the files are uploaded
       },

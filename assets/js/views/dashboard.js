@@ -36,7 +36,7 @@
     const dueList = PM.bidsDueSoon(db.bids, T);
     const dueTable = dueList.length ? `<table class="tbl"><thead><tr><th>งาน</th><th>ลูกค้า</th><th>Type</th><th>Priority</th><th>กำหนดยื่น</th><th class="num">Progress</th><th>Status</th></tr></thead><tbody>
       ${dueList.slice(0, 10).map((b) => { const p = PM.propOf(b), st = PM.propStatusInfo(p.status), lv = (PM.PROP_PRIORITY.find((x) => x.key === p.priority) || {}).level; return `<tr class="click" data-bid-link>
-        <td><span class="title">${esc(b.name)}</span><small>${esc(b.code)}</small></td><td>${esc(b.client)}</td><td>${esc(p.type)}</td><td>${lv ? U.badge(lv, p.priority) : '-'}</td>
+        <td><span class="title">${esc(PM.dash(b.name))}</span><small>${esc(PM.dash(b.code))}</small></td><td>${esc(PM.dash(b.client))}</td><td>${esc(p.type)}</td><td>${lv ? U.badge(lv, p.priority) : '-'}</td>
         <td class="nowrap">${V.dueBadge(b)}<small>${U.date(b.dueDate)}</small></td><td class="num">${U.num(p.progress)}%</td><td>${U.badge(st.level, st.label)}</td></tr>`; }).join('')}
       </tbody></table>${dueList.length > 10 ? `<p class="muted dash-more">และอีก ${dueList.length - 10} งาน · <a href="#/bidding/proposal">เปิดหน้า Proposal →</a></p>` : ''}` : '<p class="empty">ไม่มีงานที่ต้องยื่นใน 14 วัน</p>';
 

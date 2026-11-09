@@ -68,10 +68,63 @@
     }
     PM.motion.centerTabs(el);
     if (PM.measureTopbar) PM.measureTopbar();
+    pinTools();
     if (PM.notify) PM.notify.refresh(); // bell count (notify.js)
   }
   let lastAnimated = null;
   PM.render = render;
+
+  /* ---------- the page's own toolbar stays in view while the page scrolls ----------
+     The rows a page starts with — view switch, filters, search, its buttons, the Bidding step tabs — are gathered into one
+     sticky box under the top bar. Its height goes to var(--tools-h), so the bars that stick below it (project tabs,
+     Dashboard section links) sit right under it. Every page re-renders itself into #view: a watcher wraps it again. */
+  const TOOL_ROW = '.row, .filter-row, .bid-tabs, .prj-tools';
+  const isToolRow = (el) => el.matches(TOOL_ROW) && !el.matches('.dash-tools') && !el.querySelector('.card, .tile, table, .chart');
+  let toolsObserver = null;
+  function pinTools() {
+    const view = document.getElementById('view');
+    if (!view) return;
+    let box = view.firstElementChild && view.firstElementChild.classList.contains('page-tools') ? view.firstElementChild : null;
+    if (!box) {
+      const lead = [];
+      for (const c of Array.from(view.children)) { if (isToolRow(c)) lead.push(c); else break; }
+      if (lead.length) {
+        // moving the rows takes the focus away (the search box while typing): give it back where it was
+        const act = document.activeElement, sel = act && typeof act.selectionStart === 'number' ? [act.selectionStart, act.selectionEnd] : null;
+        box = document.createElement('div');
+        box.className = 'page-tools';
+        view.insertBefore(box, lead[0]);
+        lead.forEach((c) => box.appendChild(c));
+        if (act && box.contains(act) && document.activeElement !== act) {
+          act.focus({ preventScroll: true });
+          if (sel) try { act.setSelectionRange(sel[0], sel[1]); } catch (e) { /* not a text box */ }
+        }
+      }
+    }
+    const h = box ? box.offsetHeight : 0;
+    document.documentElement.style.setProperty('--tools-h', h + 'px');
+    if (box && !box.dataset.watched && window.ResizeObserver) {
+      box.dataset.watched = '1';
+      new ResizeObserver(() => { if (box.isConnected) document.documentElement.style.setProperty('--tools-h', box.offsetHeight + 'px'); }).observe(box);
+    }
+    stuck();
+  }
+  // a line under the box only while it is actually stuck (the page has scrolled under it)
+  function stuck() {
+    const box = document.querySelector('#view > .page-tools');
+    if (!box) return;
+    const top = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--topbar-h')) || 0;
+    box.classList.toggle('is-stuck', box.getBoundingClientRect().top <= top + 0.5 && (window.scrollY > 0 || (document.querySelector('.main') || {}).scrollTop > 0));
+  }
+  PM.pinTools = pinTools;
+  document.addEventListener('scroll', stuck, { capture: true, passive: true });
+  const watchView = () => {
+    const view = document.getElementById('view');
+    if (!view || toolsObserver) return;
+    toolsObserver = new MutationObserver(pinTools);
+    toolsObserver.observe(view, { childList: true });
+  };
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', watchView); else watchView();
 
   /* pages behind a permission (roles.js) — their menu entries (sidebar, bottom bar, "เพิ่มเติม") are hidden as well */
   const PAGE_PERM = { resources: 'resource.view', timesheet: 'resource.view' };

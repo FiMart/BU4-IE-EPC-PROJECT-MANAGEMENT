@@ -611,6 +611,7 @@
           rows: [[1, 'ตัวอย่าง จำกัด', 'Metering Skid FT-503', 'Bidding', 9.1, 'High', '10-Jul-26', '24-Feb-26', '50%', 'In Progress', '', '', 'P&ID, List eq., BOQ']] }],
       }),
       evaluate(v, ctx) {
+        if (/^[-–—]+$/.test(v.code || '')) delete v.code; // "-" = no Bid No. yet (how the app shows one)
         const k = bidKey(v.client, v.name), codeKey = v.code && `c:${v.code.toUpperCase()}`;
         if (ctx.seen.has(k) || (codeKey && ctx.seen.has(codeKey))) return { action: 'error', note: 'ซ้ำกับแถวก่อนหน้าในไฟล์นี้' };
         ctx.seen.add(k);

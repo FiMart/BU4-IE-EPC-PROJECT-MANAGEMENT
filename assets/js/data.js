@@ -136,6 +136,8 @@
   };
   /* does this role see any bid price at all (Sales: their own)? — decides whether money columns are shown */
   PM.seesBidPrices = () => PM.myRole() === 'admin' || PM.myRole() === 'sales';
+  /* a bid may be saved with Bid No. / client / name left empty: shown as "-" (the data itself stays empty, so it can be filled in later) */
+  PM.dash = (v) => (v == null || String(v).trim() === '' ? '-' : String(v));
   /* a project's money — Plan Revenue, Plan cost, accumulated cost, billing (roles.js → 'project.finance'): Admin · Dept Manager · PM · Engineer.
      Margin · WIP/Accrued · accumulated revenue from the accounting file sit in collection 'projfin' (one row per project id),
      which the database sends to these roles only (supabase/data.sql → can_see_project_finance). */
@@ -546,7 +548,8 @@
   const sane = (d) => d != null && isFinite(d) && d >= 0 && d <= 1095;
 
   PM.bidStats = function (bids, from, to) {
-    const list = bids.filter((b) => (!from || b.dates.inquiry >= from) && (!to || b.dates.inquiry <= to));
+    // a bid saved without an Inquiry date belongs to no month: it counts in every period rather than in none
+    const list = bids.filter((b) => !b.dates.inquiry || ((!from || b.dates.inquiry >= from) && (!to || b.dates.inquiry <= to)));
     const reached = {};
     PM.BID_STAGES.forEach((s) => { reached[s.key] = list.filter((b) => b.dates[s.key]).length; });
     const avg = (arr) => (arr.length ? PM.sum(arr) / arr.length : null);

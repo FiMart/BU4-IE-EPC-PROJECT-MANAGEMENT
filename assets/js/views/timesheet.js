@@ -66,7 +66,7 @@
 
   function rowLabel(r) {
     if (r.kind === 'project') { const p = PM.find('projects', r.refId); return p ? `${p.code} · ${U.phaseLabel(r.phase)}` : r.refId; }
-    if (r.kind === 'bid') { const b = PM.find('bids', r.refId); return b ? `${b.code} · ${PM.bidStageLabel(r.phase) || 'ไม่ระบุขั้นตอน'} (Bidding)` : r.refId; }
+    if (r.kind === 'bid') { const b = PM.find('bids', r.refId); return b ? `${PM.dash(b.code)} · ${PM.bidStageLabel(r.phase) || 'ไม่ระบุขั้นตอน'} (Bidding)` : r.refId; }
     const o = PM.OVERHEAD.find((x) => x.id === r.refId); return o ? o.label : r.refId;
   }
   function rowSub(r) {
@@ -293,7 +293,7 @@
     const cell = (h) => (h ? U.num(h, 1) : '<span class="muted">–</span>');
     box.innerHTML = `<table class="tbl"><thead><tr><th>Bid</th>${cols.map((c) => `<th class="num">${esc(c.label)}</th>`).join('')}<th class="num">Total h</th><th>ผู้ลงชั่วโมง</th></tr></thead><tbody>
       ${rows.map((x) => `<tr>
-        <td><span class="title">${x.b ? esc(x.b.code) : esc(x.id)}</span><small>${x.b ? esc(bidInfo(x.b)) : 'Bid (ลบแล้ว)'}</small></td>
+        <td><span class="title">${x.b ? esc(PM.dash(x.b.code)) : esc(x.id)}</span><small>${x.b ? esc(bidInfo(x.b)) : 'Bid (ลบแล้ว)'}</small></td>
         ${cols.map((c) => `<td class="num">${cell(x.hours[c.key])}</td>`).join('')}
         <td class="num"><b>${U.num(x.total, 1)}</b></td>
         <td>${Array.from(x.people).map((id) => `<span class="chip">${esc(U.resourceName(id))}</span>`).join(' ')}</td></tr>`).join('')}

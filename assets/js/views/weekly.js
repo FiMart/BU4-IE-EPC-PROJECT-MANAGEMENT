@@ -63,7 +63,7 @@
 
   function itemLabel(p) {
     if (p.kind === 'project') { const x = PM.find('projects', p.refId); return x ? `${x.code} · ${U.phaseLabel(p.phase)}` : 'Project (ลบแล้ว)'; }
-    if (p.kind === 'bid') { const b = PM.find('bids', p.refId); return b ? `${b.code} · Bidding` : 'Bid (ลบแล้ว)'; }
+    if (p.kind === 'bid') { const b = PM.find('bids', p.refId); return b ? `${PM.dash(b.code)} · Bidding` : 'Bid (ลบแล้ว)'; }
     const o = PM.OVERHEAD.find((x) => x.id === p.refId);
     return o ? o.label : 'Overhead';
   }
@@ -1105,7 +1105,7 @@
     const opt = (v, label) => `<option value="${esc(v)}"${v === value ? ' selected' : ''}>${esc(label)}</option>`;
     return `<select name="item" required>
       <optgroup label="Projects (EPC)">${projects.map((p) => opt('project|' + p.id, `${p.code} · ${p.name}`)).join('')}</optgroup>
-      <optgroup label="Bidding">${bids.map((b) => opt('bid|' + b.id, `${b.code} · ${b.name}`)).join('')}</optgroup>
+      <optgroup label="Bidding">${bids.map((b) => opt('bid|' + b.id, `${PM.dash(b.code)} · ${PM.dash(b.name)}`)).join('')}</optgroup>
       <optgroup label="Overhead">${PM.OVERHEAD.filter((o) => o.id !== 'leave').map((o) => opt('overhead|' + o.id, o.label)).join('')}</optgroup>
     </select>`;
   }

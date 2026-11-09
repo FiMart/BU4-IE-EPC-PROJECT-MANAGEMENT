@@ -7,7 +7,7 @@
   /* what is still to be handed in: overdue + due within 14 days (not tied to the period — it is today's work) */
   function dueTile(bids, T) {
     const due = PM.bidsDueSoon(bids, T), late = due.filter((b) => b.dueDate < T).length;
-    const tip = due.length ? due.slice(0, 8).map((b) => `${U.date(b.dueDate)} · ${b.name}`).join('\n') + (due.length > 8 ? `\nและอีก ${due.length - 8} งาน` : '') : 'ไม่มีงานที่ต้องยื่นใน 14 วัน';
+    const tip = due.length ? due.slice(0, 8).map((b) => `${U.date(b.dueDate)} · ${PM.dash(b.name)}`).join('\n') + (due.length > 8 ? `\nและอีก ${due.length - 8} งาน` : '') : 'ไม่มีงานที่ต้องยื่นใน 14 วัน';
     return V.tile({
       label: 'ใกล้ถึงกำหนดยื่น', tag: 'Time', icon: 'clock', tip,
       value: `${due.length} <small>งาน</small>`,
@@ -155,7 +155,7 @@
   function card(b, col, hoursBy, k) {
     const actions = V.bidButtons(b, { compact: true });
     const pending = b.result === 'pending';
-    const age = PM.diffDays(b.dates[b.stage], PM.today());
+    const age = b.dates[b.stage] ? PM.diffDays(b.dates[b.stage], PM.today()) : 0; // no date for the step (Inquiry left empty): no age to show
     const flash = state.flash === b.id ? ' flash' : '';
     // the card's edge says how urgent it is, only while it is still waiting to go out
     const left = pending && !b.dates.submit && b.dueDate ? PM.diffDays(PM.today(), b.dueDate) : null;
@@ -164,9 +164,9 @@
     const est = b.estimator ? U.resourceName(b.estimator) : '';
     const money = !PM.canSeeBidPrice(b) ? V.LOCK_PRICE : b.value ? U.money(b.value) : '<span class="muted" title="ไม่ระบุมูลค่า">—</span>';
     return `<article class="kcard${urgency}${flash}" style="--k:${k}" data-bid="${b.id}">
-      <div class="kc-top"><span class="code" title="${esc(b.code)}${b.sector ? ` · ${esc(b.sector)}` : ''}">${esc(b.code)}</span></div>
-      <div class="name" title="${esc(b.name)}">${esc(b.name)}</div>
-      <div class="client">${esc(b.client)}</div>
+      <div class="kc-top"><span class="code" title="${esc(PM.dash(b.code))}${b.sector ? ` · ${esc(b.sector)}` : ''}">${esc(PM.dash(b.code))}</span></div>
+      <div class="name" title="${esc(PM.dash(b.name))}">${esc(PM.dash(b.name))}</div>
+      <div class="client">${esc(PM.dash(b.client))}</div>
       <div class="kc-meta"><span class="v">${money}</span>${PM.canSeeBidPrice(b) ? PM.poFiles.clip(b.files, `data-action="bid-files" data-id="${esc(b.id)}"`) : ''}${V.dueBadge(b)}</div>
       <div class="kc-people">
         <span class="kc-av${hasSales ? '' : ' none'}" aria-hidden="true">${hasSales ? esc(initials(sales)) : '–'}</span>
@@ -184,11 +184,11 @@
       <th>Bid</th><th>Client</th><th>Sales</th><th>Sector</th><th class="num">Value</th><th class="num">BOQ items</th>
       <th>Inquiry</th><th>Submitted</th><th>Due</th><th class="num">Cycle (d)</th><th class="num">Hours</th><th>Status</th><th>Timing</th><th class="num">ไฟล์</th></tr></thead><tbody>
       ${list.map((b) => `<tr class="click" data-bid="${b.id}">
-        <td><span class="title">${esc(b.code)}</span><small>${esc(b.name)}</small></td>
-        <td>${esc(b.client)}${b.contact ? `<small>${esc(b.contact)}</small>` : ''}</td><td>${esc(V.salesName(b))}${b.leadSource ? `<small>${esc(b.leadSource)}</small>` : ''}</td><td>${esc(b.sector)}</td>
+        <td><span class="title">${esc(PM.dash(b.code))}</span><small>${esc(PM.dash(b.name))}</small></td>
+        <td>${esc(PM.dash(b.client))}${b.contact ? `<small>${esc(b.contact)}</small>` : ''}</td><td>${esc(V.salesName(b))}${b.leadSource ? `<small>${esc(b.leadSource)}</small>` : ''}</td><td>${esc(b.sector)}</td>
         <td class="num">${V.bidMoney(b)}</td><td class="num">${U.num(b.boqItems)}</td>
         <td>${U.date(b.dates.inquiry)}</td><td>${U.date(b.dates.submit)}</td><td>${U.date(b.dueDate)}</td>
-        <td class="num">${b.dates.submit ? PM.diffDays(b.dates.inquiry, b.dates.submit) : '–'}</td>
+        <td class="num">${b.dates.submit && b.dates.inquiry ? PM.diffDays(b.dates.inquiry, b.dates.submit) : '–'}</td>
         <td class="num">${U.num(hoursBy[b.id] || 0)}</td>
         <td>${V.resultBadge(b)}</td><td>${V.dueBadge(b)}</td>
         <td class="num">${PM.canSeeBidPrice(b) ? PM.poFiles.clip(b.files, `data-action="bid-files" data-id="${esc(b.id)}"`) || '–' : V.LOCK_PRICE}</td></tr>`).join('')}

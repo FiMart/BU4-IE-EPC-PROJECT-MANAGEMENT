@@ -130,10 +130,10 @@
           <th>Bid</th><th>Client</th><th>Sales</th><th class="num">Value</th>${extra.map((c) => `<th${c[2] ? ` class="${c[2]}"` : ''}>${esc(c[0])}</th>`).join('')}
           <th>เข้าขั้นเมื่อ</th><th class="num">อยู่มา (วัน)</th><th>Due</th><th class="num">ชม. ขั้นนี้</th><th class="num">ไฟล์</th><th></th></tr></thead><tbody>
           ${now.map((b) => `<tr class="click" data-bid="${esc(b.id)}">
-            <td><span class="title">${esc(b.code)}</span><small>${esc(b.name)}</small></td>
-            <td>${esc(b.client)}</td><td>${esc(V.salesName(b))}</td><td class="num">${V.bidMoney(b)}</td>
+            <td><span class="title">${esc(PM.dash(b.code))}</span><small>${esc(PM.dash(b.name))}</small></td>
+            <td>${esc(PM.dash(b.client))}</td><td>${esc(V.salesName(b))}</td><td class="num">${V.bidMoney(b)}</td>
             ${extra.map((c) => `<td${c[2] ? ` class="${c[2]}"` : ''}>${c[1](b)}</td>`).join('')}
-            <td>${U.date(b.dates[key])}</td><td class="num">${PM.diffDays(b.dates[key], T)}</td><td>${V.dueBadge(b) || '–'}</td>
+            <td>${U.date(b.dates[key])}</td><td class="num">${b.dates[key] ? PM.diffDays(b.dates[key], T) : '-'}</td><td>${V.dueBadge(b) || '–'}</td>
             <td class="num">${hoursBy[b.id] ? U.num(hoursBy[b.id], 1) : '–'}</td>
             <td class="num">${PM.canSeeBidPrice(b) ? PM.poFiles.clip(b.files, `data-action="bid-files" data-id="${esc(b.id)}"`) || '–' : V.LOCK_PRICE}</td>
             <td class="row-actions">${V.bidButtons(b)}</td></tr>`).join('')}
@@ -144,8 +144,8 @@
         <div class="card-b flush table-wrap">${passed.length ? `<table class="tbl"><thead><tr>
           <th>Bid</th><th>Client</th><th class="num">Value</th><th>เข้าขั้น</th><th>ออกจากขั้น</th><th class="num">ใช้เวลา (วัน)</th><th class="num">ชม. ขั้นนี้</th><th>ตอนนี้</th></tr></thead><tbody>
           ${passed.map((b) => { const out = leftAt(b); return `<tr class="click" data-bid="${esc(b.id)}">
-            <td><span class="title">${esc(b.code)}</span><small>${esc(b.name)}</small></td><td>${esc(b.client)}</td><td class="num">${V.bidMoney(b)}</td>
-            <td>${U.date(b.dates[key])}</td><td>${U.date(out)}</td><td class="num">${out ? PM.diffDays(b.dates[key], out) : '–'}</td>
+            <td><span class="title">${esc(PM.dash(b.code))}</span><small>${esc(PM.dash(b.name))}</small></td><td>${esc(PM.dash(b.client))}</td><td class="num">${V.bidMoney(b)}</td>
+            <td>${U.date(b.dates[key])}</td><td>${U.date(out)}</td><td class="num">${out && b.dates[key] ? PM.diffDays(b.dates[key], out) : '–'}</td>
             <td class="num">${hoursBy[b.id] ? U.num(hoursBy[b.id], 1) : '–'}</td><td>${V.resultBadge(b)}</td></tr>`; }).join('')}
           </tbody></table>` : '<p class="empty">ยังไม่มีงานที่ผ่านขั้นนี้ในช่วงเวลาที่เลือก</p>'}</div>
       </div>`}
@@ -208,7 +208,7 @@
             const st = PM.propStatusInfo(x.p.status), lv = priLevel(x.p.priority);
             const late = x.b.result === 'pending' && !x.b.dates.submit && x.b.dueDate && x.b.dueDate < T;
             return `<tr class="click" data-bid="${esc(x.b.id)}">
-            <td class="num">${x.no}</td><td>${esc(x.b.client)}</td><td><span class="title">${esc(x.b.name)}</span><small>${esc(x.b.code)}</small></td><td>${esc(x.p.type)}</td>
+            <td class="num">${x.no}</td><td>${esc(PM.dash(x.b.client))}</td><td><span class="title">${esc(PM.dash(x.b.name))}</span><small>${esc(PM.dash(x.b.code))}</small></td><td>${esc(x.p.type)}</td>
             <td class="num">${PM.canSeeBidPrice(x.b) ? mb(x.b.value) : V.LOCK_PRICE}</td><td>${lv ? U.badge(lv, x.p.priority) : '-'}</td>
             <td class="nowrap${late ? ' neg' : ''}">${dmy(x.b.dueDate)}</td><td class="nowrap">${dmy(x.b.dates.proposal)}</td>
             <td class="num">${U.num(x.p.progress)}%</td><td>${U.badge(st.level, st.label)}</td><td>${esc(pmOf(x))}</td><td>${esc(salesOf(x))}</td><td>${esc(x.p.deliverables)}</td>
@@ -243,7 +243,7 @@
   <section class="flow"><table class="pl"><thead>
     <tr class="band"><th colspan="6">PROJECT INFORMATION</th><th colspan="2">SCHEDULE</th><th colspan="2">TRACKING</th><th colspan="2">TEAM</th><th>SCOPE</th></tr>
     <tr class="head"><th>No.</th><th>Customer</th><th>Project Name</th><th>Type</th><th>Value (MB)</th><th>Priority</th><th>Due Date</th><th>Start Date</th><th>Progress</th><th>Status</th><th>PM</th><th>Sales</th><th>Deliverables</th></tr></thead><tbody>
-    ${rows.map((x) => { const st = PM.propStatusInfo(x.p.status); return `<tr><td class="r">${x.no}</td><td>${esc(x.b.client)}</td><td>${esc(x.b.name)}</td><td>${esc(x.p.type)}</td>
+    ${rows.map((x) => { const st = PM.propStatusInfo(x.p.status); return `<tr><td class="r">${x.no}</td><td>${esc(PM.dash(x.b.client))}</td><td>${esc(PM.dash(x.b.name))}</td><td>${esc(x.p.type)}</td>
       <td class="r">${PM.canSeeBidPrice(x.b) ? mb(x.b.value) : '🔒'}</td><td${cellCls(priLevel(x.p.priority))}>${esc(x.p.priority || '-')}</td><td>${dmy(x.b.dueDate)}</td><td>${dmy(x.b.dates.proposal)}</td>
       <td class="r">${U.num(x.p.progress)}%</td><td${cellCls(st.level)}>${esc(st.label)}</td><td>${esc(pmOf(x))}</td><td>${esc(salesOf(x))}</td><td>${esc(x.p.deliverables)}</td></tr>`; }).join('')}
   </tbody></table></section>
@@ -279,8 +279,8 @@
     const noProject = won.filter((b) => !(b.projectId && PM.find('projects', b.projectId)));
     const rows = (list, cols) => `<table class="tbl"><thead><tr>${cols.map((c) => `<th${c[2] ? ` class="${c[2]}"` : ''}>${esc(c[0])}</th>`).join('')}</tr></thead><tbody>
       ${list.map((b) => `<tr class="click" data-bid="${esc(b.id)}">${cols.map((c) => `<td${c[2] ? ` class="${c[2]}"` : ''}>${c[1](b)}</td>`).join('')}</tr>`).join('')}</tbody></table>`;
-    const bidCol = ['Bid', (b) => `<span class="title">${esc(b.code)}</span><small>${esc(b.name)}</small>`];
-    const clientCol = ['Client', (b) => esc(b.client)];
+    const bidCol = ['Bid', (b) => `<span class="title">${esc(PM.dash(b.code))}</span><small>${esc(PM.dash(b.name))}</small>`];
+    const clientCol = ['Client', (b) => esc(PM.dash(b.client))];
     const valueCol = ['Value', (b) => V.bidMoney(b), 'num'];
     const yours = PM.myRole() === 'sales' ? ' (งานของคุณ)' : '';
 

@@ -774,3 +774,85 @@ button.day-item:hover { background: var(--surface-2); }
 /* the accounting file's own figures (Accum. Revenue · WIP / Accrued · Margin): a quiet tint marks them as a group */
 .mon-table th.mon-fin, .mon-table td.mon-fin { background: color-mix(in srgb, var(--s1) 6%, transparent); }
 .mon-table tr > .mon-fin:nth-last-child(4) { border-left: 2px solid var(--border); }
+
+/* ---------- fit each screen (v1.78) ----------
+   The project header's details and cost strip follow the width of their own card, not the window:
+   the same window is ~1,050 px of content with the sidebar open and ~1,250 px with it folded. */
+.card-b:has(> .kv-4), .card-b:has(> .cost-strip) { container-type: inline-size; }
+@container (max-width: 1180px) {
+  .kv.kv-4 { grid-template-columns: auto minmax(0, 1fr) auto minmax(0, 1fr); column-gap: 18px; }
+  .cost-strip { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+@container (max-width: 560px) {
+  .kv.kv-4 { grid-template-columns: auto minmax(0, 1fr); }
+  .cost-strip { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+/* labels of the detail list on one line; values may wrap, but not inside a short name */
+.kv dt { white-space: nowrap; }
+.kv dd { overflow-wrap: break-word; }
+
+/* wide screens: the top bar lines up with the page below it instead of the window's edges */
+@media (min-width: 1900px) {
+  .content { max-width: 1880px; }
+  .topbar { padding-inline: max(32px, calc((100% - 1880px) / 2 + 32px)); }
+}
+/* very wide screens (2,400 px and up): a little more room inside cards and larger text, read from further away */
+@media (min-width: 2400px) {
+  .content { max-width: 2120px; }
+  .topbar { padding-inline: max(32px, calc((100% - 2120px) / 2 + 32px)); }
+  body { font-size: 15px; }
+  .tile-value { font-size: 32px; }
+  .kv, .tbl td, .tbl th { font-size: 14.5px; }
+}
+
+/* ---------- the page's toolbar stays under the top bar while scrolling (app.js → pinTools) ---------- */
+.page-tools {
+  position: sticky; top: var(--topbar-h, 64px); z-index: 4;
+  display: flex; flex-direction: column; gap: 12px;
+  margin: -24px -32px 0; padding: 14px 32px 12px;
+  /* a plain background: a blur or transform here would carry the floating "+" button (position: fixed) along with the bar */
+  background: var(--bg);
+}
+/* desktop: the search box gives way first, so the page's buttons stay on the first line */
+.page-tools > .row > input[type=search] { flex: 1 1 180px; width: auto !important; min-width: 160px; max-width: 320px; }
+.page-tools.is-stuck { box-shadow: 0 1px 0 var(--border), 0 10px 16px -14px rgba(11, 27, 51, .35); }
+.page-tools > .row, .page-tools > .filter-row, .page-tools > .tabs { margin: 0; }
+/* bars that stick under it: project tabs, Dashboard section links */
+.ptabs { top: calc(var(--topbar-h, 64px) + var(--tools-h, 0px)); }
+.sec-nav { position: sticky; top: calc(var(--topbar-h, 64px) + var(--tools-h, 0px)); z-index: 3; margin: 0 -32px; padding: 8px 32px; background: var(--bg); }
+@media (max-width: 900px) {
+  .page-tools { margin: -16px -16px 0; padding: 10px 16px; gap: 10px; }
+  .sec-nav { margin: 0 -16px; padding: 8px 16px; }
+}
+/* phone: each row of the toolbar is one line that slides sideways, so the pinned part stays small */
+@media (max-width: 640px) {
+  .page-tools { margin: -12px -12px 0; padding: 8px 12px; gap: 8px; }
+  .page-tools > .row, .page-tools > .filter-row { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; overscroll-behavior-x: contain; }
+  .page-tools > .row::-webkit-scrollbar, .page-tools > .filter-row::-webkit-scrollbar { display: none; }
+  .page-tools > .row > *, .page-tools > .filter-row > * { flex: none; }
+  .page-tools > .row > input[type=search] { flex: none; width: 210px !important; max-width: none; }
+  .page-tools > .row > select, .page-tools > .filter-row > select { width: auto !important; max-width: 220px; }
+  .page-tools > .row > .spacer { display: none; }
+  .page-tools .seg { max-width: none; overflow: visible; }
+  .sec-nav { margin: 0 -12px; padding: 6px 12px; flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; }
+  .sec-nav a { flex: none; }
+}
+
+/* card headings: a heading keeps a real width, so the badges and buttons beside it move to the next line
+   instead of squeezing it to a letter per line ("โครงการที่ต้นทุนเกินงบ") */
+.card-h .ch-ic + h2 { flex: 1 1 12em; min-width: 0; }
+.card-h h2 { overflow-wrap: break-word; word-break: normal; }
+.card-h > .seg { flex: none; }
+
+/* tables: the name column (risk, invoice no., person, VO …) never shrinks to a few letters a line while the other
+   columns stay on one line — the table scrolls sideways inside its card instead (phones show cards, not columns) */
+@media (min-width: 641px) {
+  .tbl:not(.mon-table) td > .title, .tbl:not(.mon-table) td > .cell > .title { display: inline-block; min-width: min(11em, 40vw); }
+  .tbl td > .title + small, .tbl td > .cell > .title + small { display: block; }
+}
+
+/* tablet (641–1100 px): KPI tiles a little tighter, so two rows of them do not fill the whole first screen */
+@media (min-width: 641px) and (max-width: 1100px) {
+  .tile { padding: 13px 15px; }
+  .tile-value { font-size: 26px; margin: 4px 0 2px; }
+}

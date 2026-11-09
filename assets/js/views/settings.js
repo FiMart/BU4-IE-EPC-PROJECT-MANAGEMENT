@@ -267,7 +267,7 @@
     if (act === 'csv' && PM.can('data.export')) {
       const name = (t) => {
         if (t.kind === 'project') { const p = PM.find('projects', t.refId); return p ? p.code : t.refId; }
-        if (t.kind === 'bid') { const b = PM.find('bids', t.refId); return b ? b.code : t.refId; }
+        if (t.kind === 'bid') { const b = PM.find('bids', t.refId); return b ? PM.dash(b.code) : t.refId; }
         return t.refId;
       };
       const q = (s) => `"${String(s == null ? '' : s).replace(/"/g, '""')}"`;
