@@ -115,8 +115,11 @@
     const extra = EXTRA[key] || [];
     el.innerHTML = `${toolbar}
       <div class="grid cols-6">
-        ${V.tile({ label: `${st.label} ตอนนี้`, value: now.length, sub: V.bidSum(now) ? `มูลค่า ${V.bidSum(now)}${PM.myRole() === 'sales' ? ' (งานของคุณ)' : ''}` : 'งานที่อยู่ในขั้นนี้', icon: key })}
-        ${V.tile({ label: 'เข้าขั้นนี้', tag: 'Quantity', value: bs.reached[key], sub: i ? `Conversion จาก Inquiry ${U.pct(bs.total ? bs.reached[key] / bs.total : null)}` : 'Inquiry ทั้งหมดในช่วงเวลา' })}
+        ${isProp // the Proposal page: the whole list first, every status counted (as in the team's file)
+          ? V.proposalTotalTile(PM.proposalList().filter(({ b }) => bids.includes(b) && match(b)), { of: PM.db.bids.length })
+          : ''}
+        ${V.tile({ label: isProp ? 'อยู่ขั้น Proposal ตอนนี้' : `${st.label} ตอนนี้`, value: now.length, sub: V.bidSum(now) ? `มูลค่า ${V.bidSum(now)}${PM.myRole() === 'sales' ? ' (งานของคุณ)' : ''}` : 'งานที่อยู่ในขั้นนี้', icon: key })}
+        ${isProp ? '' : V.tile({ label: 'เข้าขั้นนี้', tag: 'Quantity', value: bs.reached[key], sub: i ? `Conversion จาก Inquiry ${U.pct(bs.total ? bs.reached[key] / bs.total : null)}` : 'Inquiry ทั้งหมดในช่วงเวลา' })}
         ${V.tile({ label: 'เวลาเฉลี่ย', tag: 'Time', value: U.days(sd.avg), sub: `${esc(sd.label)} · n=${sd.n}` })}
         ${key === 'submit'
           ? V.tile({ label: 'On-time submission', tag: 'Time', value: U.pct(bs.onTimeRate), sub: 'ยื่นก่อน / ตรง due date' })
@@ -184,7 +187,8 @@
   function proposalRows(bids, match, inPeriod) {
     const state = PM.biddingState;
     const ids = new Set(bids.map((b) => b.id));
-    return PM.proposalList().filter(({ b, p }) => ids.has(b.id) && match(b) && (b.result === 'pending' || inPeriod(b.dates.inquiry))
+    // the whole list, as in the team's file — the period only picks the figures above it
+    return PM.proposalList().filter(({ b, p }) => ids.has(b.id) && match(b)
       && (!state.pStatus || p.status === state.pStatus) && (!state.pType || p.type === state.pType) && (!state.pPriority || p.priority === state.pPriority));
   }
   const filterSel = (name, label, items) => `<select data-prop-filter="${name}" aria-label="${esc(label)}" style="width:auto"><option value="">${esc(label)}: ทั้งหมด</option>${items.map((x) => `<option value="${esc(x.v)}"${PM.biddingState[name] === x.v ? ' selected' : ''}>${esc(x.t)}</option>`).join('')}</select>`;
@@ -194,7 +198,7 @@
     const pct = (n) => (s.total ? U.num((n / s.total) * 100, 1) + '%' : '–');
     const yours = PM.myRole() === 'sales' ? ' (เฉพาะงานของคุณ)' : '';
     return `<div class="card no-i18n">
-        <div class="card-h"><h2>Proposal Status List</h2><p>คลิกแถวเพื่อกรอก / แก้ไข · มูลค่าเห็นเฉพาะ Sales เจ้าของงานและ Admin</p></div>
+        <div class="card-h"><h2>Proposal Status List</h2><p>คลิกแถวเพื่อกรอก / แก้ไข · มูลค่าเห็นได้ตั้งแต่ Admin ถึง Engineer และ Sales เจ้าของงาน · แก้มูลค่าได้เฉพาะ Admin และ Sales เจ้าของงาน</p></div>
         <div class="card-b row pl-filters">
           ${filterSel('pStatus', 'Status', PM.PROP_STATUS.map((x) => ({ v: x.key, t: x.label })))}
           ${filterSel('pType', 'Type', PM.PROP_TYPES.map((x) => ({ v: x, t: x })))}

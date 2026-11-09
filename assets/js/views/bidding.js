@@ -30,8 +30,11 @@
 
     const pending = bids.filter((b) => b.result === 'pending' && match(b));
     const cols = PM.BID_STAGES.map((s) => ({ key: s.key, label: s.label, th: s.th, items: pending.filter((b) => b.stage === s.key) }));
-    cols.push({ key: 'won', label: 'Won', th: 'ได้งาน', items: bids.filter((b) => b.result === 'won' && match(b) && inPeriod(b.resultDate || b.dates.inquiry)) });
-    cols.push({ key: 'lost', label: 'Lost / No-bid', th: 'ไม่ได้งาน / ไม่เสนอราคา', items: bids.filter((b) => (b.result === 'lost' || b.result === 'nobid') && match(b) && inPeriod(b.resultDate || b.dates.inquiry)) });
+    // every bid is on the board, as on the Proposal list (the period only picks the figures above it):
+    // results older than the period used to drop off, so an imported list of 52 showed fewer cards
+    cols.push({ key: 'won', label: 'Won', th: 'ได้งาน', items: bids.filter((b) => b.result === 'won' && match(b)) });
+    cols.push({ key: 'lost', label: 'Lost / No-bid', th: 'ไม่ได้งาน / ไม่เสนอราคา', items: bids.filter((b) => (b.result === 'lost' || b.result === 'nobid') && match(b)) });
+    const onBoard = PM.sum(cols, (c) => c.items.length);
     const salesOpt = (id, label) => `<option value="${esc(id)}"${state.sales === id ? ' selected' : ''}>${esc(label)}</option>`;
 
     el.innerHTML = `
@@ -56,17 +59,15 @@
         ${dueTile(bids.filter(match), T)}
         ${V.tile({ label: 'On-time submission', tag: 'Time', value: U.pct(bs.onTimeRate), sub: `ยื่นก่อน / ตรง due date${bs.assumedSubmit ? ` · ไม่นับ ${bs.assumedSubmit} งานที่ไม่มีวันยื่นจริง` : ''}` })}
         ${V.tile({ label: 'Win rate', value: U.pct(bs.winRate), sub: `${bs.won} won / ${bs.won + bs.lost} decided` })}
-        ${PM.seesBidPrices()
+        ${PM.seesBidValues() // Admin · Dept Manager · PM · Engineer: every bid · Sales: their own
           ? V.tile({ label: 'Won value', value: U.money(bs.wonValue), sub: `Pipeline ${U.money(bs.pipelineValue)}${PM.myRole() === 'sales' ? ' · เฉพาะงานของคุณ' : ''}` })
-          : PM.seesBidValues() // Dept Manager · PM · Engineer: the values of won bids only
-          ? V.tile({ label: 'Won value', value: V.bidSum(bs.list.filter((b) => b.result === 'won')) || '–', sub: `${bs.won} งานที่ได้ในช่วงเวลา · เห็นมูลค่าเฉพาะงานที่ได้แล้ว` })
-          : V.tile({ label: 'Won / Lost', value: `${bs.won} <small>/ ${bs.lost}</small>`, sub: `No-bid ${bs.nobid} · มูลค่าเห็นได้เฉพาะ Sales / Admin`, icon: 'award' })}
+          : V.tile({ label: 'Won / Lost', value: `${bs.won} <small>/ ${bs.lost}</small>`, sub: `No-bid ${bs.nobid} · มูลค่าเห็นได้ตั้งแต่ Admin ถึง Engineer`, icon: 'award' })}
       </div>
       <div class="card">
-        <div class="card-h"><h2>${state.mode === 'kanban' ? 'Bid board' : 'Bid register'}</h2><p>${state.mode === 'kanban'
+        <div class="card-h"><h2>${state.mode === 'kanban' ? 'Bid board' : 'Bid register'}</h2><span class="chip">${onBoard} งาน${q || state.sales ? ` จาก ${db.bids.length}` : ''}</span><p>แสดงทุกงานเหมือน Proposal list · ช่วงเวลาที่เลือกใช้กับตัวเลขด้านบน · ${state.mode === 'kanban'
           ? (PM.can('bid.edit') ? `งานเร่งด่วนอยู่บนสุด · คลิกการ์ดเพื่อแก้ไข · ปุ่มท้ายการ์ดเลื่อนขั้น (บันทึกวันที่ = วันนี้) · Status Complete = ยื่นแล้ว${PM.myRole() === 'sales' ? ' · เลื่อนขั้น / Won / Lost ได้เฉพาะงานของคุณ' : ''}` :'คลิกการ์ดเพื่อดูรายละเอียด · เลื่อนขั้นและบันทึกผล Won / Lost ทำได้เฉพาะ Admin · Project Manager · Engineer และ Sales ผู้รับผิดชอบงาน')
-          : 'รายการ Bid ทั้งหมดในช่วงเวลาที่เลือก + งานที่ยังดำเนินการ'}</p></div>
-        <div class="card-b">${state.mode === 'kanban' ? kanban(cols, hoursBy) : table(bids.filter((b) => match(b) && (b.result === 'pending' || inPeriod(b.dates.inquiry))), hoursBy)}</div>
+          : 'รายการ Bid ทั้งหมด เรียงจาก Inquiry ล่าสุด'}</p></div>
+        <div class="card-b">${state.mode === 'kanban' ? kanban(cols, hoursBy) : table(bids.filter(match), hoursBy)}</div>
       </div>
       <div class="card">
         <div class="card-h"><h2>ผลงาน Sales</h2><p>งานที่ Sales แต่ละคนหาลูกค้ามา (Inquiry ในช่วงเวลาที่เลือก) และโครงการที่รับผิดชอบ · คลิกแถวเพื่อกรองเฉพาะคนนั้น</p></div>

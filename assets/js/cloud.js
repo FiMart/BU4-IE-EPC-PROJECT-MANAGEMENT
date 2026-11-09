@@ -59,14 +59,14 @@
     const pub = {};
     Object.keys(b).forEach((k) => { if (!PM.BID_SECRET.includes(k)) pub[k] = b[k]; });
     // not allowed to write the price: only the public fields go up (the price row stays as the database has it).
-    // A Value this user only reads (bidvalues: Dept Manager / PM / Engineer once won) never goes back on the bid.
+    // A Value this user only reads (bidvalues: Dept Manager / PM / Engineer) never goes back on the bid.
     // all = Reset / Import (app_replace_all writes every row): always split, so prices never land on the public bid
     // Never the price on the public row, whatever this browser holds (e.g. a copy left by an Admin who used it before).
     if (!all && !canWritePrice(owner)) return [{ collection: 'bids', id: String(b.id), data: pub }];
     pub.owner = owner;
     const out = [{ collection: 'bids', id: String(b.id), data: pub }];
     if (hasPrice(b) && !valueOnly.has(String(b.id))) out.push({ collection: 'bidprices', id: String(b.id), data: canon({ value: b.value == null ? null : b.value, margin: b.margin == null ? null : b.margin, files: b.files || [], owner }) });
-    // the Value alone, beside the price row: what Dept Manager / PM / Engineer may read once the bid is won (data.sql → can_see_bid_value)
+    // the Value alone, beside the price row: what Dept Manager / PM / Engineer may read (data.sql → can_see_bid_value)
     if (b.value != null && !valueOnly.has(String(b.id))) out.push({ collection: 'bidvalues', id: String(b.id), data: canon({ value: b.value, owner }) });
     return out;
   }
@@ -233,7 +233,7 @@
       no[k] = r.ord;
     });
     // put each bid's price back on it; no row = not allowed to see it (older data may still carry it on the bid itself).
-    // Only a Value row (Dept Manager / PM / Engineer once won): the Value alone, read only
+    // Only a Value row (Dept Manager / PM / Engineer): the Value alone, read only
     valueOnly.clear();
     db.bids.forEach((b) => {
       const p = prices[b.id], v = values[b.id];

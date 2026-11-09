@@ -12,7 +12,7 @@
 --     and projfin — Margin · WIP/Accrued · accumulated revenue of a project: only Admin, Department Manager,
 --     Project Manager and Engineer, see can_see_project_finance() — v1.78;
 --     and bidvalues — a bid's Value alone: Admin and the owning Sales, plus Department Manager / Project Manager /
---     Engineer once the bid is won, see can_see_bid_value() — v1.78)
+--     Engineer on every bid, see can_see_bid_value() — v1.78)
 --  - Bulk replace (Reset / Import) goes through app_replace_all() — Admin, Department Manager & Project Manager only.
 --  - PO file attachments: private Storage bucket "po-files" (section at the end).
 -- =====================================================================
@@ -85,14 +85,12 @@ returns boolean language sql stable security definer set search_path = public as
 $$;
 
 -- A bid's Value alone (collection 'bidvalues': { value, owner }, one row per bid id — no margin, no quotation files):
--- written like the price (Admin and the owning Sales); read also by Department Manager, Project Manager and Engineer
--- once the bid is won. Margin and files stay in 'bidprices'.
+-- written like the price (Admin and the owning Sales); read also by Department Manager, Project Manager and Engineer,
+-- on every bid. Margin and files stay in 'bidprices'. (bid_id is kept in the signature for the app's readiness check.)
 create or replace function public.can_see_bid_value(bid_id text, owner text)
 returns boolean language sql stable security definer set search_path = public as $$
-  select public.can_see_bid_price(owner) or (
-    exists (select 1 from public.profiles where id = auth.uid() and role::text in ('dept_manager', 'project_manager', 'engineer'))
-    and exists (select 1 from public.app_records b
-                 where b.collection = 'bids' and b.id = bid_id and b.data ->> 'result' = 'won'));
+  select public.can_see_bid_price(owner)
+      or exists (select 1 from public.profiles where id = auth.uid() and role::text in ('dept_manager', 'project_manager', 'engineer'));
 $$;
 
 create policy "records: read"   on public.app_records for select to authenticated using (

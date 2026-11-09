@@ -66,11 +66,12 @@
       </nav>
 
       <div class="section-h" id="sec-bid"><span class="idx">1</span><h2>Bidding Performance</h2><p>Before Award · 12 เดือนล่าสุด</p><span class="spacer"></span><a href="#/bidding">เปิด Bidding →</a></div>
-      <div class="grid cols-4">
-        ${V.tile({ label: 'Inquiries', tag: 'Quantity', value: bs.total, sub: `ยื่นใบเสนอราคาแล้ว ${bs.submitted} งาน` })}
+      <div class="grid cols-5">
+        ${V.proposalTotalTile(PM.proposalList())}
+        ${V.tile({ label: 'Inquiries', tag: 'Quantity', value: bs.total, sub: `12 เดือนล่าสุด · ยื่นใบเสนอราคาแล้ว ${bs.submitted} งาน` })}
         ${V.tile({ label: 'Win rate', value: U.pct(bs.winRate), sub: PM.myRole() === 'admin' ? `by value ${U.pct(bs.winRateValue)} · won ${U.money(bs.wonValue)}` : `${bs.won} won / ${bs.won + bs.lost} decided` })}
         ${V.tile({ label: 'On-time submission', tag: 'Time', value: U.pct(bs.onTimeRate), sub: U.badge(bs.onTimeRate >= 0.9 ? 'good' : bs.onTimeRate >= 0.75 ? 'warning' : 'critical', 'target 90%') })}
-        ${PM.seesBidPrices() // Dept Manager · PM · Engineer see won values only, so the pipeline stays a count for them
+        ${PM.seesBidValues()
           ? V.tile({ label: 'Pipeline (pending)', value: V.bidSum(allPending) || '–', sub: `${allPending.length} bids in progress${PM.myRole() === 'sales' ? ' · มูลค่าเฉพาะงานของคุณ' : ''}` })
           : V.tile({ label: 'Pipeline (pending)', value: allPending.length, sub: 'bids in progress', icon: 'funnel' })}
       </div>

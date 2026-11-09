@@ -22,7 +22,7 @@
     'bid.result': { label: 'กด Won / Lost / No-bid (Sales: เฉพาะงานของตัวเอง)', roles: ['admin', 'project_manager', 'engineer', 'sales'] },
     'bid.delete': { label: 'ลบงานประมูล พร้อมราคาและไฟล์ใบเสนอราคา (Sales: เฉพาะงานของตัวเอง — บังคับในฐานข้อมูล)', roles: ['admin', 'sales'] },
     'bid.price': { label: 'เห็นมูลค่า · Margin · ไฟล์ใบเสนอราคาของ Bid (Sales: เฉพาะงานของตัวเอง — บังคับในฐานข้อมูล)', roles: ['admin', 'sales'] },
-    'bid.value': { label: 'เห็นมูลค่า (Value) ของ Bid ที่ได้งานแล้ว (Won) — ไม่รวม Margin และไฟล์ใบเสนอราคา (บังคับในฐานข้อมูล)', roles: ['admin', 'dept_manager', 'project_manager', 'engineer', 'sales'] },
+    'bid.value': { label: 'เห็นมูลค่า (Value) ของ Bid ทุกงานทุกขั้น — ไม่รวม Margin และไฟล์ใบเสนอราคา (บังคับในฐานข้อมูล)', roles: ['admin', 'dept_manager', 'project_manager', 'engineer', 'sales'] },
     'plan.edit': { label: 'สร้าง / แก้ไขงานใน Weekly Plan', roles: ['admin', 'dept_manager', 'project_manager', 'engineer', 'sales', 'doc_control'] },
     'plan.status': { label: 'อัปเดตสถานะงานใน Weekly Plan', roles: ['admin', 'dept_manager', 'project_manager', 'engineer', 'sales', 'doc_control', 'technician'] },
     'resource.view': { label: 'เปิดหัวข้อ Resources (Resource Utilization · Timesheet) และส่วน Resource Utilization บน Dashboard', roles: ['admin', 'dept_manager', 'project_manager'] },

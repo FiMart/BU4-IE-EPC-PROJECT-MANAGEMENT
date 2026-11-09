@@ -137,10 +137,10 @@
   /* does this role see any bid price at all (Sales: their own)? — decides whether money columns are shown */
   PM.seesBidPrices = () => PM.myRole() === 'admin' || PM.myRole() === 'sales';
   /* The bid's Value alone (not its margin, not the quotation files) also shows to Department Manager · Project Manager ·
-     Engineer once the bid is won. The database sends it to them only then:
+     Engineer, on every bid at every step. The database sends it to these roles only:
      collection 'bidvalues', can_see_bid_value() in supabase/data.sql (v1.78). */
   PM.VALUE_ROLES = ['dept_manager', 'project_manager', 'engineer'];
-  PM.bidValueOpen = (b) => !!b && b.result === 'won';
+  PM.bidValueOpen = (b) => !!b;
   PM.canSeeBidValue = (b) => PM.canSeeBidPrice(b) || (PM.VALUE_ROLES.includes(PM.myRole()) && PM.bidValueOpen(b));
   PM.seesBidValues = () => PM.seesBidPrices() || PM.VALUE_ROLES.includes(PM.myRole());
   /* a bid may be saved with Bid No. / client / name left empty: shown as "-" (the data itself stays empty, so it can be filled in later) */

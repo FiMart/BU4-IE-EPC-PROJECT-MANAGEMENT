@@ -279,7 +279,7 @@
       ${kpi('CPI รวม (ต้นทุน)', U.ratio(pCPI), th(U.healthLabel[lv(pCPI)]), lv(pCPI))}
       ${kpi('ต้นทุนเกินงบ', `${nOver} <small style="display:inline">/ คาดว่าจะเกิน ${nFc}</small>`, 'โครงการ', nOver ? 'critical' : nFc ? 'warning' : 'good')}
       ${kpi('อัตราชนะประมูล (12 เดือน)', U.pct(bs.winRate), `ชนะ ${bs.won} / ${bs.won + bs.lost} งาน`)}
-      ${kpi('งานประมูลที่รอผล', U.num(pending.length), PM.seesBidPrices() ? `มูลค่า ${V.bidSum(pending)}` : 'งาน')}
+      ${kpi('งานประมูลที่รอผล', U.num(pending.length), PM.seesBidValues() ? `มูลค่า ${V.bidSum(pending)}` : 'งาน')}
       ${kpi('ค้างรับจากลูกค้า', U.money(PM.sum(bills, (b) => b.outstanding)), (() => { const n = PM.sum(bills, (b) => b.overdue.length); return n ? `เกินกำหนด ${n} งวด` : 'ไม่มีงวดเกินกำหนด'; })(), bills.some((b) => b.overdue.length) ? 'critical' : 'good')}
       ${kpi('PO เลยกำหนดส่ง', U.num(po.late.length), `จาก PO ยังไม่ส่งครบ ${po.open}`, po.late.length ? 'critical' : 'good')}
     </div>
@@ -290,8 +290,8 @@
       att.map((a) => [U.badge(a.level === 'info' ? 'neutral' : a.level, levelTh[a.level]), `<b>${esc(a.title)}</b>`, U.num(a.count), esc(a.sub || '')]), 'ไม่มีเรื่องที่ต้องรีบดำเนินการ ณ วันนี้')}</section>
 
   <section><h2>3. งานประมูล (12 เดือนล่าสุด)</h2>
-    <div class="two"><div>${tbl([{ t: 'ขั้นตอน' }, { t: 'งานตอนนี้', r: 1 }, ...(PM.seesBidPrices() ? [{ t: 'มูลค่า', r: 1 }] : []), { t: 'วันเฉลี่ยในขั้น', r: 1 }],
-      PM.BID_STAGES.map((s, i) => { const list = pending.filter((b) => b.stage === s.key); return [`${esc(s.label)}<small>${esc(s.th)}</small>`, U.num(list.length), ...(PM.seesBidPrices() ? [V.bidSum(list) || '–'] : []), U.days(bs.stageDays[i].avg)]; }))}
+    <div class="two"><div>${tbl([{ t: 'ขั้นตอน' }, { t: 'งานตอนนี้', r: 1 }, ...(PM.seesBidValues() ? [{ t: 'มูลค่า', r: 1 }] : []), { t: 'วันเฉลี่ยในขั้น', r: 1 }],
+      PM.BID_STAGES.map((s, i) => { const list = pending.filter((b) => b.stage === s.key); return [`${esc(s.label)}<small>${esc(s.th)}</small>`, U.num(list.length), ...(PM.seesBidValues() ? [V.bidSum(list) || '–'] : []), U.days(bs.stageDays[i].avg)]; }))}
       ${tbl([{ t: 'ตัวชี้วัด' }, { t: 'ค่า', r: 1 }], [['Inquiry ที่ได้รับ', U.num(bs.total)], ['ยื่นใบเสนอราคาแล้ว', U.num(bs.submitted)], ['ระยะเวลาเฉลี่ย Inquiry → ยื่นราคา', `${U.num(bs.avgCycle, 1)} วัน`], ['ยื่นตรงเวลา (เป้า 90%)', U.pct(bs.onTimeRate)], ['อัตราชนะ', U.pct(bs.winRate)]])}</div>
       <div><h3>Inquiry ต่อเดือน แยกตามผล</h3><div class="chartbox">${inqChart}</div></div></div></section>
 
