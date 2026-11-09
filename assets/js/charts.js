@@ -200,60 +200,108 @@
       }).join('')}</div>`;
   };
 
-  /* Two ratios per item on one plot, each judged against 1.0 (e.g. SPI × CPI) — four quadrants, every point
-     labelled with its name and coloured by its status (good / warning / critical — status tokens, plus the label).
-     points:[{label, x, y, level, tip}] · opts: { xName, yName, quads:{tl,tr,bl,br}, height } */
+  /* Two ratios per item on one plot, each judged against 1.0 (e.g. SPI × CPI): four tinted quadrants, the 1.0 cross,
+     a dot per item coloured by its status (status tokens; the name or the tooltip says it too).
+     Made to stay readable with real data:
+     - the axes cover ±0.5 at most: an item far outside (CPI 846 when almost no cost is booked yet) sits on the edge
+       as a hollow dot with its real value written next to it, instead of squeezing everyone else into one spot
+     - dots that land on top of each other become one larger dot with the count; its tooltip lists them
+     - a name is written only where it has room; every dot keeps its tooltip
+     - under the plot: how many items in each quadrant, and how many have no ratio yet (not drawn)
+     points:[{label, x, y, level, tip, href}] · opts: { xName, yName, quads:{tl,tr,bl,br}, sums:{tl,tr,bl,br}, height, missingNote } */
   C.quadrant = function (el, o) {
-    const pts = o.points.filter((p) => p.x != null && p.y != null && isFinite(p.x) && isFinite(p.y));
-    if (!pts.length) { el.innerHTML = '<p class="empty">ยังไม่มีข้อมูล</p>'; return; }
+    const ok = (p) => p.x != null && p.y != null && isFinite(p.x) && isFinite(p.y);
+    const pts = o.points.filter(ok), missing = o.points.length - pts.length;
+    const missingText = missing ? `ไม่แสดง ${missing} รายการที่ยังไม่มีค่า${o.missingNote ? ` (${o.missingNote})` : ''}` : '';
+    if (!pts.length) { el.innerHTML = `<p class="empty">ยังไม่มีข้อมูล${missingText ? ` · ${esc(missingText)}` : ''}</p>`; return; }
     const W = width(el), H = fitH(W, o.height || 300);
-    const m = { t: 12, r: 16, b: 40, l: 52 };
+    const m = { t: 10, r: 14, b: 42, l: 44 };
     const iw = W - m.l - m.r, ih = H - m.t - m.b;
-    // symmetric range around 1.0 so the cross sits in the middle, just wide enough for the points (at least ±0.1)
-    const span = Math.max(0.1, ...pts.map((p) => Math.abs(p.x - 1)), ...pts.map((p) => Math.abs(p.y - 1))) * 1.2;
-    const step = span > 0.4 ? 0.2 : span > 0.2 ? 0.1 : 0.05;
-    const dec = step < 0.1 ? 2 : 1;
-    const lo = 1 - Math.ceil(span / step) * step, hi = 1 + Math.ceil(span / step) * step;
-    const x = (v) => m.l + ((v - lo) / (hi - lo)) * iw;
-    const y = (v) => m.t + ih - ((v - lo) / (hi - lo)) * ih;
-    let g = '';
-    for (let v = lo; v <= hi + 1e-9; v += step) {
-      const r = Math.round(v * 100) / 100;
-      if (Math.abs(r - 1) > 1e-9) {
-        g += `<line class="grid" x1="${x(r)}" x2="${x(r)}" y1="${m.t}" y2="${m.t + ih}"/><line class="grid" x1="${m.l}" x2="${m.l + iw}" y1="${y(r)}" y2="${y(r)}"/>`;
-      }
-      g += `<text class="tick" x="${x(r)}" y="${m.t + ih + 16}" text-anchor="middle">${r.toFixed(dec)}</text>`;
-      g += `<text class="tick" x="${m.l - 8}" y="${y(r) + 4}" text-anchor="end">${r.toFixed(dec)}</text>`;
+    // the range: wide enough for the items near plan, never wider than ±0.5
+    const dev = (v) => Math.abs(v - 1);
+    const inRange = pts.map((p) => Math.max(dev(p.x), dev(p.y))).filter((d) => d <= 0.5);
+    const span = Math.min(0.5, Math.max(0.1, ...(inRange.length ? inRange : [0.5])) * 1.15);
+    const step = niceStep(span, 2), dec = step < 0.1 ? 2 : 1;
+    const lo = 1 - Math.ceil(span / step - 1e-9) * step, hi = 1 + Math.ceil(span / step - 1e-9) * step;
+    // the range sits inside the plot with a band all round: an item outside it is drawn in the band, clear of the axis numbers
+    const pad = 16, clampTo = (v) => Math.max(lo - 0.0001, Math.min(hi + 0.0001, v));
+    const outside = (v) => v < lo || v > hi;
+    const x = (v) => (outside(v) ? (v < lo ? m.l + pad / 2 : m.l + iw - pad / 2) : m.l + pad + ((clampTo(v) - lo) / (hi - lo)) * (iw - 2 * pad));
+    const y = (v) => (outside(v) ? (v < lo ? m.t + ih - pad / 2 : m.t + pad / 2) : m.t + ih - pad - ((clampTo(v) - lo) / (hi - lo)) * (ih - 2 * pad));
+    const x1 = x(1), y1 = y(1);
+    let g = `<rect class="qz qz-mid" x="${m.l}" y="${m.t}" width="${x1 - m.l}" height="${y1 - m.t}"/>
+      <rect class="qz qz-good" x="${x1}" y="${m.t}" width="${m.l + iw - x1}" height="${y1 - m.t}"/>
+      <rect class="qz qz-bad" x="${m.l}" y="${y1}" width="${x1 - m.l}" height="${m.t + ih - y1}"/>
+      <rect class="qz qz-mid" x="${x1}" y="${y1}" width="${m.l + iw - x1}" height="${m.t + ih - y1}"/>`;
+    for (let i = 0, v = lo; v <= hi + 1e-9 && i < 20; i++, v = lo + i * step) {
+      const r = Math.round(v * 1000) / 1000;
+      if (Math.abs(r - 1) > 1e-9) g += `<line class="grid" x1="${x(r)}" x2="${x(r)}" y1="${m.t}" y2="${m.t + ih}"/><line class="grid" x1="${m.l}" x2="${m.l + iw}" y1="${y(r)}" y2="${y(r)}"/>`;
+      g += `<text class="tick${Math.abs(r - 1) < 1e-9 ? ' strong' : ''}" x="${x(r)}" y="${m.t + ih + 15}" text-anchor="middle">${r.toFixed(dec)}</text>`;
+      g += `<text class="tick${Math.abs(r - 1) < 1e-9 ? ' strong' : ''}" x="${m.l - 6}" y="${y(r) + 4}" text-anchor="end">${r.toFixed(dec)}</text>`;
     }
-    // the 1.0 cross: on plan / on budget
-    g += `<line class="ref" x1="${x(1)}" x2="${x(1)}" y1="${m.t}" y2="${m.t + ih}"/><line class="ref" x1="${m.l}" x2="${m.l + iw}" y1="${y(1)}" y2="${y(1)}"/>`;
+    g += `<line class="ref" x1="${x1}" x2="${x1}" y1="${m.t}" y2="${m.t + ih}"/><line class="ref" x1="${m.l}" x2="${m.l + iw}" y1="${y1}" y2="${y1}"/>`;
     const q = o.quads || {};
-    g += `<text class="quad" x="${m.l + 8}" y="${m.t + 16}">${esc(q.tl || '')}</text>
-      <text class="quad" x="${m.l + iw - 8}" y="${m.t + 16}" text-anchor="end">${esc(q.tr || '')}</text>
-      <text class="quad" x="${m.l + 8}" y="${m.t + ih - 8}">${esc(q.bl || '')}</text>
-      <text class="quad" x="${m.l + iw - 8}" y="${m.t + ih - 8}" text-anchor="end">${esc(q.br || '')}</text>`;
-    g += `<text class="tick strong" x="${m.l + iw / 2}" y="${H - 4}" text-anchor="middle">${esc(o.xName || 'x')} →</text>`;
-    g += `<text class="tick strong" transform="translate(12 ${m.t + ih / 2}) rotate(-90)" text-anchor="middle">${esc(o.yName || 'y')} →</text>`;
-    // points: dot with a surface ring + its name. Each label takes the first spot (right, left, above, below)
-    // that doesn't overlap a label already placed or another dot.
-    const boxes = pts.map((p) => ({ x0: x(p.x) - 7, x1: x(p.x) + 7, y0: y(p.y) - 7, y1: y(p.y) + 7 }));
-    const hitsBox = (b) => boxes.some((o2) => b.x0 < o2.x1 && b.x1 > o2.x0 && b.y0 < o2.y1 && b.y1 > o2.y0);
-    let dots = '', labels = '', hits = '';
+    const narrow = iw < 360; // phones: the corner names move under the plot
+    if (!narrow) { // corner names sit inside the band, clear of items drawn on the edge
+      g += `<text class="quad" x="${m.l + pad + 6}" y="${m.t + pad + 14}">${esc(q.tl || '')}</text>
+        <text class="quad" x="${m.l + iw - pad - 6}" y="${m.t + pad + 14}" text-anchor="end">${esc(q.tr || '')}</text>
+        <text class="quad bad" x="${m.l + pad + 6}" y="${m.t + ih - pad - 6}">${esc(q.bl || '')}</text>
+        <text class="quad" x="${m.l + iw - pad - 6}" y="${m.t + ih - pad - 6}" text-anchor="end">${esc(q.br || '')}</text>`;
+    }
+    g += `<text class="tick strong" x="${m.l + iw / 2}" y="${H - 6}" text-anchor="middle">${esc(o.xName || 'x')} →</text>`;
+    g += `<text class="tick strong" transform="translate(11 ${m.t + ih / 2}) rotate(-90)" text-anchor="middle">${esc(o.yName || 'y')} →</text>`;
+
+    // dots that would overlap become one group
+    const RANK = { critical: 3, warning: 2, good: 1 };
+    const groups = [];
     pts.forEach((p) => {
-      const cx = x(p.x), cy = y(p.y), tw = String(p.label).length * 7 + 4;
-      const spots = [
-        { lx: cx + 10, ly: cy + 4, anchor: 'start', b: { x0: cx + 9, x1: cx + 9 + tw, y0: cy - 7, y1: cy + 7 } },
-        { lx: cx - 10, ly: cy + 4, anchor: 'end', b: { x0: cx - 9 - tw, x1: cx - 9, y0: cy - 7, y1: cy + 7 } },
-        { lx: cx, ly: cy - 11, anchor: 'middle', b: { x0: cx - tw / 2, x1: cx + tw / 2, y0: cy - 22, y1: cy - 8 } },
-        { lx: cx, ly: cy + 20, anchor: 'middle', b: { x0: cx - tw / 2, x1: cx + tw / 2, y0: cy + 8, y1: cy + 22 } },
-      ].filter((s) => s.b.x0 >= m.l && s.b.x1 <= m.l + iw);
-      const spot = spots.find((s) => !hitsBox(s.b)) || spots[0] || { lx: cx + 10, ly: cy + 4, anchor: 'start', b: { x0: 0, x1: 0, y0: 0, y1: 0 } };
-      boxes.push(spot.b);
-      const lx = spot.lx, ly = spot.ly, anchor = spot.anchor;
-      dots += `<circle class="pt" cx="${cx}" cy="${cy}" r="6" style="fill:var(--${p.level === 'good' ? 'good' : p.level === 'warning' ? 'warning' : p.level === 'critical' ? 'critical' : 'muted'})"/>`;
-      labels += `<text class="pt-label" x="${lx}" y="${ly}" text-anchor="${anchor}">${esc(p.label)}</text>`;
-      hits += `<circle class="hit" cx="${cx}" cy="${cy}" r="14" data-tip="${esc(p.tip || p.label)}"/>`;
+      const cx = x(p.x), cy = y(p.y);
+      const gr = groups.find((k) => Math.hypot(k.cx - cx, k.cy - cy) < 11);
+      if (gr) gr.items.push(p); else groups.push({ cx, cy, items: [p] });
     });
-    el.innerHTML = `<svg class="chart-svg" viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" role="img" aria-label="${esc(o.label || 'Quadrant chart')}">${g}${dots}${labels}${hits}</svg>`;
+    const boxes = groups.map((k) => { const r = k.items.length > 1 ? 12 : 7; return { x0: k.cx - r, x1: k.cx + r, y0: k.cy - r, y1: k.cy + r }; });
+    const hitsBox = (b) => boxes.some((o2) => b.x0 < o2.x1 && b.x1 > o2.x0 && b.y0 < o2.y1 && b.y1 > o2.y0);
+    const fmt = (v) => (Math.abs(v) >= 10 ? Math.round(v).toLocaleString('en-US') : v.toFixed(2));
+    let dots = '', labels = '', hits = '';
+    groups.forEach((k) => {
+      const worst = k.items.reduce((a, p) => ((RANK[p.level] || 0) > (RANK[a] || 0) ? p.level : a), '');
+      const tone = worst === 'critical' ? 'critical' : worst === 'warning' ? 'warning' : worst === 'good' ? 'good' : 'muted';
+      const p0 = k.items[0], out = k.items.length === 1 && (p0.x < lo || p0.x > hi || p0.y < lo || p0.y > hi);
+      if (k.items.length > 1) {
+        dots += `<circle class="pt" cx="${k.cx}" cy="${k.cy}" r="11" style="fill:var(--${tone})"/><text class="pt-count" x="${k.cx}" y="${k.cy + 4}" text-anchor="middle">${k.items.length}</text>`;
+      } else {
+        dots += `<circle class="pt${out ? ' out' : ''}" cx="${k.cx}" cy="${k.cy}" r="6" style="${out ? `stroke:var(--${tone})` : `fill:var(--${tone})`}"/>`;
+      }
+      // a single item: its name (and its real value when it sits on the edge), where there is room
+      if (k.items.length === 1) {
+        const text = out ? `${p0.label} · ${p0.x < lo || p0.x > hi ? `${o.xShort || 'x'} ${fmt(p0.x)}` : ''}${(p0.x < lo || p0.x > hi) && (p0.y < lo || p0.y > hi) ? ' · ' : ''}${p0.y < lo || p0.y > hi ? `${o.yShort || 'y'} ${fmt(p0.y)}` : ''}` : String(p0.label);
+        const tw = text.length * 6.6 + 4, cx = k.cx, cy = k.cy;
+        const spot = [
+          { lx: cx + 10, ly: cy + 4, anchor: 'start', b: { x0: cx + 9, x1: cx + 9 + tw, y0: cy - 7, y1: cy + 7 } },
+          { lx: cx - 10, ly: cy + 4, anchor: 'end', b: { x0: cx - 9 - tw, x1: cx - 9, y0: cy - 7, y1: cy + 7 } },
+          { lx: cx, ly: cy - 11, anchor: 'middle', b: { x0: cx - tw / 2, x1: cx + tw / 2, y0: cy - 22, y1: cy - 8 } },
+          { lx: cx, ly: cy + 20, anchor: 'middle', b: { x0: cx - tw / 2, x1: cx + tw / 2, y0: cy + 8, y1: cy + 22 } },
+        ].filter((s) => s.b.x0 >= m.l && s.b.x1 <= m.l + iw && s.b.y0 >= m.t && s.b.y1 <= m.t + ih).find((s) => !hitsBox(s.b));
+        if (spot) { boxes.push(spot.b); labels += `<text class="pt-label" x="${spot.lx}" y="${spot.ly}" text-anchor="${spot.anchor}">${esc(text)}</text>`; }
+      }
+      const tip = k.items.length > 1 ? `${k.items.length} รายการที่ค่าใกล้กัน\n${k.items.slice(0, 12).map((p) => String(p.tip || p.label).replace(/\n/g, ' · ')).join('\n')}${k.items.length > 12 ? '\n…' : ''}` : (p0.tip || p0.label);
+      const href = k.items.length === 1 && p0.href ? ` data-href="${esc(p0.href)}"` : '';
+      hits += `<circle class="hit${href ? ' link' : ''}" cx="${k.cx}" cy="${k.cy}" r="${k.items.length > 1 ? 16 : 13}" data-tip="${esc(tip)}"${href}/>`;
+    });
+
+    // how many in each corner (an item on the 1.0 line counts as on plan / within budget)
+    const side = (p) => (p.y >= 1 ? (p.x >= 1 ? 'tr' : 'tl') : (p.x >= 1 ? 'br' : 'bl'));
+    const n = { tl: 0, tr: 0, bl: 0, br: 0 };
+    pts.forEach((p) => { n[side(p)]++; });
+    const sums = o.sums || q;
+    const chip = (k, cls) => `<span class="qs-chip ${cls}"><i></i>${esc(sums[k] || k)} <b>${n[k]}</b></span>`;
+    // items off the range are named under the plot with their real value: the edge has no room for every name
+    const off = pts.filter((p) => outside(p.x) || outside(p.y));
+    const offText = off.length ? `นอกกรอบ ${lo.toFixed(dec)}–${hi.toFixed(dec)} (วงกลมโปร่งที่ขอบ): ${off.slice(0, 6).map((p) => `${p.label} ${[outside(p.x) ? `${o.xShort || 'x'} ${fmt(p.x)}` : '', outside(p.y) ? `${o.yShort || 'y'} ${fmt(p.y)}` : ''].filter(Boolean).join(' ')}`).join(', ')}${off.length > 6 ? ` และอีก ${off.length - 6}` : ''}` : '';
+    const grouped = groups.some((k) => k.items.length > 1) ? 'ตัวเลขในวงกลม = จำนวนรายการที่ค่าใกล้กัน ชี้เพื่อดูรายชื่อ' : '';
+    el.innerHTML = `<svg class="chart-svg qchart" viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" role="img" aria-label="${esc(o.label || 'Quadrant chart')}">${g}${dots}${labels}${hits}</svg>
+      <div class="qs-sum">${chip('bl', 'bad')}${chip('tl', 'mid')}${chip('br', 'mid')}${chip('tr', 'good')}</div>
+      ${offText || grouped || missingText ? `<p class="qs-note">${[offText, grouped, missingText].filter(Boolean).map(esc).join('<br>')}</p>` : ''}`;
+    el.onclick = (e) => { const h = e.target.closest('.hit[data-href]'); if (h) location.hash = h.dataset.href; };
   };
 })();

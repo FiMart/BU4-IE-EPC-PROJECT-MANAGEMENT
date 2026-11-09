@@ -9,6 +9,19 @@
   const healthOf = (r) => (r.p.status === 'closed' ? 'closed' : r.p.status === 'onhold' ? 'onhold' : U.worst(U.health(r.m.spi), U.health(r.m.cpi)));
   const HEALTH = [{ value: 'good', label: 'On track' }, { value: 'warning', label: 'At risk' }, { value: 'critical', label: 'Off track' }, { value: 'onhold', label: 'On hold' }];
 
+  /* SPI × CPI of a list of projects, for the quadrant chart (projects page and Dashboard) */
+  PM.healthQuadrant = (rows) => ({
+    label: 'SPI × CPI by project', xName: 'SPI — เวลา', yName: 'CPI — ต้นทุน', xShort: 'SPI', yShort: 'CPI',
+    quads: { tr: 'เร็วกว่าแผน · ในงบ', tl: 'ช้ากว่าแผน · ในงบ', br: 'เร็วกว่าแผน · เกินงบ', bl: 'ช้ากว่าแผน · เกินงบ' },
+    sums: { tr: 'ตามแผนและในงบ', tl: 'ช้ากว่าแผน', br: 'เกินงบ', bl: 'ช้าและเกินงบ' },
+    missingNote: 'ยังไม่ถึงวันเริ่ม ไม่มี Plan cost หรือยังไม่มีต้นทุนจริง',
+    points: rows.map((r) => {
+      const h = healthOf(r);
+      return { label: r.p.code, x: r.m.spi, y: r.m.cpi, level: h === 'onhold' ? 'neutral' : h, href: `#/projects/${r.p.id}`,
+        tip: `${r.p.code} ${r.p.name}\nSPI ${U.ratio(r.m.spi)} · CPI ${U.ratio(r.m.cpi)} · ${h === 'onhold' ? 'On hold' : U.healthLabel[h] || ''}` };
+    }),
+  });
+
   PM.views.projects = function (el) {
     const db = PM.db;
     const all = db.projects.map((p) => ({ p, m: PM.projectMetrics(p) }));
@@ -72,20 +85,12 @@
         <div class="card-b flush">${PM.portfolioGantt(rows)}</div>
       </div>
       <div class="grid cols-2">
-        <div class="card"><div class="card-h"><h2>สุขภาพโครงการ — SPI × CPI</h2><p>แต่ละจุด = 1 โครงการ · แกนนอน SPI (เวลา) · แกนตั้ง CPI (ต้นทุน) · เส้น 1.0 = ตามแผน / ตามงบ · สีจุด = Health</p></div><div class="card-b"><div class="chart" id="c-health"></div></div></div>
+        <div class="card"><div class="card-h"><h2>สุขภาพโครงการ — SPI × CPI</h2><p>จุดละ 1 โครงการ · ขวา = เร็วกว่าแผน · บน = ต่ำกว่างบ · เส้น 1.0 = ตามแผน / ตามงบ · ซ้ายล่างสีแดง = ช้าและเกินงบ ต้องดูก่อน · คลิกจุดเพื่อเปิดโครงการ</p></div><div class="card-b"><div class="chart" id="c-health"></div></div></div>
         <div class="card"><div class="card-h"><h2>Progress จริง เทียบแผน</h2><p>ส่วนต่าง % งานเสร็จจริง − ตามแผน ณ วันนี้ · ขวา = เร็วกว่าแผน · ซ้าย = ช้ากว่าแผน</p></div><div class="card-b"><div class="chart" id="c-gap"></div></div></div>
       </div>`}`;
 
     // both ratios of a project on one plot, judged against 1.0 — reads "late and over budget" at a glance
-    if (state.view !== 'update') PM.charts.quadrant(document.getElementById('c-health'), {
-      label: 'SPI × CPI by project', xName: 'SPI (เวลา)', yName: 'CPI (ต้นทุน)',
-      quads: { tr: 'เร็วกว่าแผน · ต่ำกว่างบ', tl: 'ช้ากว่าแผน · ต่ำกว่างบ', br: 'เร็วกว่าแผน · เกินงบ', bl: 'ช้ากว่าแผน · เกินงบ' },
-      points: rows.filter((r) => r.p.status !== 'closed').map((r) => {
-        const h = healthOf(r);
-        return { label: r.p.code, x: r.m.spi, y: r.m.cpi, level: h === 'onhold' ? 'neutral' : h,
-          tip: `${r.p.code} ${r.p.name}\nSPI ${U.ratio(r.m.spi)} · CPI ${U.ratio(r.m.cpi)}\n${h === 'onhold' ? 'On hold' : U.healthLabel[h]}` };
-      }),
-    });
+    if (state.view !== 'update') PM.charts.quadrant(document.getElementById('c-health'), PM.healthQuadrant(rows.filter((r) => r.p.status !== 'closed')));
     // ahead of / behind plan, in progress points — a diverging bar around 0
     if (state.view !== 'update') PM.charts.diverging(document.getElementById('c-gap'), {
       neg: { label: 'ช้ากว่าแผน', color: 'var(--s2)' }, pos: { label: 'เร็วกว่าแผน', color: 'var(--s1)' },

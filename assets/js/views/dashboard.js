@@ -94,7 +94,7 @@
       </div>
       <div class="grid cols-2">
         ${chartCard('c-progress', 'ความคืบหน้าแต่ละโครงการ', 'แท่ง = ทำได้จริง · เส้นดำ = ตามแผน ณ วันนี้ · คลิกเพื่อเปิดโครงการ')}
-        ${chartCard('c-health', 'สุขภาพโครงการ SPI × CPI', 'จุดละ 1 โครงการ — มุมซ้ายล่าง = ช้ากว่าแผนและเกินงบ ต้องดูก่อน')}
+        ${chartCard('c-health', 'สุขภาพโครงการ SPI × CPI', 'จุดละ 1 โครงการ · ขวาบน = ตามแผนและในงบ · ซ้ายล่างสีแดง = ช้าและเกินงบ ต้องดูก่อน · คลิกจุดเพื่อเปิดโครงการ')}
         ${chartCard('c-scurve', 'ต้นทุนสะสมทุกโครงการ Active', 'PV ตามแผน · EV มูลค่างานที่ทำได้ · AC จ่ายจริง')}
         ${chartCard('c-spend', 'ค่าใช้จ่ายรายเดือน', 'ผลรวมรายการค่าใช้จ่ายทุกโครงการ 12 เดือน แยกตาม phase')}
         ${chartCard('c-actual', 'Actual cost เทียบ Plan cost', 'โครงการ Active · เส้นดำ = Plan cost (งบ) · คลิกเพื่อเปิดค่าใช้จ่าย')}
@@ -184,11 +184,7 @@
         tip: `${r.p.code} ${r.p.name}\nจริง ${U.pct(r.m.act)} · แผน ${U.pct(r.m.plan)}\nSPI ${U.ratio(r.m.spi)} · CPI ${U.ratio(r.m.cpi)}`,
       })),
     });
-    PM.charts.quadrant(document.getElementById('c-health'), {
-      label: 'SPI × CPI', xName: 'SPI (เวลา)', yName: 'CPI (ต้นทุน)', height: 280,
-      quads: { tr: 'เร็วกว่าแผน · ต่ำกว่างบ', tl: 'ช้ากว่าแผน · ต่ำกว่างบ', br: 'เร็วกว่าแผน · เกินงบ', bl: 'ช้ากว่าแผน · เกินงบ' },
-      points: rows.map((r) => ({ label: r.p.code, x: r.m.spi, y: r.m.cpi, level: r.p.status === 'onhold' ? 'neutral' : U.worst(U.health(r.m.spi), U.health(r.m.cpi)), tip: `${r.p.code} ${r.p.name}\nSPI ${U.ratio(r.m.spi)} · CPI ${U.ratio(r.m.cpi)}` })),
-    });
+    PM.charts.quadrant(document.getElementById('c-health'), Object.assign(PM.healthQuadrant(rows), { height: 280 }));
     drawPortfolioCurve(rows, T);
     const spend = (db.costs || []).filter((c) => c.date.slice(0, 7) >= months[0] && c.date <= T && PM.costCounts(c));
     PM.charts.columns(document.getElementById('c-spend'), {
