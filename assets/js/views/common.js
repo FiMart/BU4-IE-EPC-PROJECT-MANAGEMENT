@@ -82,11 +82,12 @@
   };
 
   /* buttons on a bid (card, row): data-action + data-id. Returns true when handled; done() redraws the page */
-  /* money of a bid for whoever may see it (Admin · the Sales who owns it) — everyone else gets a lock */
-  V.LOCK_PRICE = '<span class="price-lock" title="มูลค่าเห็นได้เฉพาะ Sales ผู้รับผิดชอบงานนี้และ Admin">🔒</span>';
-  V.bidMoney = (b) => (PM.canSeeBidPrice(b) ? U.money(b.value) : V.LOCK_PRICE);
-  /* sum of bid values for a summary: only the bids this user may see; '' for roles that see no prices */
-  V.bidSum = (list) => (PM.seesBidPrices() ? U.money(PM.sum(list.filter(PM.canSeeBidPrice), (b) => b.value || 0)) : '');
+  /* the Value of a bid for whoever may see it (Admin · the owning Sales · Dept Manager / PM / Engineer once won) — everyone else gets a lock */
+  V.LOCK_PRICE = '<span class="price-lock" title="มูลค่าเห็นได้เฉพาะ Sales ผู้รับผิดชอบงานนี้และ Admin · Dept Manager / PM / Engineer เห็นเมื่อได้งานแล้ว">🔒</span>';
+  V.bidMoney = (b) => (PM.canSeeBidValue(b) ? U.money(b.value) : V.LOCK_PRICE);
+  /* sum of bid values for a summary: only the bids this user may see; '' for roles that see no values */
+  // none of them open to this user: '' (not ฿0, which would read as "worth nothing")
+  V.bidSum = (list) => { const open = PM.seesBidValues() ? list.filter(PM.canSeeBidValue) : []; return open.length ? U.money(PM.sum(open, (b) => b.value || 0)) : ''; };
 
   /* buttons on a bid (card, row): moving on and Won / Lost only for the Sales who owns it (and Admin) */
   V.bidButtons = function (b, o = {}) {
@@ -288,7 +289,9 @@
       ${U.field('Project Name', 'm_name', b.name, { full: true })}
       ${U.field('Type', 'prop_type', prop.type, { options: PM.PROP_TYPES })}
       ${canPrice ? U.field('Value (MB)', 'm_value', V.toMB(b.value), { type: 'number', min: 0, step: 'any', hint: 'ล้านบาท · เห็นเฉพาะ Sales เจ้าของงานและ Admin' })
-        : '<label><span>Value (MB)</span><input value="🔒 เฉพาะ Sales เจ้าของงาน / Admin" disabled></label>'}
+        : !isNew && PM.canSeeBidValue(b) // Dept Manager · PM · Engineer once won: read only (no name: never saved from here)
+          ? `<label><span>Value (MB)</span><input value="${esc(b.value == null ? '–' : V.toMB(b.value))}" disabled><small class="muted">ดูได้อย่างเดียว · แก้ได้เฉพาะ Sales เจ้าของงาน / Admin</small></label>`
+          : '<label><span>Value (MB)</span><input value="🔒 เฉพาะ Sales เจ้าของงาน / Admin" disabled></label>'}
       ${U.field('Priority', 'prop_priority', prop.priority, { options: [{ value: '', label: '-' }].concat(PM.PROP_PRIORITY.map((x) => ({ value: x.key, label: x.key }))) })}
       <span></span>
       <div class="sub-h">Schedule</div>
@@ -626,8 +629,9 @@
       id: PM.uid('P'), code: V.nextProjectCode(),
       name: fromBid ? fromBid.name : '', client: fromBid ? fromBid.client : '',
       // the bid's value only when this user may see it — otherwise the PM types the contract value in
-      contractValue: fromBid && PM.canSeeBidPrice(fromBid) ? fromBid.value || 0 : 0,
-      budget: fromBid && PM.canSeeBidPrice(fromBid) ? Math.round((fromBid.value || 0) * (1 - (fromBid.margin || 10) / 100)) : 0,
+      // a won bid's Value is open to Dept Manager / PM / Engineer too; its margin is not (then the usual 10%)
+      contractValue: fromBid && PM.canSeeBidValue(fromBid) ? fromBid.value || 0 : 0,
+      budget: fromBid && PM.canSeeBidValue(fromBid) ? Math.round((fromBid.value || 0) * (1 - ((PM.canSeeBidPrice(fromBid) && fromBid.margin) || 10) / 100)) : 0,
       startDate: T, endDate: PM.addDays(T, 365), pm: '', status: 'active', bidId: fromBid ? fromBid.id : null, phases: null, progressLog: [],
       sales: fromBid ? fromBid.sales || '' : '', salesName: fromBid ? fromBid.salesName || '' : '', costMode: 'ledger',
     };

@@ -223,7 +223,12 @@
   // the top bar's real height → var(--topbar-h): sticky bars below it (project tabs) line up on every screen size
   const measure = () => { const bar = document.querySelector('.topbar'); if (bar && bar.offsetHeight) document.documentElement.style.setProperty('--topbar-h', bar.offsetHeight + 'px'); };
   PM.measureTopbar = measure; // app.js calls it after each page render (the bar is hidden until signed in)
-  const start = () => { mountTopbar(); measure(); window.addEventListener('resize', measure); window.addEventListener('hashchange', () => setTimeout(measure, 50)); };
+  const start = () => {
+    mountTopbar(); measure(); window.addEventListener('resize', measure); window.addEventListener('hashchange', () => setTimeout(measure, 50));
+    // any change of its height (a banner above it, a title wrapping, fonts arriving) re-measures at once
+    const bar = document.querySelector('.topbar');
+    if (bar && window.ResizeObserver) new ResizeObserver(measure).observe(bar);
+  };
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start); else start();
 
   /* Dashboard "jump to section" links and attention items that point inside the Dashboard */

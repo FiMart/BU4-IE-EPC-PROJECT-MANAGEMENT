@@ -9,7 +9,7 @@
   const TABLE = 'app_records';
   const COLLS = ['bids', 'projects', 'ncrs', 'safety', 'resources', 'levels', 'timesheets', 'plans', 'pos', 'costs', 'prices', 'settings', 'dailies', 'punch', 'meetings', 'avl', 'qms', 'planrules', 'projfin'];
   /* rows the database shows to some roles only: never parked under 'meta', which every role can read */
-  const SECRET = ['bidprices', 'projfin'];
+  const SECRET = ['bidprices', 'bidvalues', 'projfin'];
   // collections accepted by every version of data.sql
   const LEGACY = ['bids', 'projects', 'ncrs', 'safety', 'resources', 'levels', 'timesheets'];
   /* Collections the cloud table doesn't accept yet (older data.sql): their records are "parked" as
@@ -58,15 +58,19 @@
     const owner = PM.bidOwner(b);
     const pub = {};
     Object.keys(b).forEach((k) => { if (!PM.BID_SECRET.includes(k)) pub[k] = b[k]; });
-    // not allowed to write the price: older data that still carries it is sent back untouched;
-    // otherwise the empty placeholders apply() put on the bid are left out (the stored row never had them).
+    // not allowed to write the price: only the public fields go up (the price row stays as the database has it).
+    // A Value this user only reads (bidvalues: Dept Manager / PM / Engineer once won) never goes back on the bid.
     // all = Reset / Import (app_replace_all writes every row): always split, so prices never land on the public bid
-    if (!all && !canWritePrice(owner)) return [{ collection: 'bids', id: String(b.id), data: hasPrice(b) ? b : pub }];
+    // Never the price on the public row, whatever this browser holds (e.g. a copy left by an Admin who used it before).
+    if (!all && !canWritePrice(owner)) return [{ collection: 'bids', id: String(b.id), data: pub }];
     pub.owner = owner;
     const out = [{ collection: 'bids', id: String(b.id), data: pub }];
-    if (hasPrice(b)) out.push({ collection: 'bidprices', id: String(b.id), data: canon({ value: b.value == null ? null : b.value, margin: b.margin == null ? null : b.margin, files: b.files || [], owner }) });
+    if (hasPrice(b) && !valueOnly.has(String(b.id))) out.push({ collection: 'bidprices', id: String(b.id), data: canon({ value: b.value == null ? null : b.value, margin: b.margin == null ? null : b.margin, files: b.files || [], owner }) });
+    // the Value alone, beside the price row: what Dept Manager / PM / Engineer may read once the bid is won (data.sql → can_see_bid_value)
+    if (b.value != null && !valueOnly.has(String(b.id))) out.push({ collection: 'bidvalues', id: String(b.id), data: canon({ value: b.value, owner }) });
     return out;
   }
+  const valueOnly = new Set(); // bid ids whose Value came from 'bidvalues' only (this user reads it, never writes it)
 
   function records(db, all) {
     const map = new Map();
@@ -84,11 +88,16 @@
     return Array.from(map.values());
   }
 
-  function saveBase() { try { localStorage.setItem(BASE_KEY, JSON.stringify({ base, ords })); } catch (e) { /* ignore */ } }
+  /* the sync base belongs to the account that saved it: someone else signing in on this browser never sends the
+     "unsent edits" of the copy left behind (it may hold what that account could see — prices, Margin), it loads afresh */
+  let foreignCopy = false;
+  function saveBase() { try { localStorage.setItem(BASE_KEY, JSON.stringify({ base, ords, uid: PM.myUid() })); } catch (e) { /* ignore */ } }
   function loadBase() {
+    foreignCopy = false;
     try {
       const b = JSON.parse(localStorage.getItem(BASE_KEY) || 'null');
-      if (b && b.base) { base = b.base; ords = b.ords || {}; return true; }
+      if (b && b.base && b.uid && PM.myUid() && b.uid !== PM.myUid()) foreignCopy = true;
+      else if (b && b.base) { base = b.base; ords = b.ords || {}; return true; }
     } catch (e) { /* ignore */ }
     base = {}; ords = {};
     return false;
@@ -96,7 +105,7 @@
 
   /* collections this role may not write (data.sql refuses them too): never sent, the cloud copy wins on the next load.
      Bid price rows: only Admin / Sales ever hold them (the database sends them to no one else). */
-  const readOnly = (c) => (c === 'timesheets' && !PM.can('timesheet.edit')) || (c === 'bidprices' && !PM.seesBidPrices()) || (c === 'projfin' && !PM.seesProjectFinance());
+  const readOnly = (c) => (c === 'timesheets' && !PM.can('timesheet.edit')) || ((c === 'bidprices' || c === 'bidvalues') && !PM.seesBidPrices()) || (c === 'projfin' && !PM.seesProjectFinance());
 
   function diff() {
     const cur = {}, ups = [];
@@ -114,12 +123,20 @@
 
   /* A project's accounting figures go up only once the database guards them: data.sql v1.78 adds can_see_project_finance()
      and the policy that uses it. Without it the table would take the rows and show them to every role — so they wait here. */
-  let finReady = null;
+  /* Same for a bid's Value row (bidvalues → can_see_bid_value()). */
+  const GUARDED = {
+    projfin: { fn: 'can_see_project_finance', args: undefined, has: () => (PM.db.projfin || []).length > 0 },
+    bidvalues: { fn: 'can_see_bid_value', args: { bid_id: '', owner: '' }, has: () => PM.seesBidPrices() && (PM.db.bids || []).some((b) => b.value != null) },
+  };
+  const guardOk = {};
   async function secretReady() {
-    if (finReady || !(PM.db.projfin || []).length) return;
-    const { error } = await client().rpc('can_see_project_finance');
-    finReady = !error;
-    if (finReady) outdated.delete('projfin'); else outdated.add('projfin');
+    for (const c of Object.keys(GUARDED)) {
+      const g = GUARDED[c];
+      if (guardOk[c] || !g.has()) continue;
+      const { error } = await client().rpc(g.fn, g.args);
+      guardOk[c] = !error;
+      if (guardOk[c]) outdated.delete(c); else outdated.add(c);
+    }
   }
 
   /* ---------- network operations ---------- */
@@ -190,17 +207,17 @@
     COLLS.forEach((c) => (db[c] = []));
     const nb = {}, no = {};
     const real = new Set(rows.filter((r) => r.collection !== 'meta').map((r) => key(r.collection, r.id)));
-    const prices = {}; // bid id → price row this user is allowed to read
+    const prices = {}, values = {}; // bid id → price row / Value row this user is allowed to read
     rows.forEach((r) => {
-      if (r.collection === 'bidprices') {
-        prices[r.id] = r.data;
+      if (r.collection === 'bidprices' || r.collection === 'bidvalues') {
+        (r.collection === 'bidprices' ? prices : values)[r.id] = r.data;
         const k = key(r.collection, r.id);
         nb[k] = hash(JSON.stringify(r.data));
         no[k] = r.ord;
       }
     });
     rows.forEach((r) => {
-      if (r.collection === 'bidprices') return;
+      if (r.collection === 'bidprices' || r.collection === 'bidvalues') return;
       if (r.collection === 'meta' && String(r.id).startsWith(PARK)) {
         // parked record of a collection the table did not accept (see records())
         const s = String(r.id).slice(PARK.length), i = s.indexOf('/');
@@ -215,10 +232,13 @@
       nb[k] = hash(JSON.stringify(r.data));
       no[k] = r.ord;
     });
-    // put each bid's price back on it; no row = not allowed to see it (older data may still carry it on the bid itself)
+    // put each bid's price back on it; no row = not allowed to see it (older data may still carry it on the bid itself).
+    // Only a Value row (Dept Manager / PM / Engineer once won): the Value alone, read only
+    valueOnly.clear();
     db.bids.forEach((b) => {
-      const p = prices[b.id];
+      const p = prices[b.id], v = values[b.id];
       if (p) { b.value = p.value; b.margin = p.margin; b.files = p.files || []; }
+      else if (v && !hasPrice(b)) { b.value = v.value; b.margin = null; b.files = []; valueOnly.add(String(b.id)); }
       else if (!hasPrice(b)) { b.value = null; b.margin = null; b.files = []; }
     });
     // accounting figures still waiting for data.sql (see secretReady) are kept, not dropped by the cloud copy
@@ -246,13 +266,13 @@
     denied: ['warn', 'ไม่มีสิทธิ์บันทึกข้อมูลบน Cloud (บัญชียังไม่มี Role)'],
     forbidden: ['warn', 'Import บน Cloud ได้เฉพาะ Admin, Department Manager และ Project Manager (Reset เฉพาะ Admin)'],
     outdated: ['ok', 'บันทึกบน Cloud แล้ว (โหมดสำรอง — แนะนำรัน supabase/data.sql อีกครั้ง)'],
-    finwait: ['warn', 'บันทึกแล้ว ยกเว้น Margin / WIP / รายได้สะสม — ให้ Admin รัน supabase/data.sql อีกครั้ง'],
+    finwait: ['warn', 'บันทึกแล้ว — ให้ Admin รัน supabase/data.sql อีกครั้ง (Margin / WIP และมูลค่า Bid สำหรับ PM / Engineer ยังรออยู่)'],
     waiting: ['warn', 'ยังเชื่อมต่อ Cloud ไม่ได้ — กำลังลองใหม่'],
     setup: ['warn', 'ยังไม่ได้ติดตั้ง Cloud (รัน supabase/data.sql) — ข้อมูลเก็บเฉพาะเครื่องนี้'],
     local: ['warn', 'ข้อมูลเก็บเฉพาะเครื่องนี้'],
   };
   function setState(s, detail) {
-    if (s === 'saved' && outdated.has('projfin')) { s = 'finwait'; detail = 'Margin / WIP / revenue figures stay in this browser until supabase/data.sql (v1.78) is re-run — then they go up by themselves.'; }
+    if (s === 'saved' && (outdated.has('projfin') || outdated.has('bidvalues'))) { s = 'finwait'; detail = 'Margin / WIP figures and the bid Values shared with Dept Manager / PM / Engineer wait until supabase/data.sql (v1.78) is re-run — then they go up by themselves.'; }
     else if (s === 'saved' && outdated.size) { s = 'outdated'; detail = 'Saved in backup mode (parked under meta) — the cloud table does not accept yet: ' + Array.from(outdated).join(', ') + '. Re-run supabase/data.sql.'; }
     C.state = s;
     C.detail = detail || '';
@@ -284,8 +304,10 @@
   }
 
   /* ---------- public API ---------- */
+  // Admin's role preview (role-preview.js): nothing goes up or comes down meanwhile — its edits are thrown away when it ends
+  const previewing = () => !!(PM.preview && PM.preview.role);
   C.schedule = function () {
-    if (!C.enabled) return;
+    if (!C.enabled || previewing()) return;
     clearTimeout(timer);
     setState('saving');
     timer = setTimeout(C.flush, 700);
@@ -293,13 +315,13 @@
 
   C.flush = function () {
     clearTimeout(timer); timer = null;
-    if (!C.enabled) return Promise.resolve();
+    if (!C.enabled || previewing()) return Promise.resolve();
     return enqueue(() => push().then(() => setState(synced ? 'saved' : 'waiting')).catch(fail));
   };
 
   /* push local edits, then pull everything; re-render when data changed */
   C.sync = function (rerender) {
-    if (!C.enabled) return Promise.resolve(false);
+    if (!C.enabled || previewing()) return Promise.resolve(false);
     clearTimeout(retryTimer);
     if (!synced) return firstLoad(); // the first load failed earlier — load now instead of pushing
     return enqueue(async () => {
@@ -330,6 +352,7 @@
   /* Reset / Import — replace everything in the cloud in one transaction (Admin & PM only, checked by the DB) */
   C.replaceAll = function () {
     if (!C.enabled) return Promise.resolve();
+    if (previewing()) { U.alert('โหมดดูในมุมมอง Role — Import / Reset ไม่ถูกทำจริง กด "กลับเป็น Admin" ก่อน'); return Promise.resolve(); }
     clearTimeout(timer);
     setState('saving');
     return enqueue(async () => {
@@ -361,6 +384,8 @@
   C.start = async function () {
     if (!C.available()) { C.enabled = false; setState('local'); return false; }
     const hadBase = loadBase();
+    // the copy here was left by another account: drop it from the screen now, never back it up or offer to upload it
+    if (foreignCopy) { PM.db = PM.emptyDb(); PM.lockCompany(); }
     synced = hadBase;
     C.blocking = !hadBase;
     setState('loading');
@@ -370,7 +395,7 @@
       const rows = await enqueue(() => pull());
       if (rows.length) {
         if (hadBase && hasLocalChanges()) { C.schedule(); return false; } // edited while loading — send those first
-        if (!hadBase) backupLocal();
+        if (!hadBase && !foreignCopy) backupLocal();
         const changed = apply(rows);
         setState('saved');
         return changed || !hadBase;
@@ -407,7 +432,7 @@
 
   /* keep a copy of pre-cloud local data so nothing is lost when the cloud version replaces it */
   function backupLocal() {
-    if (PM.freshSeed) return;
+    if (PM.freshSeed || foreignCopy) return; // never keep a copy another account left behind
     try {
       if (localStorage.getItem(BACKUP_KEY)) return;
       localStorage.setItem(BACKUP_KEY, JSON.stringify({ savedAt: new Date().toISOString(), db: PM.db }));

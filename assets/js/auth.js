@@ -369,6 +369,7 @@
   A.signOut = async function () {
     if (!(await U.confirm('ต้องการออกจากระบบหรือไม่? ข้อมูลที่แก้ไขจะถูกบันทึกขึ้น Cloud ก่อนออก', { title: 'ออกจากระบบ', ok: 'ออกจากระบบ' }))) return;
     U.closeModal();
+    if (PM.preview) PM.preview.stop(true); // a role preview ends with the session (its edits were never kept)
     await PM.cloud.flush(); // send any unsaved edits before the session ends
     signingOut = true;
     const { error } = await A.client.auth.signOut();
@@ -378,6 +379,7 @@
   };
 
   function leave(notice) {
+    if (PM.preview) PM.preview.stop(true);
     A.user = null;
     A.role = null;
     PM.cloud.stop();

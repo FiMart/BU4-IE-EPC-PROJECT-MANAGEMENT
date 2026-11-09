@@ -22,6 +22,7 @@
     'bid.result': { label: 'กด Won / Lost / No-bid (Sales: เฉพาะงานของตัวเอง)', roles: ['admin', 'project_manager', 'engineer', 'sales'] },
     'bid.delete': { label: 'ลบงานประมูล พร้อมราคาและไฟล์ใบเสนอราคา (Sales: เฉพาะงานของตัวเอง — บังคับในฐานข้อมูล)', roles: ['admin', 'sales'] },
     'bid.price': { label: 'เห็นมูลค่า · Margin · ไฟล์ใบเสนอราคาของ Bid (Sales: เฉพาะงานของตัวเอง — บังคับในฐานข้อมูล)', roles: ['admin', 'sales'] },
+    'bid.value': { label: 'เห็นมูลค่า (Value) ของ Bid ที่ได้งานแล้ว (Won) — ไม่รวม Margin และไฟล์ใบเสนอราคา (บังคับในฐานข้อมูล)', roles: ['admin', 'dept_manager', 'project_manager', 'engineer', 'sales'] },
     'plan.edit': { label: 'สร้าง / แก้ไขงานใน Weekly Plan', roles: ['admin', 'dept_manager', 'project_manager', 'engineer', 'sales', 'doc_control'] },
     'plan.status': { label: 'อัปเดตสถานะงานใน Weekly Plan', roles: ['admin', 'dept_manager', 'project_manager', 'engineer', 'sales', 'doc_control', 'technician'] },
     'resource.view': { label: 'เปิดหัวข้อ Resources (Resource Utilization · Timesheet) และส่วน Resource Utilization บน Dashboard', roles: ['admin', 'dept_manager', 'project_manager'] },
@@ -121,6 +122,7 @@
   };
 
   R.set = async function (userId, role) {
+    if (PM.preview) PM.preview.blocked('การเปลี่ยน Role ');
     const { data, error } = await PM.auth.client.from('profiles').update({ role }).eq('id', userId).select('id, role');
     if (error) {
       if (/last admin/i.test(error.message)) throw new Error('ต้องมี Admin อย่างน้อย 1 คน — ไม่สามารถลด Role ของ Admin คนสุดท้ายได้');
@@ -139,6 +141,7 @@
 
   /* delete a user account — Admin only (checked again by admin_delete_user() in roles.sql) */
   R.remove = async function (userId) {
+    if (PM.preview) PM.preview.blocked('การลบบัญชี ');
     if (!PM.can('users.delete')) throw new Error('เฉพาะ Admin เท่านั้นที่ลบบัญชีผู้ใช้ได้');
     if (PM.auth.user && userId === PM.auth.user.id) throw new Error('ลบบัญชีของตัวเองไม่ได้');
     const { error } = await PM.auth.client.rpc('admin_delete_user', { target: userId });

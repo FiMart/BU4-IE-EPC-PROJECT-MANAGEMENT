@@ -101,7 +101,7 @@
     .map((b, i) => ({ b, no: i + 1, p: PM.propOf(b) }));
   /* the summary under the list. Value: only the bids this user may see the price of */
   PM.proposalSummary = (rows) => {
-    const val = (xs) => PM.sum(xs.filter((x) => PM.canSeeBidPrice(x.b)), (x) => Number(x.b.value) || 0) / 1e6;
+    const val = (xs) => PM.sum(xs.filter((x) => PM.canSeeBidValue(x.b)), (x) => Number(x.b.value) || 0) / 1e6;
     const status = PM.PROP_STATUS.map((s) => s.key).concat(rows.some((x) => x.p.status === 'nobid') ? ['nobid'] : []).map((key) => {
       const xs = rows.filter((x) => x.p.status === key);
       return { key, label: PM.propStatusInfo(key).label, level: PM.propStatusInfo(key).level, n: xs.length, value: val(xs) };
@@ -136,6 +136,13 @@
   };
   /* does this role see any bid price at all (Sales: their own)? — decides whether money columns are shown */
   PM.seesBidPrices = () => PM.myRole() === 'admin' || PM.myRole() === 'sales';
+  /* The bid's Value alone (not its margin, not the quotation files) also shows to Department Manager · Project Manager ·
+     Engineer once the bid is won. The database sends it to them only then:
+     collection 'bidvalues', can_see_bid_value() in supabase/data.sql (v1.78). */
+  PM.VALUE_ROLES = ['dept_manager', 'project_manager', 'engineer'];
+  PM.bidValueOpen = (b) => !!b && b.result === 'won';
+  PM.canSeeBidValue = (b) => PM.canSeeBidPrice(b) || (PM.VALUE_ROLES.includes(PM.myRole()) && PM.bidValueOpen(b));
+  PM.seesBidValues = () => PM.seesBidPrices() || PM.VALUE_ROLES.includes(PM.myRole());
   /* a bid may be saved with Bid No. / client / name left empty: shown as "-" (the data itself stays empty, so it can be filled in later) */
   PM.dash = (v) => (v == null || String(v).trim() === '' ? '-' : String(v));
   /* a project's money — Plan Revenue, Plan cost, accumulated cost, billing (roles.js → 'project.finance'): Admin · Dept Manager · PM · Engineer.
@@ -312,6 +319,7 @@
   };
   /* Local cache only (used when data arrives from the cloud) */
   PM.saveLocal = function () {
+    if (PM.preview && PM.preview.role) return; // Admin's role preview: nothing done there is kept (role-preview.js)
     const json = JSON.stringify(PM.db);
     try { localStorage.setItem(STORAGE_KEY, json); return; } catch (e) { console.warn('Save failed', e); }
     // browser storage full: drop the one-time pre-cloud backup copy and try again

@@ -19,6 +19,7 @@
   };
   /* prefix = folder inside the bucket, e.g. "<projectId>/<poId>" or "bids/<bidId>" */
   F.upload = async function (prefix, file) {
+    if (PM.preview) PM.preview.blocked('การอัปโหลดไฟล์ ');
     const safe = file.name.replace(/[^A-Za-z0-9._-]+/g, '_').slice(-80) || 'file';
     const path = `${prefix}/${Date.now()}-${safe}`;
     const { error } = await storage().upload(path, file, { contentType: file.type || undefined, upsert: false });
@@ -95,6 +96,7 @@
   F.fileSize = (b) => fileSize(b);
   F.remove = async function (paths) {
     if (!paths.length || !storage()) return;
+    if (PM.preview) PM.preview.blocked('การลบไฟล์ ');
     const { error } = await storage().remove(paths);
     if (error) throw new Error(storageError(error));
   };
@@ -134,7 +136,7 @@
   let trashRun = Promise.resolve();
   F.drain = () => (trashRun = trashRun.then(runTrash, runTrash));
   F.trash = (prefix, known) => {
-    if (!F.available()) return Promise.resolve();
+    if (!F.available() || (PM.preview && PM.preview.role)) return Promise.resolve(); // a role preview deletes nothing for real
     writeTrash(readTrash().concat({ id: PM.uid('T'), prefix, paths: known || [] }));
     return F.drain();
   };

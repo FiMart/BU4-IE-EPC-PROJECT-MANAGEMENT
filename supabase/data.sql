@@ -10,7 +10,9 @@
 --     and bidprices — value / margin / quotation files of a bid: only Admin and the Sales who owns the bid,
 --     see can_see_bid_price(). Re-running this file also moves prices off bids saved before v1.26;
 --     and projfin — Margin · WIP/Accrued · accumulated revenue of a project: only Admin, Department Manager,
---     Project Manager and Engineer, see can_see_project_finance() — v1.78)
+--     Project Manager and Engineer, see can_see_project_finance() — v1.78;
+--     and bidvalues — a bid's Value alone: Admin and the owning Sales, plus Department Manager / Project Manager /
+--     Engineer once the bid is won, see can_see_bid_value() — v1.78)
 --  - Bulk replace (Reset / Import) goes through app_replace_all() — Admin, Department Manager & Project Manager only.
 --  - PO file attachments: private Storage bucket "po-files" (section at the end).
 -- =====================================================================
@@ -82,23 +84,35 @@ returns boolean language sql stable security definer set search_path = public as
   select exists (select 1 from public.profiles where id = auth.uid() and role::text in ('admin', 'dept_manager', 'project_manager', 'engineer'));
 $$;
 
+-- A bid's Value alone (collection 'bidvalues': { value, owner }, one row per bid id — no margin, no quotation files):
+-- written like the price (Admin and the owning Sales); read also by Department Manager, Project Manager and Engineer
+-- once the bid is won. Margin and files stay in 'bidprices'.
+create or replace function public.can_see_bid_value(bid_id text, owner text)
+returns boolean language sql stable security definer set search_path = public as $$
+  select public.can_see_bid_price(owner) or (
+    exists (select 1 from public.profiles where id = auth.uid() and role::text in ('dept_manager', 'project_manager', 'engineer'))
+    and exists (select 1 from public.app_records b
+                 where b.collection = 'bids' and b.id = bid_id and b.data ->> 'result' = 'won'));
+$$;
+
 create policy "records: read"   on public.app_records for select to authenticated using (
   public.has_app_role() and (collection <> 'bidprices' or public.can_see_bid_price(data ->> 'owner'))
+  and (collection <> 'bidvalues' or public.can_see_bid_value(id, data ->> 'owner'))
   and (collection <> 'projfin' or public.can_see_project_finance()));
 create policy "records: insert" on public.app_records for insert to authenticated with check (
-  public.can_write_record(collection) and (collection <> 'bidprices' or public.can_see_bid_price(data ->> 'owner'))
+  public.can_write_record(collection) and (collection not in ('bidprices', 'bidvalues') or public.can_see_bid_price(data ->> 'owner'))
   and (collection <> 'projfin' or public.can_see_project_finance()));
 create policy "records: update" on public.app_records for update to authenticated
-  using (public.can_write_record(collection) and (collection <> 'bidprices' or public.can_see_bid_price(data ->> 'owner'))
+  using (public.can_write_record(collection) and (collection not in ('bidprices', 'bidvalues') or public.can_see_bid_price(data ->> 'owner'))
          and (collection <> 'projfin' or public.can_see_project_finance()))
-  with check (public.can_write_record(collection) and (collection <> 'bidprices' or public.can_see_bid_price(data ->> 'owner'))
+  with check (public.can_write_record(collection) and (collection not in ('bidprices', 'bidvalues') or public.can_see_bid_price(data ->> 'owner'))
          and (collection <> 'projfin' or public.can_see_project_finance()));
 -- Weekly Plan tasks can only be deleted by the person who created them
 -- (tasks without a recorded creator — older data / demo — only by Admin)
 -- A project (with everything in it): Admin, Department Manager & Project Manager only.
 -- A bid: Admin and the Sales who owns it — the only people who may see its price and quotation files, which go with it.
 create policy "records: delete" on public.app_records for delete to authenticated using (
-  public.can_write_record(collection) and (collection <> 'bidprices' or public.can_see_bid_price(data ->> 'owner'))
+  public.can_write_record(collection) and (collection not in ('bidprices', 'bidvalues') or public.can_see_bid_price(data ->> 'owner'))
   and (collection <> 'projfin' or public.can_see_project_finance()) and (
     collection <> 'plans'
     or data ->> 'createdBy' = auth.uid()::text
@@ -128,7 +142,7 @@ begin
         or (collection in ('timesheets', 'plans') and data ->> 'kind' = 'project' and data ->> 'refId' = old.id);
   elsif old.collection = 'bids' then
     delete from public.app_records
-     where (collection = 'bidprices' and id = old.id)
+     where (collection in ('bidprices', 'bidvalues') and id = old.id)
         or (collection in ('timesheets', 'plans') and data ->> 'kind' = 'bid' and data ->> 'refId' = old.id);
   elsif old.collection = 'resources' then
     delete from public.app_records where collection = 'timesheets' and data ->> 'resourceId' = old.id;
@@ -176,6 +190,14 @@ update public.app_records b
    set data = (b.data - 'value' - 'margin' - 'files') || jsonb_build_object('owner', s.owner)
   from src s
  where b.collection = 'bids' and b.id = s.id;
+
+-- v1.78 (safe to re-run): every bid Value also gets its 'bidvalues' row, kept equal to the price row
+insert into public.app_records (collection, id, data, ord)
+select 'bidvalues', p.id, jsonb_build_object('value', p.data -> 'value', 'owner', coalesce(p.data -> 'owner', '""'::jsonb)), p.ord
+  from public.app_records p
+ where p.collection = 'bidprices' and jsonb_typeof(p.data -> 'value') = 'number'
+on conflict (collection, id) do update set data = excluded.data
+ where public.app_records.data is distinct from excluded.data;
 
 revoke all on public.app_records from anon, authenticated;
 grant select, insert, update, delete on public.app_records to authenticated;
@@ -244,7 +266,7 @@ returns trigger language plpgsql security definer set search_path = public as $$
 declare
   rec jsonb := case when tg_op = 'DELETE' then old.data else new.data end;
   changed text[] := '{}';
-  is_price boolean := (case when tg_op = 'DELETE' then old.collection else new.collection end) in ('bidprices', 'projfin');
+  is_price boolean := (case when tg_op = 'DELETE' then old.collection else new.collection end) in ('bidprices', 'bidvalues', 'projfin');
 begin
   if coalesce(current_setting('app.bulk', true), '') = '1' then return null; end if; -- Reset / Import writes one line of its own
   if (case when tg_op = 'DELETE' then old.collection else new.collection end) = 'meta' then return null; end if;

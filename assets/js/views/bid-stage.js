@@ -190,7 +190,7 @@
   const filterSel = (name, label, items) => `<select data-prop-filter="${name}" aria-label="${esc(label)}" style="width:auto"><option value="">${esc(label)}: ทั้งหมด</option>${items.map((x) => `<option value="${esc(x.v)}"${PM.biddingState[name] === x.v ? ' selected' : ''}>${esc(x.t)}</option>`).join('')}</select>`;
 
   function proposalList(rows) {
-    const s = PM.proposalSummary(rows), prices = PM.seesBidPrices(), T = PM.today();
+    const s = PM.proposalSummary(rows), prices = PM.seesBidValues(), T = PM.today();
     const pct = (n) => (s.total ? U.num((n / s.total) * 100, 1) + '%' : '–');
     const yours = PM.myRole() === 'sales' ? ' (เฉพาะงานของคุณ)' : '';
     return `<div class="card no-i18n">
@@ -209,7 +209,7 @@
             const late = x.b.result === 'pending' && !x.b.dates.submit && x.b.dueDate && x.b.dueDate < T;
             return `<tr class="click" data-bid="${esc(x.b.id)}">
             <td class="num">${x.no}</td><td>${esc(PM.dash(x.b.client))}</td><td><span class="title">${esc(PM.dash(x.b.name))}</span><small>${esc(PM.dash(x.b.code))}</small></td><td>${esc(x.p.type)}</td>
-            <td class="num">${PM.canSeeBidPrice(x.b) ? mb(x.b.value) : V.LOCK_PRICE}</td><td>${lv ? U.badge(lv, x.p.priority) : '-'}</td>
+            <td class="num">${PM.canSeeBidValue(x.b) ? mb(x.b.value) : V.LOCK_PRICE}</td><td>${lv ? U.badge(lv, x.p.priority) : '-'}</td>
             <td class="nowrap${late ? ' neg' : ''}">${dmy(x.b.dueDate)}</td><td class="nowrap">${dmy(x.b.dates.proposal)}</td>
             <td class="num">${U.num(x.p.progress)}%</td><td>${U.badge(st.level, st.label)}</td><td>${esc(pmOf(x))}</td><td>${esc(salesOf(x))}</td><td>${esc(x.p.deliverables)}</td>
             <td class="row-actions">${V.bidButtons(x.b)}</td></tr>`;
@@ -229,7 +229,7 @@
   function proposalPrint(rows) {
     const P = PM.printDoc, win = P.open();
     if (!win) return;
-    const s = PM.proposalSummary(rows), prices = PM.seesBidPrices();
+    const s = PM.proposalSummary(rows), prices = PM.seesBidValues();
     const cellCls = (lv) => (lv ? ` class="c-${lv}"` : '');
     const statusRow = (label, n, value, cls) => `<tr><td${cls || ''}><b>${esc(label)}</b></td><td class="r">${n}</td><td class="r">${s.total ? U.num((n / s.total) * 100, 1) : '0.0'}%</td>${prices ? `<td class="r">${U.num(value, 1)}</td>` : ''}</tr>`;
     P.write(win, {
@@ -244,7 +244,7 @@
     <tr class="band"><th colspan="6">PROJECT INFORMATION</th><th colspan="2">SCHEDULE</th><th colspan="2">TRACKING</th><th colspan="2">TEAM</th><th>SCOPE</th></tr>
     <tr class="head"><th>No.</th><th>Customer</th><th>Project Name</th><th>Type</th><th>Value (MB)</th><th>Priority</th><th>Due Date</th><th>Start Date</th><th>Progress</th><th>Status</th><th>PM</th><th>Sales</th><th>Deliverables</th></tr></thead><tbody>
     ${rows.map((x) => { const st = PM.propStatusInfo(x.p.status); return `<tr><td class="r">${x.no}</td><td>${esc(PM.dash(x.b.client))}</td><td>${esc(PM.dash(x.b.name))}</td><td>${esc(x.p.type)}</td>
-      <td class="r">${PM.canSeeBidPrice(x.b) ? mb(x.b.value) : '🔒'}</td><td${cellCls(priLevel(x.p.priority))}>${esc(x.p.priority || '-')}</td><td>${dmy(x.b.dueDate)}</td><td>${dmy(x.b.dates.proposal)}</td>
+      <td class="r">${PM.canSeeBidValue(x.b) ? mb(x.b.value) : '🔒'}</td><td${cellCls(priLevel(x.p.priority))}>${esc(x.p.priority || '-')}</td><td>${dmy(x.b.dueDate)}</td><td>${dmy(x.b.dates.proposal)}</td>
       <td class="r">${U.num(x.p.progress)}%</td><td${cellCls(st.level)}>${esc(st.label)}</td><td>${esc(pmOf(x))}</td><td>${esc(salesOf(x))}</td><td>${esc(x.p.deliverables)}</td></tr>`; }).join('')}
   </tbody></table></section>
   <div class="pl-sum">
@@ -264,7 +264,7 @@
         columns: [{ header: 'No.', type: 'int', width: 6 }, { header: 'Bid No.', width: 22 }, { header: 'Customer', width: 18 }, { header: 'Project Name', width: 48 }, { header: 'Type', width: 11 },
           { header: 'Value (MB)', type: 'number', width: 11 }, { header: 'Priority', width: 9 }, { header: 'Due Date', type: 'date', width: 11 }, { header: 'Start Date', type: 'date', width: 11 },
           { header: 'Progress (%)', type: 'int', width: 10 }, { header: 'Status', width: 15 }, { header: 'PM', width: 14 }, { header: 'Sales', width: 14 }, { header: 'Deliverables', width: 36 }],
-        rows: rows.map((x) => [x.no, x.b.code, x.b.client, x.b.name, x.p.type, PM.canSeeBidPrice(x.b) && x.b.value != null ? Number(x.b.value) / 1e6 : '', x.p.priority || '-', x.b.dueDate || '', x.b.dates.proposal || '', x.p.progress, PM.propStatusInfo(x.p.status).label, pmOf(x), salesOf(x), x.p.deliverables]),
+        rows: rows.map((x) => [x.no, x.b.code, x.b.client, x.b.name, x.p.type, PM.canSeeBidValue(x.b) && x.b.value != null ? Number(x.b.value) / 1e6 : '', x.p.priority || '-', x.b.dueDate || '', x.b.dates.proposal || '', x.p.progress, PM.propStatusInfo(x.p.status).label, pmOf(x), salesOf(x), x.p.deliverables]),
       }],
     });
   }
@@ -287,7 +287,7 @@
     el.innerHTML = `${toolbar}
       <div class="grid cols-6">
         ${V.tile({ label: 'รอผล (ยื่นแล้ว)', value: waiting.length, sub: V.bidSum(waiting) ? `มูลค่า ${V.bidSum(waiting)}${yours}` : 'ยื่นใบเสนอราคาแล้ว', icon: 'submit' })}
-        ${V.tile({ label: 'Won', value: bs.won, sub: PM.seesBidPrices() ? `มูลค่า ${U.money(bs.wonValue)}${yours}` : 'ในช่วงเวลาที่เลือก', icon: 'award' })}
+        ${V.tile({ label: 'Won', value: bs.won, sub: PM.seesBidValues() ? `มูลค่า ${U.money(bs.wonValue)}${yours}` : 'ในช่วงเวลาที่เลือก', icon: 'award' })}
         ${V.tile({ label: 'Lost / No-bid', value: `${bs.lost} <small>/ ${bs.nobid}</small>`, sub: 'ในช่วงเวลาที่เลือก', icon: 'lost' })}
         ${V.tile({ label: 'Win rate', value: U.pct(bs.winRate), sub: PM.myRole() === 'admin' ? `by value ${U.pct(bs.winRateValue)}` : `${bs.won} won / ${bs.won + bs.lost} decided` })}
         ${V.tile({ label: 'Submit → Award', tag: 'Time', value: U.days(sd.avg), sub: `เวลารอผลเฉลี่ย · n=${sd.n}` })}

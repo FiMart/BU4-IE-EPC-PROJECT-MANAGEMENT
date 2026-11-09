@@ -58,6 +58,8 @@
         ${V.tile({ label: 'Win rate', value: U.pct(bs.winRate), sub: `${bs.won} won / ${bs.won + bs.lost} decided` })}
         ${PM.seesBidPrices()
           ? V.tile({ label: 'Won value', value: U.money(bs.wonValue), sub: `Pipeline ${U.money(bs.pipelineValue)}${PM.myRole() === 'sales' ? ' · เฉพาะงานของคุณ' : ''}` })
+          : PM.seesBidValues() // Dept Manager · PM · Engineer: the values of won bids only
+          ? V.tile({ label: 'Won value', value: V.bidSum(bs.list.filter((b) => b.result === 'won')) || '–', sub: `${bs.won} งานที่ได้ในช่วงเวลา · เห็นมูลค่าเฉพาะงานที่ได้แล้ว` })
           : V.tile({ label: 'Won / Lost', value: `${bs.won} <small>/ ${bs.lost}</small>`, sub: `No-bid ${bs.nobid} · มูลค่าเห็นได้เฉพาะ Sales / Admin`, icon: 'award' })}
       </div>
       <div class="card">
@@ -162,7 +164,7 @@
     const urgency = left == null ? '' : left < 0 ? ' kc-late' : left <= 5 ? ' kc-soon' : '';
     const sales = V.salesName(b), hasSales = !!PM.salesKey(b);
     const est = b.estimator ? U.resourceName(b.estimator) : '';
-    const money = !PM.canSeeBidPrice(b) ? V.LOCK_PRICE : b.value ? U.money(b.value) : '<span class="muted" title="ไม่ระบุมูลค่า">—</span>';
+    const money = !PM.canSeeBidValue(b) ? V.LOCK_PRICE : b.value ? U.money(b.value) : '<span class="muted" title="ไม่ระบุมูลค่า">—</span>';
     return `<article class="kcard${urgency}${flash}" style="--k:${k}" data-bid="${b.id}">
       <div class="kc-top"><span class="code" title="${esc(PM.dash(b.code))}${b.sector ? ` · ${esc(b.sector)}` : ''}">${esc(PM.dash(b.code))}</span></div>
       <div class="name" title="${esc(PM.dash(b.name))}">${esc(PM.dash(b.name))}</div>

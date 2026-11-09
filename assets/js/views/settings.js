@@ -110,6 +110,7 @@
     users() {
       const A = PM.auth, canRoles = PM.can('roles.manage');
       return `
+      ${PM.preview ? PM.preview.card() : ''}
       ${canRoles ? `<div class="card">
         <div class="card-h"><h2>จัดการ Role ผู้ใช้</h2><span class="spacer"></span>
           <input type="search" id="st-user-q" class="st-search" placeholder="ค้นหาชื่อ / อีเมล" aria-label="ค้นหาผู้ใช้">
