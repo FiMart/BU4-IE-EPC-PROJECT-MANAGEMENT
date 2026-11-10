@@ -60,18 +60,25 @@
       return runs.map((r) => { const v = tags(r, 't').map((t) => t.textContent).join(''); return isStrike(tags(r, 'rPr')[0]) && v.trim() ? `${MARK_ON}${v}${MARK_OFF}` : v; }).join('');
     };
     const strings = sst ? tags(sst, 'si').map(richText) : [];
-    // which cell styles are dates and percentages, and which strike the whole cell
-    const kind = [], struck = [];
+    // which cell styles are dates and percentages, which strike the whole cell, and their fill colour (a vendor list marks rows by colour)
+    const kind = [], struck = [], fillOf = [];
     const st = await xml('xl/styles.xml');
     if (st) {
       const custom = {};
       tags(st, 'numFmt').forEach((f) => { custom[f.getAttribute('numFmtId')] = f.getAttribute('formatCode') || ''; });
       const fontsNode = tags(st, 'fonts')[0], fonts = fontsNode ? Array.from(fontsNode.children) : [];
+      const fillsNode = tags(st, 'fills')[0], fills = fillsNode ? Array.from(fillsNode.children) : [];
+      const theme = await xml('xl/theme/theme1.xml');
+      const fillColor = (fill) => {
+        const pf = fill && tags(fill, 'patternFill')[0];
+        return pf && pf.getAttribute('patternType') === 'solid' ? xlsxColor(tags(pf, 'fgColor')[0], theme) : '';
+      };
       const xfs = tags(st, 'cellXfs')[0];
       if (xfs) Array.from(xfs.children).forEach((xf, i) => {
         const id = Number(xf.getAttribute('numFmtId')), code = (custom[id] || '').replace(/"[^"]*"|\[[^\]]*\]|\\./g, '').toLowerCase();
         kind[i] = BUILTIN_DATE.has(id) || /[dy]|m{3,}/.test(code) ? 'date' : id === 9 || id === 10 || code.includes('%') ? 'pct' : '';
         struck[i] = isStrike(fonts[Number(xf.getAttribute('fontId'))]);
+        fillOf[i] = fillColor(fills[Number(xf.getAttribute('fillId'))]);
       });
     }
     const sheets = [];
@@ -81,13 +88,15 @@
       const path = String(target[rid] || '').replace(/^\//, '');
       const doc = await xml(path.startsWith('xl/') ? path : 'xl/' + path);
       if (!doc) continue;
-      const rows = [];
+      const rows = [], fills = [];
       let hiddenRows = 0; // what the sheet hides is left out, like a hidden sheet: the printed form does not show it either
       tags(doc, 'row').slice(0, MAX_ROWS + 200).forEach((row) => {
         if (['1', 'true'].includes(row.getAttribute('hidden'))) { if (tags(row, 'c').some((c) => tags(c, 'v')[0] || tags(c, 'is')[0])) hiddenRows++; return; }
         const at = Number(row.getAttribute('r')) - 1 || rows.length, cells = [];
         tags(row, 'c').forEach((c, i) => {
           const type = c.getAttribute('t'), style = kind[Number(c.getAttribute('s'))] || '', ref = c.getAttribute('r');
+          const fill = fillOf[Number(c.getAttribute('s'))];
+          if (fill) (fills[at] = fills[at] || [])[ref ? colIndex(ref) : i] = fill;
           const raw = tags(c, 'v')[0] ? tags(c, 'v')[0].textContent : '';
           let v = '';
           if (type === 's') v = strings[Number(raw)] || '';
@@ -104,9 +113,45 @@
         });
         rows[at] = Array.from(cells, (x) => (x === undefined ? '' : x));
       });
-      sheets.push({ name: s.getAttribute('name') || `Sheet ${sheets.length + 1}`, rows: Array.from(rows, (r) => r || []), hiddenRows });
+      // merged cells: where a merged block starts (a vendor list merges the item over its vendors)
+      const merges = tags(doc, 'mergeCell').map((m) => String(m.getAttribute('ref') || '').split(':')).filter((r) => r.length === 2)
+        .map(([a, b]) => ({ r1: Number(a.replace(/^[A-Z]+/i, '')) - 1, c1: colIndex(a), r2: Number(b.replace(/^[A-Z]+/i, '')) - 1, c2: colIndex(b) }));
+      sheets.push({ name: s.getAttribute('name') || `Sheet ${sheets.length + 1}`, rows: Array.from(rows, (r) => r || []), hiddenRows, fills, merges });
     }
     return sheets;
+  }
+  /* a colour in styles.xml: rgb="FFFFFF00" · indexed="13" (the old 64-colour palette) · theme="4" tint="0.6" → "#rrggbb" or '' */
+  const INDEXED = ('000000 FFFFFF FF0000 00FF00 0000FF FFFF00 FF00FF 00FFFF 000000 FFFFFF FF0000 00FF00 0000FF FFFF00 FF00FF 00FFFF ' +
+    '800000 008000 000080 808000 800080 008080 C0C0C0 808080 9999FF 993366 FFFFCC CCFFFF 660066 FF8080 0066CC CCCCFF ' +
+    '000080 FF00FF FFFF00 00FFFF 800080 800000 008080 0000FF 00CCFF CCFFFF CCFFCC FFFF99 99CCFF FF99CC CC99FF FFCC99 ' +
+    '3366FF 33CCCC 99CC00 FFCC00 FF9900 FF6600 666699 969696 003366 339966 003300 333300 993300 993366 333399 333333').split(' ');
+  function xlsxColor(node, theme) {
+    if (!node) return '';
+    let hex = '';
+    const rgb = node.getAttribute('rgb'), idx = node.getAttribute('indexed'), th = node.getAttribute('theme');
+    if (rgb && /^[0-9a-f]{6,8}$/i.test(rgb)) hex = rgb.slice(-6);
+    else if (idx !== null && Number(idx) < 64) hex = INDEXED[Number(idx)];
+    else if (th !== null && theme) {
+      const scheme = tags(theme, 'clrScheme')[0], kids = scheme ? Array.from(scheme.children) : [];
+      const order = ['lt1', 'dk1', 'lt2', 'dk2', 'accent1', 'accent2', 'accent3', 'accent4', 'accent5', 'accent6', 'hlink', 'folHlink'];
+      const el = kids.find((k) => k.localName === order[Number(th)]), c = el && el.children[0];
+      hex = c ? c.getAttribute('val') === 'window' || c.localName === 'sysClr' ? c.getAttribute('lastClr') || '' : c.getAttribute('val') || '' : '';
+    }
+    if (!/^[0-9a-f]{6}$/i.test(hex)) return '';
+    const tint = Number(node.getAttribute('tint')) || 0;
+    if (tint) { // a theme shade: lighter or darker in HSL lightness
+      let [r, g, b] = [0, 2, 4].map((i) => parseInt(hex.substr(i, 2), 16) / 255);
+      const mx = Math.max(r, g, b), mn = Math.min(r, g, b), l = (mx + mn) / 2, d = mx - mn;
+      const s = d ? d / (1 - Math.abs(2 * l - 1)) : 0;
+      let h = 0;
+      if (d) h = mx === r ? ((g - b) / d) % 6 : mx === g ? (b - r) / d + 2 : (r - g) / d + 4;
+      const L = tint < 0 ? l * (1 + tint) : l * (1 - tint) + tint;
+      const C = (1 - Math.abs(2 * L - 1)) * s, X = C * (1 - Math.abs(((h % 6) + 6) % 2 - 1)), m = L - C / 2;
+      const seg = Math.floor(((h % 6) + 6) % 6);
+      [r, g, b] = [[C, X, 0], [X, C, 0], [0, C, X], [0, X, C], [X, 0, C], [C, 0, X]][seg].map((v) => v + m);
+      hex = [r, g, b].map((v) => Math.round(Math.max(0, Math.min(1, v)) * 255).toString(16).padStart(2, '0')).join('');
+    }
+    return '#' + hex.toLowerCase();
   }
 
   /* ---------- .ods (LibreOffice, Google Sheets, Excel "OpenDocument"): also a zip of XML ----------
@@ -130,14 +175,19 @@
         const name = s.getAttributeNS(ODS_STYLE, 'name');
         if (!name) return;
         const child = (n) => Array.from(s.children).find((x) => x.localName === n);
-        const tp = child('text-properties'), tb = child('table-properties');
+        const tp = child('text-properties'), tb = child('table-properties'), cp = child('table-cell-properties');
         const line = tp ? tp.getAttributeNS(ODS_STYLE, 'text-line-through-style') || tp.getAttributeNS(ODS_STYLE, 'text-line-through-type') : '';
-        styles[name] = { parent: s.getAttributeNS(ODS_STYLE, 'parent-style-name'), strike: line ? line !== 'none' : null, hidden: !!tb && tb.getAttributeNS(ODS_TABLE, 'display') === 'false' };
+        const bg = cp ? cp.getAttributeNS('urn:oasis:names:tc:opendocument:xmlns:xsl-fo-compatible:1.0', 'background-color') : '';
+        styles[name] = { parent: s.getAttributeNS(ODS_STYLE, 'parent-style-name'), strike: line ? line !== 'none' : null, bg: bg || null, hidden: !!tb && tb.getAttributeNS(ODS_TABLE, 'display') === 'false' };
       });
     });
     const struck = (name) => {
       for (let i = 0, st = styles[name]; st && i < 12; i++, st = styles[st.parent]) if (st.strike !== null) return st.strike;
       return false;
+    };
+    const bgOf = (name) => {
+      for (let i = 0, st = styles[name]; st && i < 12; i++, st = styles[st.parent]) if (st.bg) return /^#[0-9a-f]{6}$/i.test(st.bg) ? st.bg.toLowerCase() : '';
+      return '';
     };
     const mark = (v) => (v.trim() ? `${MARK_ON}${v}${MARK_OFF}` : v);
     const inline = (node) => Array.from(node.childNodes).map((n) => {
@@ -170,30 +220,33 @@
     Array.from(book.children).filter((t) => t.localName === 'table').forEach((table) => {
       const st = styles[table.getAttributeNS(ODS_TABLE, 'style-name')];
       if (st && st.hidden) return;
-      const rows = [];
+      const rows = [], fills = [];
       let at = 0, hiddenRows = 0;
       tags(table, 'table-row').forEach((row) => {
         if (at >= limit) return;
         const seen = row.getAttributeNS(ODS_TABLE, 'visibility');
         const hidden = seen === 'collapse' || seen === 'filter';
-        const cells = [];
+        const cells = [], bgs = [];
         let c = 0;
         Array.from(row.children).forEach((cell) => {
           if (cell.localName !== 'table-cell' && cell.localName !== 'covered-table-cell') return;
           const span = Number(cell.getAttributeNS(ODS_TABLE, 'number-columns-repeated')) || 1;
           const v = c < ODS_MAX_COLS ? cellValue(cell) : '';
-          if (v !== '') for (let i = 0; i < span && c + i < ODS_MAX_COLS; i++) cells[c + i] = v;
+          if (v !== '') {
+            const bg = bgOf(cell.getAttributeNS(ODS_TABLE, 'style-name'));
+            for (let i = 0; i < span && c + i < ODS_MAX_COLS; i++) { cells[c + i] = v; if (bg) bgs[c + i] = bg; }
+          }
           c += span;
         });
         const span = Number(row.getAttributeNS(ODS_TABLE, 'number-rows-repeated')) || 1;
         if (cells.length && hidden) hiddenRows += span;
         else if (cells.length) {
           const full = Array.from(cells, (x) => (x === undefined ? '' : x));
-          for (let i = 0; i < span && at + i < limit; i++) rows[at + i] = full.slice();
+          for (let i = 0; i < span && at + i < limit; i++) { rows[at + i] = full.slice(); if (bgs.length) fills[at + i] = bgs.slice(); }
         }
         at += span;
       });
-      sheets.push({ name: table.getAttributeNS(ODS_TABLE, 'name') || `Sheet ${sheets.length + 1}`, rows: Array.from(rows, (r) => r || []), hiddenRows });
+      sheets.push({ name: table.getAttributeNS(ODS_TABLE, 'name') || `Sheet ${sheets.length + 1}`, rows: Array.from(rows, (r) => r || []), hiddenRows, fills });
     });
     return sheets;
   }

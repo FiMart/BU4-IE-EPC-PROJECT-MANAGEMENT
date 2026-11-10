@@ -2,9 +2,21 @@
    When the website changes: bump PM.VERSION and add a new entry at the TOP of PM.CHANGELOG.
    type: 'feature' (ฟีเจอร์ใหม่) · 'improve' (ปรับปรุง) · 'fix' (แก้ไข) */
 (function () {
-  PM.VERSION = '1.78.0';
+  PM.VERSION = '1.79.0';
 
   PM.CHANGELOG = [
+    {
+      version: '1.79.0', date: '2026-11-10', type: 'feature', title: 'AVL แบบ Vendor List ของลูกค้า · นำเข้าจาก PDF / Excel แล้วตรวจจับข้อมูลให้อัตโนมัติ',
+      items: [
+        'แท็บ AVL ของโครงการเรียงแบบ Vendor List ของลูกค้า: หมวดงาน (Static · Rotating · Package · Electrical · Instrumentation · Heater · Fire Fighting · Piping · Process …) → รายการ (REQ Description พร้อมเลขและหัวข้อย่อย) → ผู้ขาย · มีช่องที่ตั้งผู้ขาย · ประเทศที่ผลิต (Manufacturing Location) · Remarks · ป้าย เสนอเพิ่ม (Proposed Additional Vendor) และ COO Deviation',
+        'ปุ่ม "นำเข้าจาก PDF / Excel" (หรือลากไฟล์มาวางที่แท็บ): อ่าน Vendor List ได้ทั้ง PDF หลายสิบหน้าและ Excel — หาหัวตาราง หมวดงาน รายการที่ merge คร่อมผู้ขาย Yes/No และ Remarks ให้เอง · ดูตัวอย่างทุกแถวก่อนบันทึก ติ๊กออกได้ · ยกเลิกการนำเข้ารอบนั้นได้',
+        'ตรวจจับการขีดฆ่า: ตัวอักษรขีดฆ่าใน Excel · เส้นขีดและ mark-up ใน PDF · กล่องขาวที่ปิดทับ = ตัดออก (เก็บไว้เป็นประวัติในตัวกรอง "ตัดออก" ไม่นับเป็นผู้ขายที่ใช้ได้) · ขีดเฉพาะบางคำ เช่น ประเทศ ตัดเฉพาะคำนั้น · (Commodity not required) / (N/A) = รายการไม่ต้องใช้',
+        'อ่านสีตามคำอธิบายในไฟล์: Proposed Additional Vendors (เหลือง) = เสนอเพิ่ม · COO Deviation (ชมพู) = ประเทศผู้ผลิตต่างจากที่กำหนด · ความเห็นที่พิมพ์ไว้บน PDF ติดไปกับแถวหรือรายการนั้น ความเห็นที่ถูกขีดฆ่าไม่นำมา',
+        'Yes = อนุมัติแล้ว · No = รอลูกค้าอนุมัติ (เลือกได้) · นำเข้าไฟล์ฉบับใหม่ = อัปเดตแถวเดิม จับคู่ด้วยรายการ + ผู้ขาย · เลือกตัดรายการเดิมที่ไม่มีในไฟล์ได้ · อนุมัติที่ได้ภายหลังในระบบไม่ถูกเปลี่ยนกลับ',
+        'ตรวจ PO กับ AVL: ผู้ขายที่ถูกตัดออกนับเป็น "ไม่อยู่ใน AVL" และบอกว่าถูกตัดออกแล้ว · พิมพ์ AVL มีคอลัมน์ประเทศที่ผลิต · Client AVL (Yes/No) · Remarks',
+        'แก้: ค้นหาในแท็บ AVL บนมือถือไม่ซ่อนแถวที่ไม่ตรง',
+      ],
+    },
     {
       version: '1.78.0', date: '2026-11-09', type: 'feature', title: 'Margin · WIP/Accrued · รายได้สะสม จากไฟล์ Monitor · ตัวเงินโครงการเห็นเฉพาะ Admin – Engineer',
       items: [

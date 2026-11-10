@@ -180,7 +180,8 @@ assets/js/i18n.js            แสดงป้าย / หัวตาราง
 assets/js/views/phase-items.js  รายการย่อยของขั้นงาน EPC (เอกสารออกแบบ · แพ็กเกจจัดซื้อ · งานก่อสร้าง · เอกสารส่งมอบ) + Transmittal — แก้รายการมาตรฐานที่ PM.PHASE_ITEMS
 assets/js/views/daily.js     รายงานประจำวันหน้างาน (collection dailies) + พิมพ์ PDF
 assets/js/views/punch.js     Punch List (collection punch) + พิมพ์รายการค้าง
-assets/js/views/avl.js       AVL รายชื่อผู้ขายที่ลูกค้าอนุมัติของแต่ละโครงการ (collection avl) + ตรวจ PO นอก AVL + พิมพ์
+assets/js/views/avl.js       AVL รายชื่อผู้ขายที่ลูกค้าอนุมัติของแต่ละโครงการ (collection avl) แบบ Vendor List: หมวดงาน → รายการ → ผู้ขาย · ประเทศที่ผลิต · เสนอเพิ่ม / COO · ตัดออก + ตรวจ PO นอก AVL + พิมพ์
+assets/js/views/avl-import.js  นำเข้า Vendor List จาก PDF (pdf.js 4.10.38 จาก cdnjs, อ่านในเบราว์เซอร์) / .xlsx / .ods / .csv / วาง: หาหัวตาราง · หมวดงาน · รายการที่ merge · ขีดฆ่า (font / เส้น / mark-up / กล่องขาว) · สีตาม legend · ความเห็นบน PDF
 assets/js/views/meetings.js  บันทึกการประชุม MOM + Action (collection meetings) + พิมพ์ PDF
 assets/js/approvals.js       อนุมัติ PO / ค่าใช้จ่ายที่ถึงวงเงิน (วงเงินใน collection settings id 'approval')
 assets/js/views/sheet-import.js  นำเข้า Proposal / โครงการจาก Excel: อ่าน .xlsx / .ods / .csv ในเบราว์เซอร์ · วางเซลล์จาก Excel · จับคู่คอลัมน์ · แสดงผลก่อนบันทึก · ยกเลิกรอบนำเข้า · รับฟอร์ม Project list

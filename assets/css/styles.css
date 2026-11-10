@@ -1490,7 +1490,7 @@ select.pi-st.pl-st-closed { background-color: var(--good-bg); color: var(--good-
 .avl-q { width: 230px; height: 36px; }
 .avl-table tr.avl-g td { background: color-mix(in srgb, var(--surface-2) 70%, var(--surface)); padding-top: 9px; padding-bottom: 9px; }
 .avl-table tr.avl-g small { display: inline; margin: 0 8px 0 8px; color: var(--muted); }
-.avl-table[hidden] { display: none; }
+.avl-table[hidden], .avl-table tr[hidden] { display: none !important; } /* the phone card layout shows rows as grids: search must still hide them */
 select.pi-st.avl-st-proposed { background-color: var(--surface-2); color: var(--ink-2); }
 select.pi-st.avl-st-submitted { background-color: var(--warning-bg); color: var(--warning-text); }
 select.pi-st.avl-st-approved { background-color: var(--good-bg); color: var(--good-text); }
@@ -1499,6 +1499,28 @@ select.pi-st.avl-st-rejected { background-color: var(--critical-bg); color: var(
 .po-avl { margin: -4px 0 0; font-size: 13px; line-height: 1.7; color: var(--ink-2); }
 .po-avl[hidden] { display: none; }
 @media (max-width: 640px) { .avl-q { width: 100%; order: 5; } }
+/* the Vendor List layout: discipline rows · flags in the client's legend colours · removed (struck) rows */
+.avl-table tr.avl-d td { background: var(--accent-soft); color: var(--accent); font-weight: 700; letter-spacing: .02em; padding-top: 7px; padding-bottom: 7px; }
+.avl-table tr.avl-g small.avl-note { display: block; margin: 4px 0 0; color: var(--ink-2); }
+.avl-table tr.avl-off td { color: var(--muted); }
+.avl-table tr.avl-off .avl-v { text-decoration: line-through; text-decoration-thickness: 1.5px; }
+.avl-table td.avl-rm { max-width: 260px; font-size: 13px; overflow-wrap: anywhere; }
+.avl-flag { display: inline-block; margin: 3px 4px 0 0; padding: 1px 7px; border-radius: 6px; font-size: 11.5px; font-weight: 600; line-height: 1.6; color: var(--ink); white-space: nowrap; vertical-align: middle; }
+.avl-flag.addl { background: color-mix(in srgb, #f2d600 45%, var(--surface)); }
+.avl-flag.coo { background: color-mix(in srgb, #e39a98 50%, var(--surface)); }
+.avl-sw { display: inline-block; width: 14px; height: 14px; margin: 0 5px -2px 2px; border-radius: 3px; border: 1px solid var(--border-strong); }
+.avl-chks { display: flex; flex-wrap: wrap; gap: 8px 22px; }
+label.avl-chk { display: flex; flex-direction: row; align-items: flex-start; gap: 8px; cursor: pointer; }
+label.avl-chk input { width: 18px; height: 18px; margin: 2px 0 0; flex: none; }
+label.avl-chk span { display: flex; flex-direction: column; font-size: 14px; color: var(--ink); }
+label.avl-chk small { color: var(--muted); font-size: 12px; }
+.avl-imp-opts { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 18px; margin: 6px 0; }
+.avl-imp-opts input[type=checkbox] { width: 16px; height: 16px; margin: 0 6px 0 0; vertical-align: -3px; }
+.avl-imp tr.avl-imp-d td { background: var(--accent-soft); color: var(--accent); font-weight: 700; }
+.avl-imp td small { display: block; }
+.avl-imp th:first-child, .avl-imp td:first-child { width: 34px; padding-right: 0; }
+.avl-imp td:first-child input { width: 17px; height: 17px; margin: 0; }
+.avl-imp td.avl-rm, .avl-imp td:nth-child(5) { min-width: 160px; }
 .mt-print-row { display: flex; align-items: center; justify-content: space-between; gap: 8px 12px; flex-wrap: wrap; padding: 8px 10px 8px 14px; border-radius: 10px; background: var(--accent-soft); }
 .mt-print-row .muted { font-size: 13px; }
 .mt-acts { display: flex; flex-direction: column; gap: 6px; margin-bottom: 8px; }
