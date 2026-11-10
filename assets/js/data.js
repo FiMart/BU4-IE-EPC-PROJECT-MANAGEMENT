@@ -124,25 +124,26 @@
   };
   PM.bidOwner = (b) => (b && (b.owner || PM.bidOwnerFor(b.sales, b.salesName))) || '';
   const isMine = (b) => PM.myRole() === 'sales' && !!PM.myUid() && PM.bidOwner(b) === PM.myUid();
-  /* price / margin / quotation files of this bid: Admin all · Sales their own */
-  PM.canSeeBidPrice = (b) => PM.myRole() === 'admin' || isMine(b);
+  /* The selling price of a bid — Value · Margin · quotation files (database: can_read_bid_price / can_see_bid_price):
+     seen by Admin · Department Manager · Project Manager · Engineer · Sales (every bid, also another Sales' ones);
+     changed only by Admin and the Sales who owns the bid. Document Control · Technician see none. */
+  PM.PRICE_ROLES = ['admin', 'dept_manager', 'project_manager', 'engineer', 'sales'];
+  PM.canSeeBidPrice = () => PM.PRICE_ROLES.includes(PM.myRole());
+  // b = null: a new bid (Admin, or a Sales adding their own)
+  PM.canEditBidPrice = (b) => PM.myRole() === 'admin' || (b ? isMine(b) : PM.myRole() === 'sales');
   /* add / edit / move a bid and record Won · Lost (roles in roles.js → 'bid.edit'):
      Admin · Project Manager · Engineer — every bid · Sales — their own (no bid = a new inquiry).
-     The price stays with canSeeBidPrice (Admin / the owning Sales — enforced by the database). */
+     The price is changed only by canEditBidPrice (Admin / the owning Sales — enforced by the database). */
   PM.canEditBid = (b) => {
     const r = PM.myRole();
     if (!PM.can || !PM.can('bid.edit')) return false;
     return r === 'sales' ? !b || isMine(b) : true;
   };
-  /* does this role see any bid price at all (Sales: their own)? — decides whether money columns are shown */
-  PM.seesBidPrices = () => PM.myRole() === 'admin' || PM.myRole() === 'sales';
-  /* The bid's Value alone (not its margin, not the quotation files) also shows to Department Manager · Project Manager ·
-     Engineer, on every bid at every step. The database sends it to these roles only:
-     collection 'bidvalues', can_see_bid_value() in supabase/data.sql (v1.78). */
-  PM.VALUE_ROLES = ['dept_manager', 'project_manager', 'engineer'];
-  PM.bidValueOpen = (b) => !!b;
-  PM.canSeeBidValue = (b) => PM.canSeeBidPrice(b) || (PM.VALUE_ROLES.includes(PM.myRole()) && PM.bidValueOpen(b));
-  PM.seesBidValues = () => PM.seesBidPrices() || PM.VALUE_ROLES.includes(PM.myRole());
+  /* does this role see bid prices at all? — decides whether money columns are shown */
+  PM.seesBidPrices = () => PM.PRICE_ROLES.includes(PM.myRole());
+  // the Value alone: now the same people as the whole price (kept as its own name for the screens that show only the Value)
+  PM.canSeeBidValue = (b) => PM.canSeeBidPrice(b);
+  PM.seesBidValues = () => PM.seesBidPrices();
   /* a bid may be saved with Bid No. / client / name left empty: shown as "-" (the data itself stays empty, so it can be filled in later) */
   PM.dash = (v) => (v == null || String(v).trim() === '' ? '-' : String(v));
   /* a project's money — Plan Revenue, Plan cost, accumulated cost, billing (roles.js → 'project.finance'): Admin · Dept Manager · PM · Engineer.

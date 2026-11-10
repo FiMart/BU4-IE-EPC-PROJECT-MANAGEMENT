@@ -105,7 +105,17 @@
 
   /* collections this role may not write (data.sql refuses them too): never sent, the cloud copy wins on the next load.
      Bid price rows: only Admin / Sales ever hold them (the database sends them to no one else). */
-  const readOnly = (c) => (c === 'timesheets' && !PM.can('timesheet.edit')) || ((c === 'bidprices' || c === 'bidvalues') && !PM.seesBidPrices()) || (c === 'projfin' && !PM.seesProjectFinance());
+  // price rows: read by Admin · Dept Manager · PM · Engineer · Sales, written only by Admin and the owning Sales
+  const writesPrices = () => PM.myRole() === 'admin' || PM.myRole() === 'sales';
+  const readOnly = (c) => (c === 'timesheets' && !PM.can('timesheet.edit')) || ((c === 'bidprices' || c === 'bidvalues') && !writesPrices()) || (c === 'projfin' && !PM.seesProjectFinance());
+  /* a price row this browser holds but does not produce any more: delete it only when this user may write that bid's price
+     (a Sales now reads every bid's price — never theirs to remove) and the bid is still here (a deleted bid takes its rows with it) */
+  const mayDropPrice = (k) => {
+    const c = k.slice(0, k.indexOf('|'));
+    if (c !== 'bidprices' && c !== 'bidvalues') return true;
+    const b = (PM.db.bids || []).find((x) => String(x.id) === k.slice(k.indexOf('|') + 1));
+    return !!b && canWritePrice(PM.bidOwner(b));
+  };
 
   function diff() {
     const cur = {}, ups = [];
@@ -117,7 +127,7 @@
         ups.push({ row: { collection: r.collection, id: r.id, data: r.data, ord: ords[k] }, k, h });
       }
     });
-    return { ups, dels: Object.keys(base).filter((k) => !cur[k] && !readOnly(k.slice(0, k.indexOf('|')))) };
+    return { ups, dels: Object.keys(base).filter((k) => !cur[k] && !readOnly(k.slice(0, k.indexOf('|'))) && mayDropPrice(k)) };
   }
   const hasLocalChanges = () => { const d = diff(); return d.ups.length + d.dels.length > 0; };
 
@@ -126,7 +136,7 @@
   /* Same for a bid's Value row (bidvalues → can_see_bid_value()). */
   const GUARDED = {
     projfin: { fn: 'can_see_project_finance', args: undefined, has: () => (PM.db.projfin || []).length > 0 },
-    bidvalues: { fn: 'can_see_bid_value', args: { bid_id: '', owner: '' }, has: () => PM.seesBidPrices() && (PM.db.bids || []).some((b) => b.value != null) },
+    bidvalues: { fn: 'can_see_bid_value', args: { bid_id: '', owner: '' }, has: () => writesPrices() && (PM.db.bids || []).some((b) => b.value != null) },
   };
   const guardOk = {};
   async function secretReady() {

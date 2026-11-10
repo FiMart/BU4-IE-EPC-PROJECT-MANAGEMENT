@@ -72,7 +72,7 @@
         ${V.tile({ label: 'Win rate', value: U.pct(bs.winRate), sub: PM.myRole() === 'admin' ? `by value ${U.pct(bs.winRateValue)} · won ${U.money(bs.wonValue)}` : `${bs.won} won / ${bs.won + bs.lost} decided` })}
         ${V.tile({ label: 'On-time submission', tag: 'Time', value: U.pct(bs.onTimeRate), sub: U.badge(bs.onTimeRate >= 0.9 ? 'good' : bs.onTimeRate >= 0.75 ? 'warning' : 'critical', 'target 90%') })}
         ${PM.seesBidValues()
-          ? V.tile({ label: 'Pipeline (pending)', value: V.bidSum(allPending) || '–', sub: `${allPending.length} bids in progress${PM.myRole() === 'sales' ? ' · มูลค่าเฉพาะงานของคุณ' : ''}` })
+          ? V.tile({ label: 'Pipeline (pending)', value: V.bidSum(allPending) || '–', sub: `${allPending.length} bids in progress` })
           : V.tile({ label: 'Pipeline (pending)', value: allPending.length, sub: 'bids in progress', icon: 'funnel' })}
       </div>
       <div class="grid cols-2">

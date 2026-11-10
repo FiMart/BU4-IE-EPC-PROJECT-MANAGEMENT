@@ -18,11 +18,11 @@
     'data.reset': { label: 'Reset ข้อมูล (ล้างทั้งหมด / โหลดข้อมูลตัวอย่าง)', roles: ['admin'] },
     'data.import': { label: 'Import JSON (เขียนทับข้อมูลทั้งหมด)', roles: ['admin', 'dept_manager', 'project_manager'] },
     'data.export': { label: 'Export JSON / Timesheet CSV', roles: ['admin', 'dept_manager', 'project_manager', 'engineer', 'sales', 'doc_control', 'technician'] },
-    'bid.edit': { label: 'เพิ่ม / แก้ไข Inquiry และเลื่อนขั้น Bidding (Sales: เฉพาะงานของตัวเอง · PM / Engineer: ทุกงาน แต่ไม่เห็นมูลค่า)', roles: ['admin', 'project_manager', 'engineer', 'sales'] },
+    'bid.edit': { label: 'เพิ่ม / แก้ไข Inquiry และเลื่อนขั้น Bidding (Sales: เฉพาะงานของตัวเอง · PM / Engineer: ทุกงาน แต่แก้ราคาไม่ได้)', roles: ['admin', 'project_manager', 'engineer', 'sales'] },
     'bid.result': { label: 'กด Won / Lost / No-bid (Sales: เฉพาะงานของตัวเอง)', roles: ['admin', 'project_manager', 'engineer', 'sales'] },
     'bid.delete': { label: 'ลบงานประมูล พร้อมราคาและไฟล์ใบเสนอราคา (Sales: เฉพาะงานของตัวเอง — บังคับในฐานข้อมูล)', roles: ['admin', 'sales'] },
-    'bid.price': { label: 'เห็นมูลค่า · Margin · ไฟล์ใบเสนอราคาของ Bid (Sales: เฉพาะงานของตัวเอง — บังคับในฐานข้อมูล)', roles: ['admin', 'sales'] },
-    'bid.value': { label: 'เห็นมูลค่า (Value) ของ Bid ทุกงานทุกขั้น — ไม่รวม Margin และไฟล์ใบเสนอราคา (บังคับในฐานข้อมูล)', roles: ['admin', 'dept_manager', 'project_manager', 'engineer', 'sales'] },
+    'bid.price': { label: 'แก้ราคาขาย (มูลค่า · Margin) และแนบ / ลบไฟล์ใบเสนอราคาของ Bid (Sales: เฉพาะงานของตัวเอง — บังคับในฐานข้อมูล)', roles: ['admin', 'sales'] },
+    'bid.value': { label: 'เห็นราคาขายของ Bid ทุกงาน — มูลค่า · Margin · ไฟล์ใบเสนอราคา (Sales เห็นของกันและกัน — บังคับในฐานข้อมูล)', roles: ['admin', 'dept_manager', 'project_manager', 'engineer', 'sales'] },
     'plan.edit': { label: 'สร้าง / แก้ไขงานใน Weekly Plan', roles: ['admin', 'dept_manager', 'project_manager', 'engineer', 'sales', 'doc_control'] },
     'plan.status': { label: 'อัปเดตสถานะงานใน Weekly Plan', roles: ['admin', 'dept_manager', 'project_manager', 'engineer', 'sales', 'doc_control', 'technician'] },
     'resource.view': { label: 'เปิดหัวข้อ Resources (Resource Utilization · Timesheet) และส่วน Resource Utilization บน Dashboard', roles: ['admin', 'dept_manager', 'project_manager'] },
@@ -52,6 +52,7 @@
     'cost.edit': { label: 'บันทึก / แก้ไขค่าใช้จ่ายโครงการ (Actual cost)', roles: ['admin', 'dept_manager', 'project_manager'] },
     'roles.manage': { label: 'กำหนด Role ให้ผู้ใช้ (ยกเว้น Role ของตัวเอง และ Role ที่สูงกว่า — ดูกติกาด้านล่างตาราง)', roles: ['admin', 'dept_manager', 'project_manager'] },
     'users.delete': { label: 'ลบบัญชีผู้ใช้', roles: ['admin'] },
+    'users.password': { label: 'ตั้งรหัสผ่านชั่วคราวให้ผู้ใช้ที่ลืมรหัสผ่าน และดูคำขอจากหน้าเข้าสู่ระบบ — บังคับในฐานข้อมูล', roles: ['admin'] },
   };
 
   /* Which roles the current user may give to `target` ({ id, role }) — same rules as supabase/roles.sql:
@@ -137,6 +138,43 @@
         : 'ไม่มีสิทธิ์เปลี่ยน Role (เฉพาะ Admin, Department Manager และ Project Manager)');
     }
     return data[0];
+  };
+
+  /* ---------- forgot password without e-mail (data.sql v1.78): requests from the sign-in page, temporary passwords ---------- */
+  const pwError = (error) => {
+    const m = (error && error.message) || '';
+    if (/could not find the function|schema cache|does not exist/i.test(m)) return new Error('ยังไม่ได้ติดตั้งระบบรีเซ็ตรหัสผ่าน — ให้ Admin รัน supabase/data.sql อีกครั้ง');
+    if (/Only Admin/i.test(m)) return new Error('เฉพาะ Admin เท่านั้น');
+    if (/own password/i.test(m)) return new Error('รหัสผ่านของตัวเองเปลี่ยนได้ที่ ตั้งค่า → บัญชีของฉัน');
+    if (/at least 8/i.test(m)) return new Error('รหัสผ่านชั่วคราวต้องยาวอย่างน้อย 8 ตัวอักษร');
+    if (/not found/i.test(m)) return new Error('ไม่พบบัญชีนี้');
+    return new Error(m);
+  };
+  R.passwordRequests = async function () {
+    const { data, error } = await PM.auth.client.rpc('admin_password_requests');
+    if (error) throw pwError(error);
+    return data || [];
+  };
+  R.closePasswordRequest = async function (id) {
+    if (PM.preview) PM.preview.blocked('การปิดคำขอ ');
+    const { error } = await PM.auth.client.rpc('admin_close_password_request', { req_id: id });
+    if (error) throw pwError(error);
+  };
+  /* Admin sets a temporary password; the person is asked for a new one at their next sign-in */
+  R.setPassword = async function (userId, password) {
+    if (PM.preview) PM.preview.blocked('การตั้งรหัสผ่าน ');
+    if (!PM.can('users.password')) throw new Error('เฉพาะ Admin เท่านั้นที่ตั้งรหัสผ่านให้ผู้อื่นได้');
+    const { error } = await PM.auth.client.rpc('admin_set_password', { target: userId, new_password: password });
+    if (error) throw pwError(error);
+  };
+  /* easy to read out over the phone: no 0/O, 1/l/I */
+  R.tempPassword = function () {
+    const a = 'ABCDEFGHJKLMNPQRSTUVWXYZ', b = 'abcdefghijkmnpqrstuvwxyz', d = '23456789', all = a + b + d;
+    const rnd = (s) => { const x = new Uint32Array(1); crypto.getRandomValues(x); return s[x[0] % s.length]; };
+    const out = [rnd(a), rnd(b), rnd(d)];
+    while (out.length < 10) out.push(rnd(all));
+    for (let i = out.length - 1; i > 0; i--) { const x = new Uint32Array(1); crypto.getRandomValues(x); const j = x[0] % (i + 1); [out[i], out[j]] = [out[j], out[i]]; }
+    return out.join('');
   };
 
   /* delete a user account — Admin only (checked again by admin_delete_user() in roles.sql) */

@@ -104,7 +104,7 @@
       proposal: () => {
         if (!PM.seesBidPrices()) return V.tile({ label: 'Status: In Progress', value: `${now.filter((b) => PM.propOf(b).work === 'in_progress').length} <small>/ ${now.length}</small>`, sub: 'งานในขั้นนี้ที่กำลังทำ · งาน Complete ย้ายไป Submit แล้ว', icon: 'proposal' });
         const m = now.filter((b) => PM.canSeeBidPrice(b) && b.margin != null);
-        return V.tile({ label: 'Margin เฉลี่ย', value: m.length ? U.num(PM.sum(m, (b) => b.margin) / m.length, 1) + '%' : '–', sub: `มูลค่ารวม ${V.bidSum(now)}${PM.myRole() === 'sales' ? ' · เฉพาะงานของคุณ' : ''}`, icon: 'coins' });
+        return V.tile({ label: 'Margin เฉลี่ย', value: m.length ? U.num(PM.sum(m, (b) => b.margin) / m.length, 1) + '%' : '–', sub: `มูลค่ารวม ${V.bidSum(now) || '–'}`, icon: 'coins' });
       },
       submit: () => {
         const w = now.map((b) => PM.diffDays(b.dates.submit, T));
@@ -118,7 +118,7 @@
         ${isProp // the Proposal page: the whole list first, every status counted (as in the team's file)
           ? V.proposalTotalTile(PM.proposalList().filter(({ b }) => bids.includes(b) && match(b)), { of: PM.db.bids.length })
           : ''}
-        ${V.tile({ label: isProp ? 'อยู่ขั้น Proposal ตอนนี้' : `${st.label} ตอนนี้`, value: now.length, sub: V.bidSum(now) ? `มูลค่า ${V.bidSum(now)}${PM.myRole() === 'sales' ? ' (งานของคุณ)' : ''}` : 'งานที่อยู่ในขั้นนี้', icon: key })}
+        ${V.tile({ label: isProp ? 'อยู่ขั้น Proposal ตอนนี้' : `${st.label} ตอนนี้`, value: now.length, sub: V.bidSum(now) ? `มูลค่า ${V.bidSum(now)}` : 'งานที่อยู่ในขั้นนี้', icon: key })}
         ${isProp ? '' : V.tile({ label: 'เข้าขั้นนี้', tag: 'Quantity', value: bs.reached[key], sub: i ? `Conversion จาก Inquiry ${U.pct(bs.total ? bs.reached[key] / bs.total : null)}` : 'Inquiry ทั้งหมดในช่วงเวลา' })}
         ${V.tile({ label: 'เวลาเฉลี่ย', tag: 'Time', value: U.days(sd.avg), sub: `${esc(sd.label)} · n=${sd.n}` })}
         ${key === 'submit'
@@ -196,7 +196,7 @@
   function proposalList(rows) {
     const s = PM.proposalSummary(rows), prices = PM.seesBidValues(), T = PM.today();
     const pct = (n) => (s.total ? U.num((n / s.total) * 100, 1) + '%' : '–');
-    const yours = PM.myRole() === 'sales' ? ' (เฉพาะงานของคุณ)' : '';
+    const yours = '';
     return `<div class="card no-i18n">
         <div class="card-h"><h2>Proposal Status List</h2><p>คลิกแถวเพื่อกรอก / แก้ไข · มูลค่าเห็นได้ตั้งแต่ Admin ถึง Engineer และ Sales เจ้าของงาน · แก้มูลค่าได้เฉพาะ Admin และ Sales เจ้าของงาน</p></div>
         <div class="card-b row pl-filters">
@@ -286,7 +286,7 @@
     const bidCol = ['Bid', (b) => `<span class="title">${esc(PM.dash(b.code))}</span><small>${esc(PM.dash(b.name))}</small>`];
     const clientCol = ['Client', (b) => esc(PM.dash(b.client))];
     const valueCol = ['Value', (b) => V.bidMoney(b), 'num'];
-    const yours = PM.myRole() === 'sales' ? ' (งานของคุณ)' : '';
+    const yours = '';
 
     el.innerHTML = `${toolbar}
       <div class="grid cols-6">

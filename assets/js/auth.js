@@ -5,6 +5,7 @@
   const A = (PM.auth = { client: null, user: null });
   let recovering = false;
   let signingOut = false;
+  let forcing = false; // on the "set your own password" step after a temporary one
 
   /* ---------- Supabase error → Thai message ---------- */
   const MSG = [
@@ -137,23 +138,37 @@
         <button class="btn primary block" type="submit"><span>สร้างบัญชี</span>${svg('arrow')}</button>
       </form>
       <p class="auth-switch">มีบัญชีอยู่แล้ว? <button type="button" class="link-btn" data-go="login">เข้าสู่ระบบ</button></p>`,
+    // no e-mail: the request goes to Admin, who sets a temporary password and tells the person (phone / LINE)
     forgot: () => `
       <div class="auth-head"><span class="auth-badge">${svg('lock')}</span><h1>ลืมรหัสผ่าน</h1>
-      <p>กรอกอีเมลที่ใช้สมัคร ระบบจะส่งลิงก์สำหรับตั้งรหัสผ่านใหม่ไปให้</p></div>
+      <p>ส่งคำขอถึง Admin — Admin จะตั้งรหัสผ่านชั่วคราวให้ แล้วแจ้งคุณทางโทรศัพท์หรือ LINE ไม่ต้องรออีเมล</p></div>
       <form class="auth-form" data-form="forgot" novalidate>
-        ${field('mail', 'อีเมล', `type="email" name="email" autocomplete="email" placeholder="name@company.com" required value="${esc(lastEmail())}"`)}
-        <button class="btn primary block" type="submit"><span>ส่งลิงก์ตั้งรหัสผ่านใหม่</span>${svg('arrow')}</button>
+        ${field('mail', 'อีเมลที่ใช้เข้าสู่ระบบ', `type="email" name="email" autocomplete="email" placeholder="name@company.com" required value="${esc(lastEmail())}"`)}
+        ${field('user', 'ชื่อ และช่องทางติดต่อกลับ', 'name="note" maxlength="300" placeholder="เช่น สมชาย · 08x-xxx-xxxx / LINE: somchai"', 'ช่วยให้ Admin ยืนยันว่าเป็นคุณ และติดต่อกลับได้')}
+        <button class="btn primary block" type="submit"><span>ส่งคำขอถึง Admin</span>${svg('arrow')}</button>
       </form>
-      ${redirectUrl() ? '' : '<p class="muted small">หมายเหตุ: ตอนนี้เปิดไฟล์โดยตรง (file://) ลิงก์ในอีเมลจะพาไปที่ Site URL ที่ตั้งไว้ใน Supabase — ควรเปิดแอปผ่าน http(s) เพื่อให้ลิงก์กลับมาที่หน้านี้</p>'}
       <p class="auth-switch"><button type="button" class="link-btn" data-go="login">← กลับไปเข้าสู่ระบบ</button></p>`,
-    recovery: () => `
+    asked: (o) => `
+      <div class="auth-head"><span class="auth-badge">${svg('shield')}</span><h1>ส่งคำขอถึง Admin แล้ว</h1></div>
+      <p>${esc(o.text || '')}</p>
+      <div class="auth-help">
+        <b>ขั้นตอนต่อไป</b>
+        <ul>
+          <li>Admin ตรวจว่าเป็นคุณ แล้วตั้ง <b>รหัสผ่านชั่วคราว</b> ให้ และแจ้งคุณทางโทรศัพท์ / LINE</li>
+          <li>เข้าสู่ระบบด้วยรหัสชั่วคราวนั้น — ระบบจะให้ตั้งรหัสผ่านของคุณเองทันที</li>
+          <li>รีบ? โทรหรือทัก LINE หา Admin ได้เลย คำขอนี้อยู่ในหน้าตั้งค่าของ Admin แล้ว</li>
+        </ul>
+      </div>
+      <p class="auth-switch"><button type="button" class="link-btn" data-go="login">← กลับไปเข้าสู่ระบบ</button></p>`,
+    recovery: (o) => `
       <div class="auth-head"><span class="auth-badge">${svg('shield')}</span><h1>ตั้งรหัสผ่านใหม่</h1>
-      <p>กรอกรหัสผ่านใหม่สำหรับบัญชีของคุณ</p></div>
+      <p>${o.forced ? 'คุณเข้าสู่ระบบด้วยรหัสผ่านชั่วคราวที่ Admin ตั้งให้ — ตั้งรหัสผ่านของคุณเองก่อนเริ่มใช้งาน (Admin จะไม่รู้รหัสนี้)' : 'กรอกรหัสผ่านใหม่สำหรับบัญชีของคุณ'}</p></div>
       <form class="auth-form" data-form="recovery" novalidate>
         ${pw('password', 'new-password', 'รหัสผ่านใหม่', { meter: true })}
         ${pw('confirm', 'new-password', 'ยืนยันรหัสผ่านใหม่', { match: true })}
         <button class="btn primary block" type="submit"><span>บันทึกรหัสผ่านใหม่</span>${svg('arrow')}</button>
-      </form>`,
+      </form>
+      ${o.forced ? '<p class="auth-switch"><button type="button" class="link-btn" data-auth-signout>ออกจากระบบ</button></p>' : ''}`,
     sent: (o) => `
       <div class="auth-head"><span class="auth-badge">${svg('mail')}</span><h1>ตรวจสอบอีเมลของคุณ</h1></div>
       <p>${esc(o.text)}</p>
@@ -240,6 +255,8 @@
     root.addEventListener('click', (e) => {
       const go = e.target.closest('[data-go]');
       if (go) { screen(go.dataset.go); return; }
+      // the "set your own password" step after a temporary one: leaving it signs out (the app stays closed until it is done)
+      if (e.target.closest('[data-auth-signout]')) { forcing = false; A.client.auth.signOut().finally(() => screen('login')); return; }
       const t = e.target.closest('[data-toggle-pw]');
       if (t) {
         const inp = t.parentElement.querySelector('input');
@@ -318,15 +335,20 @@
       if (data.user && Array.isArray(data.user.identities) && data.user.identities.length === 0) throw new Error('User already registered');
       screen('sent', { text: `เราส่งลิงก์ยืนยันไปที่ ${f.email} แล้ว — คลิกลิงก์ในอีเมลเพื่อยืนยันบัญชี จากนั้นกลับมาเข้าสู่ระบบ` });
     },
+    // no e-mail is sent: the request waits for Admin (data.sql → request_password_reset). It never tells whether the
+    // e-mail has an account, so the answer is the same either way.
     async forgot(f) {
-      const { error } = await A.client.auth.resetPasswordForEmail(f.email, { redirectTo: redirectUrl() });
-      if (error) throw error;
-      screen('sent', { forgot: true, text: `ถ้ามีบัญชีที่ใช้อีเมล ${f.email} ระบบได้ส่งลิงก์สำหรับตั้งรหัสผ่านใหม่ไปแล้ว (ลิงก์ใช้ได้ 1 ชั่วโมง)` });
+      const { error } = await A.client.rpc('request_password_reset', { p_email: f.email, p_note: f.note || '' });
+      if (error && !/could not find the function|schema cache|does not exist/i.test(error.message || '')) throw error;
+      screen('asked', { text: error
+        ? 'ระบบรับคำขอออนไลน์ยังไม่พร้อม — กรุณาติดต่อ Admin โดยตรง (โทร / LINE) เพื่อให้ตั้งรหัสผ่านชั่วคราวให้'
+        : `ถ้ามีบัญชีที่ใช้อีเมล ${f.email} คำขอของคุณจะขึ้นที่หน้าตั้งค่าของ Admin` });
     },
     async recovery(f) {
-      const { data, error } = await A.client.auth.updateUser({ password: f.password });
+      // also clears the "set your own password" mark a temporary password leaves (admin_set_password)
+      const { data, error } = await A.client.auth.updateUser({ password: f.password, data: { must_change_password: false } });
       if (error) throw error;
-      recovering = false;
+      recovering = false; forcing = false;
       await enter(data.user, true);
       U.toast('ตั้งรหัสผ่านใหม่เรียบร้อย');
     },
@@ -335,6 +357,12 @@
   /* ---------- signed-in state ---------- */
   /* fresh = just logged in / registered / set a new password → always start on the Dashboard */
   async function enter(user, fresh) {
+    // signed in with a temporary password from Admin: their own password first, the app stays closed until then
+    if (user && user.user_metadata && user.user_metadata.must_change_password) {
+      forcing = true; A.user = null;
+      screen('recovery', { forced: true });
+      return;
+    }
     A.user = user;
     PM.splash.show(fresh ? 'เข้าสู่ระบบสำเร็จ — กำลังเปิด Dashboard…' : 'กำลังโหลดข้อมูล…');
     if (fresh) PM.goStart();

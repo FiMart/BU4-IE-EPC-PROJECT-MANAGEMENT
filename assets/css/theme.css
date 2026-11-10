@@ -889,3 +889,5 @@ body.role-preview .sidebar { box-shadow: inset -3px 0 0 var(--warning); }
   .rp-bar select { flex: 1 1 0; min-width: 0; }
   .rp-bar .btn { flex: none; }
 }
+/* Settings → คำขอรีเซ็ตรหัสผ่าน: a count that waits for Admin */
+.chip.warn { background: var(--warning-bg); color: var(--warning-text); border-color: color-mix(in srgb, var(--warning) 50%, transparent); }

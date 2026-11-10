@@ -59,8 +59,8 @@
         ${dueTile(bids.filter(match), T)}
         ${V.tile({ label: 'On-time submission', tag: 'Time', value: U.pct(bs.onTimeRate), sub: `ยื่นก่อน / ตรง due date${bs.assumedSubmit ? ` · ไม่นับ ${bs.assumedSubmit} งานที่ไม่มีวันยื่นจริง` : ''}` })}
         ${V.tile({ label: 'Win rate', value: U.pct(bs.winRate), sub: `${bs.won} won / ${bs.won + bs.lost} decided` })}
-        ${PM.seesBidValues() // Admin · Dept Manager · PM · Engineer: every bid · Sales: their own
-          ? V.tile({ label: 'Won value', value: U.money(bs.wonValue), sub: `Pipeline ${U.money(bs.pipelineValue)}${PM.myRole() === 'sales' ? ' · เฉพาะงานของคุณ' : ''}` })
+        ${PM.seesBidValues() // Admin · Dept Manager · PM · Engineer · Sales: every bid
+          ? V.tile({ label: 'Won value', value: U.money(bs.wonValue), sub: `Pipeline ${U.money(bs.pipelineValue)}` })
           : V.tile({ label: 'Won / Lost', value: `${bs.won} <small>/ ${bs.lost}</small>`, sub: `No-bid ${bs.nobid} · มูลค่าเห็นได้ตั้งแต่ Admin ถึง Engineer`, icon: 'award' })}
       </div>
       <div class="card">

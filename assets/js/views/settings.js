@@ -111,6 +111,12 @@
       const A = PM.auth, canRoles = PM.can('roles.manage');
       return `
       ${PM.preview ? PM.preview.card() : ''}
+      ${PM.can('users.password') ? `<div class="card" id="pw-card">
+        <div class="card-h"><h2>คำขอรีเซ็ตรหัสผ่าน</h2><span class="chip" id="pw-count">…</span><span class="spacer"></span>
+          <button class="btn sm" data-action="reload-pw">รีเฟรช</button>
+          <p>คนที่กด "ลืมรหัสผ่าน" ที่หน้าเข้าสู่ระบบ (ไม่มีการส่งอีเมล) · ตรวจว่าเป็นตัวจริงก่อน เช่น โทรกลับตามเบอร์ที่ให้ไว้ แล้วกด "ตั้งรหัสผ่านชั่วคราว" และแจ้งรหัสให้เจ้าตัว — เข้าสู่ระบบครั้งแรกระบบจะให้ตั้งรหัสของตัวเองทันที</p></div>
+        <div class="card-b flush table-wrap" id="pw-requests"><p class="empty">กำลังโหลด…</p></div>
+      </div>` : ''}
       ${canRoles ? `<div class="card">
         <div class="card-h"><h2>จัดการ Role ผู้ใช้</h2><span class="spacer"></span>
           <input type="search" id="st-user-q" class="st-search" placeholder="ค้นหาชื่อ / อีเมล" aria-label="ค้นหาผู้ใช้">
@@ -215,7 +221,7 @@
       });
     },
     display() { showPrefsState(); },
-    users(el) { if (PM.can('roles.manage')) loadUsers(el); },
+    users(el) { if (PM.can('roles.manage')) loadUsers(el); if (PM.can('users.password')) loadPwRequests(el); },
     data(el) {
       const inp = el.querySelector('#import-file');
       if (inp) inp.addEventListener('change', (e) => {
@@ -256,6 +262,9 @@
     if (act === 'logout') A.signOut();
     if (act === 'reload-users') loadUsers(el);
     if (act === 'delete-user') deleteUser(el, a);
+    if (act === 'reload-pw') loadPwRequests(el);
+    if (act === 'set-password') setPassword(el, a);
+    if (act === 'close-pw') closePwRequest(el, a);
     if (act === 'sync-now') {
       a.disabled = true;
       PM.cloud.sync(false).then(() => { U.toast(PM.cloud.state === 'saved' ? 'ซิงค์กับ Cloud แล้ว' : 'ซิงค์ไม่สำเร็จ'); PM.applyAsOf(); PM.render(); });
@@ -354,7 +363,7 @@
           <td><div class="st-user"><span class="st-avatar sm">${esc(initials(u.full_name || u.email))}</span><span><b>${esc(u.full_name || '–')}</b>${u.id === me ? ' <span class="chip">คุณ</span>' : ''}<small>${esc(u.email || '')}</small></span></div></td>
           <td class="nowrap">${u.created_at ? U.date(u.created_at.slice(0, 10)) : '–'}</td>
           <td>${roleCell(u, me)}</td>
-          ${canDelete ? `<td class="num">${u.id === me ? '' : `<button type="button" class="btn sm danger" data-action="delete-user" data-id="${esc(u.id)}" data-name="${esc(u.full_name || u.email || '')}" data-email="${esc(u.email || '')}">ลบผู้ใช้</button>`}</td>` : ''}</tr>`).join('')}
+          ${canDelete ? `<td class="num nowrap">${u.id === me ? '' : `${PM.can('users.password') ? `<button type="button" class="btn sm" data-action="set-password" data-id="${esc(u.id)}" data-name="${esc(u.full_name || u.email || '')}" data-email="${esc(u.email || '')}">ตั้งรหัสผ่าน</button> ` : ''}<button type="button" class="btn sm danger" data-action="delete-user" data-id="${esc(u.id)}" data-name="${esc(u.full_name || u.email || '')}" data-email="${esc(u.email || '')}">ลบผู้ใช้</button>`}</td>` : ''}</tr>`).join('')}
         </tbody></table>` : '<p class="empty">ยังไม่มีผู้ใช้</p>';
       const q = el.querySelector('#st-user-q');
       if (q && q.value) filterUsers(el, q.value);
@@ -365,6 +374,52 @@
   function filterUsers(el, text) {
     const t = String(text || '').trim().toLowerCase();
     el.querySelectorAll('.st-users tbody tr').forEach((tr) => { tr.hidden = !!t && !tr.dataset.q.includes(t); });
+  }
+
+  /* ---------- forgot password without e-mail: requests from the sign-in page · temporary passwords (Admin) ---------- */
+  async function loadPwRequests(el) {
+    const box = el.querySelector('#pw-requests'), count = el.querySelector('#pw-count');
+    if (!box) return;
+    box.innerHTML = '<p class="empty">กำลังโหลด…</p>';
+    try {
+      const list = await PM.roles.passwordRequests();
+      if (!el.contains(box)) return;
+      if (count) { count.textContent = list.length ? `รอดำเนินการ ${list.length}` : 'ไม่มีคำขอ'; count.className = 'chip' + (list.length ? ' warn' : ''); }
+      box.innerHTML = list.length ? `<table class="tbl"><thead><tr><th>อีเมล</th><th>บัญชีในระบบ</th><th>ข้อความ / ช่องทางติดต่อ</th><th>ขอเมื่อ</th><th></th></tr></thead><tbody>
+        ${list.map((r) => `<tr>
+          <td><b>${esc(r.email)}</b></td>
+          <td>${r.user_id ? esc(r.full_name || '–') : '<span class="muted">ไม่มีบัญชีที่ใช้อีเมลนี้</span>'}</td>
+          <td>${esc(r.note || '–')}</td>
+          <td class="nowrap">${esc(new Date(r.requested_at).toLocaleString('en-GB', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }))}</td>
+          <td class="num nowrap">${r.user_id ? `<button type="button" class="btn sm primary" data-action="set-password" data-id="${esc(r.user_id)}" data-name="${esc(r.full_name || r.email)}" data-email="${esc(r.email)}">ตั้งรหัสผ่านชั่วคราว</button> ` : ''}<button type="button" class="btn sm" data-action="close-pw" data-req="${esc(r.id)}">ปิดคำขอ</button></td></tr>`).join('')}
+        </tbody></table>` : '<p class="empty">ไม่มีคำขอรีเซ็ตรหัสผ่านที่รอดำเนินการ</p>';
+    } catch (err) {
+      if (count) count.textContent = '–';
+      box.innerHTML = `<div class="card-b"><div class="auth-msg error">${esc(err.message)}</div></div>`;
+    }
+  }
+  async function setPassword(el, btn) {
+    if (!PM.can('users.password')) return;
+    const name = btn.dataset.name, email = btn.dataset.email;
+    const pw = await U.prompt(`ตั้งรหัสผ่านชั่วคราวให้ "${name}"${email && email !== name ? ` (${email})` : ''}\n\nยืนยันตัวตนก่อน (เช่น โทรกลับ) · ระบบสุ่มรหัสให้แล้ว แก้ได้ (อย่างน้อย 8 ตัวอักษร) · เจ้าตัวจะต้องตั้งรหัสของตัวเองตอนเข้าสู่ระบบครั้งถัดไป`,
+      PM.roles.tempPassword(), { title: 'ตั้งรหัสผ่านชั่วคราว', ok: 'ตั้งรหัสผ่าน' });
+    if (pw == null) return;
+    if (String(pw).trim().length < 8) { U.alert('รหัสผ่านชั่วคราวต้องยาวอย่างน้อย 8 ตัวอักษร'); return; }
+    btn.disabled = true; btn.classList.add('loading');
+    try {
+      await PM.roles.setPassword(btn.dataset.id, String(pw).trim());
+      try { await navigator.clipboard.writeText(String(pw).trim()); } catch (e) { /* not allowed here — it is on screen */ }
+      await U.alert(`ตั้งรหัสผ่านชั่วคราวให้ ${name} แล้ว (คัดลอกไว้แล้ว)\n\n${String(pw).trim()}\n\nแจ้งรหัสนี้ให้เจ้าตัวทางโทรศัพท์ / LINE — เข้าสู่ระบบด้วยรหัสนี้แล้วระบบจะให้ตั้งรหัสของตัวเองทันที`, { title: 'ตั้งรหัสผ่านแล้ว' });
+      loadPwRequests(el);
+    } catch (err) {
+      U.alert(err.message);
+    } finally {
+      btn.disabled = false; btn.classList.remove('loading');
+    }
+  }
+  async function closePwRequest(el, btn) {
+    if (!(await U.confirm('ปิดคำขอนี้โดยไม่ตั้งรหัสผ่าน? (เช่น ไม่ใช่เจ้าของบัญชี หรือจัดการเรียบร้อยแล้ว)', { title: 'ปิดคำขอ', ok: 'ปิดคำขอ' }))) return;
+    try { await PM.roles.closePasswordRequest(Number(btn.dataset.req)); loadPwRequests(el); } catch (err) { U.alert(err.message); }
   }
 
   /* delete an account — Admin only (the database checks again) */

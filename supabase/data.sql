@@ -7,8 +7,9 @@
 -- is stored as one row: (collection, id) → data (jsonb).
 --  - Any signed-in user who has a role (row in public.profiles) can read & edit records
 --    (except timesheets: Project Manager only — see can_write_record();
---     and bidprices — value / margin / quotation files of a bid: only Admin and the Sales who owns the bid,
---     see can_see_bid_price(). Re-running this file also moves prices off bids saved before v1.26;
+--     and bidprices — value / margin / quotation files of a bid: read by Admin, Department Manager, Project Manager,
+--     Engineer and Sales (can_read_bid_price), written only by Admin and the Sales who owns the bid (can_see_bid_price).
+--     Re-running this file also moves prices off bids saved before v1.26;
 --     and projfin — Margin · WIP/Accrued · accumulated revenue of a project: only Admin, Department Manager,
 --     Project Manager and Engineer, see can_see_project_finance() — v1.78;
 --     and bidvalues — a bid's Value alone: Admin and the owning Sales, plus Department Manager / Project Manager /
@@ -59,17 +60,29 @@ returns boolean language sql stable security definer set search_path = public as
   select public.has_app_role() and (coll <> 'timesheets' or public.is_admin() or public.is_project_manager());
 $$;
 
--- Bid prices (collection 'bidprices': value · margin · quotation files of a bid, one row per bid id) are
--- read and written ONLY by Admin and by the Sales who owns the bid (data.owner = their user id).
--- Everyone else still sees the bid itself (collection 'bids') — without the money.
+-- Bid prices (collection 'bidprices': value · margin · quotation files of a bid, one row per bid id):
+--  - READ by Admin, Department Manager, Project Manager, Engineer and Sales — every bid, also another Sales' ones
+--    (can_read_bid_price). Document Control and Technician see the bid itself (collection 'bids') without the money.
+--  - WRITTEN only by Admin and by the Sales who owns the bid (data.owner = their user id) — can_see_bid_price(owner),
+--    the name it has had since v1.26 (it decides writing now; reading is can_read_bid_price).
+create or replace function public.can_read_bid_price()
+returns boolean language sql stable security definer set search_path = public as $$
+  select exists (select 1 from public.profiles where id = auth.uid()
+                  and role::text in ('admin', 'dept_manager', 'project_manager', 'engineer', 'sales'));
+$$;
 create or replace function public.can_see_bid_price(owner text)
 returns boolean language sql stable security definer set search_path = public as $$
   select public.is_admin()
       or (coalesce(owner, '') <> '' and owner = auth.uid()::text
           and exists (select 1 from public.profiles where id = auth.uid() and role::text = 'sales'));
 $$;
--- may this user see the attachments of bid <bid_id> (Storage path bids/<bid_id>/…)?
+-- may this user see / download the attachments of bid <bid_id> (Storage path bids/<bid_id>/…)? — whoever reads prices
 create or replace function public.can_see_bid_files(bid_id text)
+returns boolean language sql stable security definer set search_path = public as $$
+  select public.can_read_bid_price();
+$$;
+-- may this user remove them? — whoever may change that bid's price (Admin · the owning Sales)
+create or replace function public.can_change_bid_files(bid_id text)
 returns boolean language sql stable security definer set search_path = public as $$
   select public.is_admin() or exists (
     select 1 from public.app_records
@@ -89,12 +102,11 @@ $$;
 -- on every bid. Margin and files stay in 'bidprices'. (bid_id is kept in the signature for the app's readiness check.)
 create or replace function public.can_see_bid_value(bid_id text, owner text)
 returns boolean language sql stable security definer set search_path = public as $$
-  select public.can_see_bid_price(owner)
-      or exists (select 1 from public.profiles where id = auth.uid() and role::text in ('dept_manager', 'project_manager', 'engineer'));
+  select public.can_read_bid_price() or public.can_see_bid_price(owner);
 $$;
 
 create policy "records: read"   on public.app_records for select to authenticated using (
-  public.has_app_role() and (collection <> 'bidprices' or public.can_see_bid_price(data ->> 'owner'))
+  public.has_app_role() and (collection <> 'bidprices' or public.can_read_bid_price() or public.can_see_bid_price(data ->> 'owner'))
   and (collection <> 'bidvalues' or public.can_see_bid_value(id, data ->> 'owner'))
   and (collection <> 'projfin' or public.can_see_project_finance()));
 create policy "records: insert" on public.app_records for insert to authenticated with check (
@@ -291,6 +303,88 @@ drop trigger if exists app_records_audit on public.app_records;
 create trigger app_records_audit after insert or update or delete on public.app_records
   for each row execute function public.app_records_audit();
 
+-- =====================================================================
+-- Forgot password without e-mail (v1.78): the sign-in page sends a request to Admin; Admin sets a temporary
+-- password from Settings → ผู้ใช้ & สิทธิ์ and tells the person (phone / LINE); the first sign-in with it asks for a new one.
+--  - request_password_reset(): anyone may call it (also before signing in). It never says whether the e-mail has an account,
+--    keeps one open request per e-mail, and stops quietly after 50 requests an hour.
+--  - The requests table has no grants at all: only the functions below read or change it.
+--  - admin_set_password(): Admin only, never for their own account (Settings → เปลี่ยนรหัสผ่าน is for that).
+-- =====================================================================
+create table if not exists public.password_requests (
+  id           bigserial primary key,
+  email        text not null,
+  note         text not null default '',
+  requested_at timestamptz not null default now(),
+  status       text not null default 'open' check (status in ('open', 'done', 'dismissed')),
+  done_at      timestamptz,
+  done_by      uuid
+);
+create index if not exists password_requests_open_idx on public.password_requests (status, requested_at desc);
+alter table public.password_requests enable row level security;
+revoke all on public.password_requests from public, anon, authenticated;
+
+create or replace function public.request_password_reset(p_email text, p_note text default '')
+returns void language plpgsql security definer set search_path = public as $$
+declare e text := lower(trim(coalesce(p_email, '')));
+begin
+  if e = '' or length(e) > 254 or e !~ '^[^@\s]+@[^@\s]+\.[^@\s]+$' then return; end if;
+  if exists (select 1 from public.password_requests where email = e and status = 'open') then
+    update public.password_requests set requested_at = now(), note = left(coalesce(p_note, ''), 300)
+     where email = e and status = 'open';
+    return;
+  end if;
+  if (select count(*) from public.password_requests where requested_at > now() - interval '1 hour') >= 50 then return; end if;
+  insert into public.password_requests (email, note) values (e, left(coalesce(p_note, ''), 300));
+end $$;
+revoke all on function public.request_password_reset(text, text) from public;
+grant execute on function public.request_password_reset(text, text) to anon, authenticated;
+
+create or replace function public.admin_password_requests()
+returns table (id bigint, email text, note text, requested_at timestamptz, user_id uuid, full_name text)
+language sql stable security definer set search_path = public as $$
+  select r.id, r.email, r.note, r.requested_at, u.id,
+         coalesce(nullif(p.full_name, ''), u.raw_user_meta_data ->> 'full_name', '')
+    from public.password_requests r
+    left join auth.users u on lower(u.email) = r.email
+    left join public.profiles p on p.id = u.id
+   where r.status = 'open' and public.is_admin()
+   order by r.requested_at desc;
+$$;
+revoke all on function public.admin_password_requests() from public, anon;
+grant execute on function public.admin_password_requests() to authenticated;
+
+create or replace function public.admin_close_password_request(req_id bigint)
+returns void language plpgsql security definer set search_path = public as $$
+begin
+  if not public.is_admin() then raise exception 'Only Admin can close a password request'; end if;
+  update public.password_requests set status = 'dismissed', done_at = now(), done_by = auth.uid()
+   where id = req_id and status = 'open';
+end $$;
+revoke all on function public.admin_close_password_request(bigint) from public, anon;
+grant execute on function public.admin_close_password_request(bigint) to authenticated;
+
+create or replace function public.admin_set_password(target uuid, new_password text)
+returns void language plpgsql security definer set search_path = public, extensions as $$
+declare e text;
+begin
+  if not public.is_admin() then raise exception 'Only Admin can set a password'; end if;
+  if target = auth.uid() then raise exception 'Use Settings to change your own password'; end if;
+  if length(coalesce(new_password, '')) < 8 then raise exception 'Password should be at least 8 characters'; end if;
+  update auth.users
+     set encrypted_password = extensions.crypt(new_password, extensions.gen_salt('bf')),
+         email_confirmed_at = coalesce(email_confirmed_at, now()),
+         raw_user_meta_data = coalesce(raw_user_meta_data, '{}'::jsonb) || jsonb_build_object('must_change_password', true),
+         updated_at = now()
+   where id = target
+  returning lower(email) into e;
+  if e is null then raise exception 'User not found'; end if;
+  update public.password_requests set status = 'done', done_at = now(), done_by = auth.uid()
+   where email = e and status = 'open';
+end $$;
+revoke all on function public.admin_set_password(uuid, text) from public, anon;
+grant execute on function public.admin_set_password(uuid, text) to authenticated;
+
 -- Reset / Import: replace everything in one transaction (Admin, Department Manager & Project Manager only)
 create or replace function public.app_replace_all(payload jsonb)
 returns integer language plpgsql security definer set search_path = public as $$
@@ -316,7 +410,8 @@ grant execute on function public.app_replace_all(jsonb) to authenticated;
 -- Files live at: <projectId>/<poId>/<timestamp>-<file name>   (PO attachments)
 --            and bids/<bidId>/<timestamp>-<file name>        (inquiry / quotation attachments)
 --  - any signed-in user with a role can view / download and upload
---    (except bids/…: only Admin and the Sales who owns the bid — see can_see_bid_files)
+--    (except bids/…: view / download — Admin, Dept Manager, PM, Engineer, Sales (can_see_bid_files);
+--     upload — Admin and Sales; remove — see the delete policy)
 --  - delete: any signed-in user with a role — deleting a record has to remove its files, whoever uploaded them
 --            (the app decides who may delete which record). bids/…: the uploader, Admin / Department Manager /
 --            Project Manager, and whoever may see that bid's files.
@@ -333,7 +428,7 @@ on conflict (id) do update
 drop policy if exists "po-files: read"   on storage.objects;
 drop policy if exists "po-files: upload" on storage.objects;
 drop policy if exists "po-files: delete" on storage.objects;
--- bid attachments (quotations, bids/<bidId>/…) follow the bid price: Admin and the Sales who owns the bid
+-- bid attachments (quotations, bids/<bidId>/…) follow the bid price: seen by those who read prices, changed by Admin and the owning Sales
 create policy "po-files: read" on storage.objects for select to authenticated
   using (bucket_id = 'po-files' and public.has_app_role()
          and (name not like 'bids/%' or public.can_see_bid_files(split_part(name, '/', 2))));
@@ -344,12 +439,12 @@ create policy "po-files: delete" on storage.objects for delete to authenticated
   using (bucket_id = 'po-files' and public.has_app_role() and (
     name not like 'bids/%'
     or owner_id = auth.uid()::text
-    or public.can_see_bid_files(split_part(name, '/', 2))
+    or public.can_change_bid_files(split_part(name, '/', 2))
     or exists (select 1 from public.profiles where id = auth.uid() and role::text in ('admin', 'dept_manager', 'project_manager'))
   ));
 
 -- the files in a folder, so deleting a record removes all of them (also files no record points to any more).
--- Quotation files (bids/…) only for those who may see them: their names stay hidden from everyone else.
+-- Quotation files (bids/…) only for those who may see them (can_see_bid_files): their names stay hidden from Document Control / Technician.
 -- prefix '' = the whole bucket: Admin only (Reset).
 create or replace function public.app_file_paths(prefix text)
 returns setof text language sql stable security definer set search_path = public as $$

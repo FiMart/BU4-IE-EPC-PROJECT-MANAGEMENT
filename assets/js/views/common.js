@@ -83,7 +83,7 @@
 
   /* buttons on a bid (card, row): data-action + data-id. Returns true when handled; done() redraws the page */
   /* the Value of a bid for whoever may see it (Admin · the owning Sales · Dept Manager / PM / Engineer) — everyone else gets a lock */
-  V.LOCK_PRICE = '<span class="price-lock" title="มูลค่าเห็นได้เฉพาะ Sales ผู้รับผิดชอบงานนี้และ Admin · Dept Manager / PM / Engineer เห็นทุกงาน">🔒</span>';
+  V.LOCK_PRICE = '<span class="price-lock" title="ราคาขายเห็นได้เฉพาะ Admin · Dept Manager · PM · Engineer · Sales">🔒</span>';
   V.bidMoney = (b) => (PM.canSeeBidValue(b) ? U.money(b.value) : V.LOCK_PRICE);
   /* sum of bid values for a summary: only the bids this user may see; '' for roles that see no values */
   // none of them open to this user: '' (not ฿0, which would read as "worth nothing")
@@ -224,16 +224,17 @@
     const isNew = !bid;
     const canEdit = PM.canEditBid(bid || null); // Admin · PM · Engineer (every bid) · Sales (their own bids; any new inquiry)
     if (isNew && !canEdit) { U.alert('เพิ่ม Inquiry ได้เฉพาะ Admin · Project Manager · Engineer · Sales'); return; }
-    // value · margin · quotation files: Admin and the owning Sales only (the database enforces it) —
-    // a PM / Engineer adding an inquiry leaves the price to the Sales chosen for it
-    const canPrice = isNew ? PM.seesBidPrices() : PM.canSeeBidPrice(bid);
+    // value · margin · quotation files: seen by Admin · Dept Manager · PM · Engineer · Sales; changed by Admin and the
+    // owning Sales only (the database enforces both) — a PM / Engineer adding an inquiry leaves the price to its Sales
+    const canPrice = PM.seesBidPrices();
+    const canEditPrice = PM.canEditBidPrice(bid || null);
     const b = bid || {
       id: PM.uid('B'), code: V.bidNoPrefix(),
       name: '', client: '', sector: 'Industrial', value: 0, margin: 10, estimator: '', boqItems: 0,
       dueDate: PM.addDays(T, 30), dates: { inquiry: T, estimate: '', proposal: '', submit: '' }, stage: 'inquiry',
       result: 'pending', resultDate: '', projectId: null, notes: '', sales: '', salesName: '', leadSource: 'Sales visit', contact: '',
     };
-    if (isNew && !canPrice) { b.value = null; b.margin = null; } // no price on the shared bid record (cloud.js sends price only via bidprices)
+    if (isNew && !canEditPrice) { b.value = null; b.margin = null; } // no price on the shared bid record (cloud.js sends price only via bidprices)
     const est = b.estimate || {}, prop = PM.propOf(b);
     let autoSubmit = ''; // the submit date this form filled in by itself
     // the fields the Proposal Status List shares with other tabs: one value, shown in both places (see "mirror" below)
@@ -247,7 +248,8 @@
       else if (me && PM.myRole() === 'sales') { b.sales = me.id; b.salesName = PM.auth.displayName(me); }
     }
     const sources = PM.LEAD_SOURCES.includes(b.leadSource) || !b.leadSource ? PM.LEAD_SOURCES : PM.LEAD_SOURCES.concat(b.leadSource);
-    const lockNote = `<p class="full perm-note">🔒 มูลค่า · Margin · ไฟล์ใบเสนอราคา เห็นได้เฉพาะ Sales ผู้รับผิดชอบงานนี้และ Admin${isNew ? ' — Sales ที่เลือกในแท็บ Inquiry เป็นผู้กรอกภายหลัง' : ''}</p>`;
+    const lockNote = '<p class="full perm-note">🔒 มูลค่า · Margin · ไฟล์ใบเสนอราคา เห็นได้เฉพาะ Admin · Department Manager · Project Manager · Engineer · Sales</p>';
+    const roNum = (v, d) => (v == null || v === '' ? '–' : U.num(Number(v), d));
     // one tab per part of the bid — each team fills its own part; all tabs are one form, saved together
     const TABS = [
       { key: 'inquiry', label: 'Inquiry', n: 1 },
@@ -292,21 +294,28 @@
       <div class="full est-total"><span>ต้นทุนประมาณการรวม</span><b id="est-total">–</b><span id="est-margin"></span></div>
       ${U.field('สมมติฐาน / ข้อยกเว้น (Assumptions / Exclusions)', 'est_notes', est.notes || '', { type: 'textarea', full: true, rows: 2 })}`)}
       ${pane('price', `
-      <div class="sub-h">ราคาขาย — เฉพาะ Admin / Sales ผู้รับผิดชอบ</div>
-      ${canPrice ? `${U.field('มูลค่าประมาณการ / ราคาเสนอ (THB)', 'value', b.value, { type: 'number', min: 0, step: 'any' })}
+      <div class="sub-h">ราคาขาย — แก้ได้เฉพาะ Admin / Sales ผู้รับผิดชอบงานนี้</div>
+      ${canEditPrice ? `${U.field('มูลค่าประมาณการ / ราคาเสนอ (THB)', 'value', b.value, { type: 'number', min: 0, step: 'any' })}
       ${U.field('Margin (%)', 'margin', b.margin, { type: 'number', step: 0.1 })}
       <div class="full est-total"><span>ต้นทุนประมาณการ (จากแท็บ Estimate)</span><b id="est-total-p">–</b><span id="est-margin-p"></span></div>
-      ${PM.poFiles.boxHtml(canEdit, 'ไฟล์แนบ — ใบเสนอราคา / เอกสาร Inquiry', 'ใบเสนอราคาที่ส่งให้ลูกค้า, TOR, แบบ, BOQ')}` : lockNote}`)}
+      ${PM.poFiles.boxHtml(canEdit, 'ไฟล์แนบ — ใบเสนอราคา / เอกสาร Inquiry', 'ใบเสนอราคาที่ส่งให้ลูกค้า, TOR, แบบ, BOQ')}`
+      : canPrice // everyone else who sees prices: the same figures and files, read only (no names: nothing of it is saved from here)
+      ? `<label><span>มูลค่าประมาณการ / ราคาเสนอ (THB)</span><input value="${esc(roNum(b.value))}" data-ro-value="${esc(b.value == null ? '' : b.value)}" disabled></label>
+      <label><span>Margin (%)</span><input value="${esc(roNum(b.margin, 1))}" disabled></label>
+      <div class="full est-total"><span>ต้นทุนประมาณการ (จากแท็บ Estimate)</span><b id="est-total-p">–</b><span id="est-margin-p"></span></div>
+      ${PM.poFiles.boxHtml(false, 'ไฟล์แนบ — ใบเสนอราคา / เอกสาร Inquiry', 'ดูและดาวน์โหลดได้ · แนบ / ลบได้เฉพาะ Admin และ Sales ผู้รับผิดชอบงานนี้')}
+      <p class="full perm-note">ดูได้อย่างเดียว — มูลค่า · Margin · ไฟล์ใบเสนอราคา แก้ได้เฉพาะ Admin และ Sales ผู้รับผิดชอบงานนี้</p>`
+      : lockNote}`)}
       ${pane('proposal', `
       <div class="sub-h">Project Information</div>
       ${U.field('Customer', 'm_client', b.client)}
       ${U.field('Bid No.', 'm_code', b.code)}
       ${U.field('Project Name', 'm_name', b.name, { full: true })}
       ${U.field('Type', 'prop_type', prop.type, { options: PM.PROP_TYPES })}
-      ${canPrice ? U.field('Value (MB)', 'm_value', V.toMB(b.value), { type: 'number', min: 0, step: 'any', hint: 'ล้านบาท · Admin ถึง Engineer เห็นได้ · แก้ได้เฉพาะ Admin และ Sales เจ้าของงาน' })
-        : !isNew && PM.canSeeBidValue(b) // Dept Manager · PM · Engineer: read only (no name: never saved from here)
+      ${canEditPrice ? U.field('Value (MB)', 'm_value', V.toMB(b.value), { type: 'number', min: 0, step: 'any', hint: 'ล้านบาท · แก้ได้เฉพาะ Admin และ Sales เจ้าของงาน' })
+        : canPrice // read only (no name: never saved from here)
           ? `<label><span>Value (MB)</span><input value="${esc(b.value == null ? '–' : V.toMB(b.value))}" disabled><small class="muted">ดูได้อย่างเดียว · แก้ได้เฉพาะ Sales เจ้าของงาน / Admin</small></label>`
-          : '<label><span>Value (MB)</span><input value="🔒 เฉพาะ Sales เจ้าของงาน / Admin" disabled></label>'}
+          : '<label><span>Value (MB)</span><input value="🔒" disabled><small class="muted">เห็นได้เฉพาะ Admin · Dept Manager · PM · Engineer · Sales</small></label>'}
       ${U.field('Priority', 'prop_priority', prop.priority, { options: [{ value: '', label: '-' }].concat(PM.PROP_PRIORITY.map((x) => ({ value: x.key, label: x.key }))) })}
       <span></span>
       <div class="sub-h">Schedule</div>
@@ -340,7 +349,7 @@
       title: isNew ? (opts.tab === 'proposal' ? 'New proposal' : 'New inquiry') : `${PM.dash(b.code)} · ${PM.dash(b.name)}`, body, wide: true,
       // only who may see this bid's quotation files: deleting has to remove them, and the names stay hidden from everyone else
       deleteText: () => PM.purge.bidText(b),
-      onDelete: isNew || !canEdit || !PM.canSeeBidPrice(b) ? null : async () => { await PM.purge.bid(b); U.toast('ลบแล้ว'); if (onSaved) onSaved(); },
+      onDelete: isNew || !canEdit || !PM.canEditBidPrice(b) ? null : async () => { await PM.purge.bid(b); U.toast('ลบแล้ว'); if (onSaved) onSaved(); },
       onSubmit: !canEdit ? null : (f, frm) => {
         const toCode = () => { showTab('inquiry'); frm.code.focus(); };
         // Bid No. is optional: only the prefix that a new inquiry starts with, or nothing, = no number yet (shown as "-")
@@ -364,13 +373,15 @@
         return false; // closed by save() once the files are uploaded
       },
     });
-    files = canPrice ? PM.poFiles.box(form, b.files, canEdit) : null;
+    files = canPrice ? PM.poFiles.box(form, b.files, canEdit && canEditPrice) : null;
     const work = PM.poFiles.box(form, b.workFiles, canEdit, 'work'); // the team's working files (bidwork/…)
     // total estimated cost — and, for those who see the price, the margin it leaves
     const n = (x) => Number(x && x.value) || 0;
+    // the selling price on screen: the field (who may change it) or the read-only figure (who only sees it)
+    const priceNow = () => { if (form.value) return n(form.value); const ro = form.querySelector('[data-ro-value]'); return ro ? Number(ro.dataset.roValue) || 0 : 0; };
     const drawCost = () => {
       const cost = n(form.est_material) + n(form.est_labour) + n(form.est_subcon) + n(form.est_other);
-      const v = form.value ? n(form.value) : 0;
+      const v = priceNow();
       const mg = cost && v ? `เทียบราคาเสนอ ${U.money(v)} → Margin จากต้นทุน <b class="${v - cost < 0 ? 'neg' : ''}">${U.pct((v - cost) / v, 1)}</b>` : '';
       ['', '-p'].forEach((sfx) => {
         const t = form.querySelector('#est-total' + sfx);
@@ -391,7 +402,7 @@
       const done = {
         inquiry: !!(v('code') && v('client') && v('name') && v('d_inquiry')),
         estimate: ['done', 'reviewed'].includes(v('est_status')),
-        price: canPrice && n(form.value) > 0,
+        price: canPrice && priceNow() > 0,
         proposal: ['complete', 'win', 'lose'].includes(v('prop_status')),
         submit: !!v('d_submit') || v('result') !== 'pending',
         files: form.querySelectorAll('[data-files="work"] .po-file-list li:not(.empty-files)').length > 0,
@@ -413,7 +424,7 @@
       Object.keys(MIRRORS).filter((m) => MIRRORS[m] === name).forEach((m) => { el(m).value = el(name).value; });
       if (name === 'value' && el('m_value')) el('m_value').value = V.toMB(el('value').value);
     };
-    Object.values(MIRRORS).concat(canPrice ? ['value'] : []).forEach(toMirror); // a restored draft may have changed the first ones
+    Object.values(MIRRORS).concat(canEditPrice ? ['value'] : []).forEach(toMirror); // a restored draft may have changed the first ones
     /* Status Complete (Win) / (Lose) and the Result on the Submit tab are the same thing */
     const syncResult = (name) => {
       const st = el('prop_status'), res = el('result');
@@ -464,7 +475,7 @@
     async function save(f, dates, frm) {
       const btn = frm.querySelector('[type=submit]');
       btn.disabled = true; btn.classList.add('loading');
-      const { files: kept, problems } = files ? await files.commit(`bids/${b.id}`, btn) : { files: b.files, problems: [] };
+      const { files: kept, problems } = files && canEditPrice ? await files.commit(`bids/${b.id}`, btn) : { files: b.files, problems: [] };
       const w = await work.commit(`bidwork/${b.id}`, btn); // working files: open to every role (not under bids/)
       problems.push(...w.problems);
       b.workFiles = w.files;
@@ -484,7 +495,7 @@
         resultDate: f.result === 'pending' ? '' : f.resultDate || T, notes: f.notes,
         leadSource: f.leadSource, contact: f.contact,
       }, V.resolveSales(f.salesName, b));
-      if (canPrice) Object.assign(b, { value: f.value, margin: f.margin, files: kept });
+      if (canEditPrice) Object.assign(b, { value: f.value, margin: f.margin, files: kept });
       // owner = the Sales account whose price this is: a Sales adding / editing → themselves; Admin → the Sales chosen
       if (PM.myRole() === 'sales') b.owner = (isNew ? PM.myUid() : PM.bidOwner(b)) || PM.myUid();
       else b.owner = PM.bidOwnerFor(b.sales, b.salesName);

@@ -579,13 +579,13 @@
   const bidKey = (client, name) => `${PM.normName(client)}|${PM.normName(name)}`;
 
   S.openBids = function (done, file) {
-    const V = PM.common, canPrice = PM.seesBidPrices(), T = PM.today();
+    const V = PM.common, canPrice = PM.canEditBidPrice(null), T = PM.today(); // the Value column: who may change prices (Admin · Sales)
     const bidValue = (v) => (v.valueMB !== undefined ? v.valueMB : v.valueTHB);
     const findBid = (v) => (v.code && PM.db.bids.find((b) => String(b.code).trim().toUpperCase() === v.code.toUpperCase())) || PM.db.bids.find((b) => bidKey(b.client, b.name) === bidKey(v.client, v.name));
     S.open({
       title: 'นำเข้า Proposal จาก Excel', done,
       intro: 'ไฟล์ Proposal Status List ใช้ได้เลย ระบบหาแถวหัวตารางและจับคู่คอลัมน์ให้ ไม่นำตารางสรุปท้ายไฟล์เข้ามา · Status Complete ถือว่ายื่นแล้ว (ไม่มีวันที่ยื่นใช้ Due Date) · ไฟล์เปิดในเครื่องนี้เท่านั้น ยังไม่บันทึกจนกว่าจะกดนำเข้า',
-      note: canPrice ? '' : '🔒 คุณไม่มีสิทธิ์เห็นมูลค่า คอลัมน์ Value จึงไม่ถูกนำเข้า — Sales เจ้าของงานหรือ Admin เป็นผู้กรอก',
+      note: canPrice ? '' : '🔒 คอลัมน์ Value ไม่ถูกนำเข้า — มูลค่าแก้ได้เฉพาะ Admin และ Sales เจ้าของงาน',
       fields: BID_FIELDS(canPrice),
       // the list is kept in Excel and sent again each week: a second upload updates the jobs already in, like the project list
       updateOnly: true,
@@ -647,7 +647,7 @@
           if (v.code && !isNew) b.code = v.code;
           if (v.sector) b.sector = v.sector;
           if (v.due) b.dueDate = v.due;
-          if (canPrice && PM.canSeeBidPrice(isNew ? Object.assign(b, { owner: PM.myUid() }) : b)) { const val = bidValue(v); if (val !== undefined) b.value = val; }
+          if (canPrice && PM.canEditBidPrice(isNew ? Object.assign(b, { owner: PM.myUid() }) : b)) { const val = bidValue(v); if (val !== undefined) b.value = val; }
           p.type = lookup(P_TYPE, v.type) || p.type || 'Bidding';
           if (v.priority !== undefined) p.priority = lookup(P_PRIORITY, v.priority) || '';
           else if (isNew) p.priority = '';
@@ -688,7 +688,7 @@
         }
         PM.save();
         const unknown = unknownNames(rows, 'pm').concat(unknownNames(rows, 'sales').filter((n) => !PM.db.bids.some((b) => PM.normName(V.salesName(b)) === PM.normName(n) && b.sales)));
-        const canUndo = created.every(PM.canSeeBidPrice);
+        const canUndo = created.every(PM.canEditBidPrice);
         return {
           summary: `เพิ่มใหม่ ${created.length} งาน${updated.length ? ` · อัปเดต ${updated.length} งาน` : ''}`,
           notes: [
@@ -857,15 +857,29 @@
           if (!v.job && v.code && v.code !== main) v.job = v.code;
           v.code = main;
         }
-        // first: on the form, one job can take two rows under one project no. (PP3 and HD4), its other cells merged and so empty here
-        const codeKey = v.code && `c:${v.code.toUpperCase()}`;
+        // On the Project list a project no. can take two rows (PP3 and HD4, its other cells merged and so empty here).
+        // Each row is a project of its own: the 2nd one gets <no.>-2, the 3rd <no.>-3 … (Project No. stays unique, and the
+        // same file next time finds the same projects again) and takes the merged cells — client, plant, PO, team, dates — from the first.
+        let codeKey = v.code && `c:${v.code.toUpperCase()}`, dupNote = '';
+        if (codeKey && ctx.seen.has(codeKey) && !v.job) {
+          const base = v.code;
+          const first = ctx.rows.find((r) => r.values.code && r.values.code.toUpperCase() === base.toUpperCase() && r.action !== 'error');
+          ctx.dupN = ctx.dupN || {};
+          const n = (ctx.dupN[codeKey] || 1) + 1;
+          ctx.dupN[codeKey] = n;
+          if (first) ['client', 'plant', 'clientPo', 'engTech', 'pm', 'sales', 'start', 'end', 'status'].forEach((k) => { if (v[k] === undefined && first.values[k] !== undefined) v[k] = first.values[k]; });
+          v.code = `${base}-${n}`;
+          codeKey = `c:${v.code.toUpperCase()}`;
+          dupNote = `Project No. เดียวกับแถว ${first ? first.line : 'ก่อนหน้า'} — นำเข้าเป็นโครงการแยก ${v.code}`;
+        }
+        // Monitor file: one accounting job on two rows is still one job
         if (codeKey && ctx.seen.has(codeKey)) {
           const first = ctx.rows.find((r) => r.values.code && r.values.code.toUpperCase() === v.code.toUpperCase() && r.action !== 'skip' && r.action !== 'error');
           if (first) {
             if (v.name && !first.values.name.includes(v.name)) first.values.name += ` + ${v.name}`;
             ['clientPo', 'plant', 'engTech', 'activity', 'remark', 'payment'].forEach((k) => { if (first.values[k] === undefined && v[k] !== undefined) first.values[k] = v[k]; });
           }
-          return { action: 'skip', note: `Project No. เดียวกับแถว ${first ? first.line : 'ก่อนหน้า'} รวมเป็นโครงการเดียว${v.contract ? ' · ไม่นับมูลค่าของแถวนี้ซ้ำ' : ''}` };
+          return { action: 'skip', note: `Job เดียวกับแถว ${first ? first.line : 'ก่อนหน้า'} (ไฟล์ Monitor) รวมเป็นงานเดียว${v.contract ? ' · ไม่นับมูลค่าของแถวนี้ซ้ำ' : ''}` };
         }
         const client = v.client || v.plant || NO_CLIENT;
         const old = findProject(Object.assign({}, v, { client }));
@@ -876,7 +890,7 @@
         if (ctx.seen.has(k)) return { action: 'error', note: 'ซ้ำกับแถวก่อนหน้าในไฟล์นี้' };
         ctx.seen.add(k);
         if (codeKey) ctx.seen.add(codeKey);
-        const warn = d.notes.slice();
+        const warn = (dupNote ? [dupNote] : []).concat(d.notes);
         if (client === NO_CLIENT && !old) warn.push(`ไม่มีลูกค้าหรือ Plant ใช้ "${NO_CLIENT}" แก้ได้ที่แก้ไขโครงการ`);
         if (v.status && !lookup(PJ_STATUS, v.status) && !/^completed?$/i.test(v.status)) warn.push(`Status "${v.status}" ไม่รู้จัก ใช้ Active`);
         if (v.contract > 0 && v.contract < 1000) warn.push('มูลค่าดูเหมือนหน่วยล้านบาท ตรวจการเลือกคอลัมน์');
