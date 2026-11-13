@@ -425,22 +425,29 @@
     const canEdit = PM.can('vdrl.edit');
     if (!canEdit) return;
     const pos = (PM.db.pos || []).filter((x) => x.projectId === p.id);
-    const st = { name: '', docs: [], sheets: [] }; // sheets: [{ name, title, docs, on }] — a file may hold an old project's sheets too
+    // mode: update = documents already here take the file's values · skip = documents already here stay as they are
+    const st = { name: '', docs: [], sheets: [], mode: 'update' }; // sheets: [{ name, title, docs, on }] — a file may hold an old project's sheets too
+    const MODES = { update: ['อัปเดตทับข้อมูลเดิม', 'เอกสารที่มีอยู่แล้วรับค่าจากไฟล์ (เลขที่ · ชื่อ · Rev · วันส่ง · Transmittal · Code) — ช่องที่ว่างในไฟล์ไม่ลบของเดิม · Rev ที่มีแต่ในระบบยังอยู่'],
+      skip: ['ข้ามเอกสารที่มีอยู่แล้ว', 'เพิ่มเฉพาะเอกสารใหม่ — เอกสารที่เลขที่ตรงกับของเดิมไม่ถูกแตะ'] };
+    const modeHtml = () => `<div class="vd-mode" role="radiogroup" aria-label="เอกสารที่มีอยู่แล้ว">${Object.keys(MODES).map((k) => `<button type="button" role="radio" aria-checked="${st.mode === k}" class="vd-mode-opt${st.mode === k ? ' on' : ''}" data-vd-mode="${k}"><b>${esc(MODES[k][0])}</b><small>${esc(MODES[k][1])}</small></button>`).join('')}</div>`;
     const form = U.modal({
       title: `นำเข้าเอกสารผู้ขาย — ${p.code}`, wide: true, submitLabel: 'นำเข้า',
-      body: `<p class="full muted" style="margin:0">เลือกไฟล์ VMDL / Vendor Print Index (VPI) ของลูกค้าได้ทั้งไฟล์ — ระบบอ่านทุกชีต หาหัวตาราง แถว Plan Issue / Actual Issue / Transmittal / Return และ Rev ที่วางเรียงไปทางขวาให้เอง · เอกสารที่มีเลขที่ตรงกับของเดิมจะอัปเดต</p>
+      body: `<p class="full muted" style="margin:0">เลือกไฟล์ VMDL / Vendor Print Index (VPI) ของลูกค้าได้ทั้งไฟล์ — ระบบอ่านทุกชีต หาหัวตาราง แถว Plan Issue / Actual Issue / Transmittal / Return และ Rev ที่วางเรียงไปทางขวาให้เอง · จับคู่กับของเดิมด้วยเลขที่เอกสาร</p>
+        <div class="full"><div class="sub-h" style="margin-bottom:6px">เอกสารที่มีอยู่แล้วในระบบ</div><div data-vd-modebox>${modeHtml()}</div></div>
         <div class="full imp-drop" data-imp-drop tabindex="0" role="button" aria-label="เลือกไฟล์ Excel"><b>ลากไฟล์ Excel มาวางที่นี่</b><span>หรือ <u>เลือกไฟล์</u> (.xlsx, .ods, .csv)</span><input type="file" accept=".xlsx,.xlsm,.ods,.csv" data-imp-file hidden></div>
         ${U.field('PO ของเอกสารชุดนี้', 'poId', '', { options: [{ value: '', label: '— ไม่ระบุ —' }].concat(pos.map((x) => ({ value: x.id, label: `${x.poNo} · ${x.supplier || ''}` }))), hint: 'ใช้คำนวณกำหนดส่งแบบ "15 day after PO" และบอกผู้ขาย' })}
         ${U.field('ผู้ขาย', 'vendor', '', { placeholder: 'เว้นว่าง = ผู้ขายของ PO' })}
         <div class="full" data-vd-work></div>`,
       onSubmit: (f) => {
         if (!st.docs.length) { U.alert('ยังไม่ได้เลือกไฟล์ หรือไม่พบเอกสารในไฟล์'); return false; }
+        if (st.mode === 'skip' && st.docs.every(isOld)) { U.alert('ทุกเอกสารในไฟล์มีอยู่แล้ว — ไม่มีอะไรให้เพิ่ม (เลือก "อัปเดตทับข้อมูลเดิม" ถ้าต้องการอัปเดต)'); return false; }
         const before = JSON.parse(JSON.stringify(listOf(p)));
         const u = PM.auth && PM.auth.user;
-        let added = 0, updated = 0;
+        let added = 0, updated = 0, skipped = 0;
         st.docs.forEach((x) => {
           const old = listOf(p).find((d) => x.docNo && PM.normName(d.docNo) === PM.normName(x.docNo)) || listOf(p).find((d) => !x.docNo && PM.normName(d.title) === PM.normName(x.title));
           const fields = { no: x.no, docNo: x.docNo, altNo: x.altNo, title: x.title, discipline: x.discipline, size: x.size, purpose: x.purpose, planDate: x.planDate, planText: x.planText };
+          if (old && st.mode === 'skip') { skipped++; return; }
           if (old) {
             Object.keys(fields).forEach((k) => { if (fields[k]) old[k] = fields[k]; });
             if (f.poId) old.poId = f.poId;
@@ -458,7 +465,7 @@
         syncSave(p); // every document also lands in its phase register (Engineering · Procurement · Construction · Closing)
         U.closeModal();
         const byPhase = PM.PHASES.map((ph) => [ph.label, st.docs.filter((x) => (listOf(p).find((d) => PM.normName(d.docNo || d.title) === PM.normName(x.docNo || x.title)) || {}).phase === ph.key).length]).filter(([, n]) => n);
-        const m = U.modal({ title: 'นำเข้าแล้ว', body: `<p class="full" style="margin:0">เพิ่ม ${added} · อัปเดต ${updated} เอกสาร จาก ${esc(st.name)}</p>
+        const m = U.modal({ title: 'นำเข้าแล้ว', body: `<p class="full" style="margin:0">${st.mode === 'skip' ? `เพิ่ม ${added} เอกสาร · ข้าม ${skipped} เอกสารที่มีอยู่แล้ว` : `เพิ่ม ${added} · อัปเดตทับ ${updated} เอกสาร`} จาก ${esc(st.name)}</p>
           <p class="full muted" style="margin:0">อยู่ในทะเบียนของขั้นงาน: ${esc(byPhase.map(([l, n]) => `${l} ${n}`).join(' · '))} — ดูได้ที่แท็บภาพรวม & EPC</p>
           <div class="full"><button type="button" class="btn danger" data-imp-undo>ยกเลิกการนำเข้ารอบนี้</button></div>` });
         m.querySelector('[data-imp-undo]').addEventListener('click', () => { PM.db.vdrl = PM.db.vdrl.filter((x) => x.projectId !== p.id).concat(before); syncSave(p); U.closeModal(); U.toast('ยกเลิกการนำเข้าแล้ว'); done(); });
@@ -467,6 +474,15 @@
       },
     });
     const work = form.querySelector('[data-vd-work]'), drop = form.querySelector('[data-imp-drop]'), input = form.querySelector('[data-imp-file]');
+    const submit = form.querySelector('[type=submit]');
+    function isOld(x) { return listOf(p).some((d) => (x.docNo && PM.normName(d.docNo) === PM.normName(x.docNo)) || (!x.docNo && PM.normName(d.title) === PM.normName(x.title))); }
+    form.querySelector('[data-vd-modebox]').addEventListener('click', (e) => {
+      const b = e.target.closest('[data-vd-mode]');
+      if (!b) return;
+      st.mode = b.dataset.vdMode;
+      form.querySelector('[data-vd-modebox]').innerHTML = modeHtml();
+      if (st.sheets.length) show();
+    });
     const merge = () => {
       const seen = new Map();
       st.sheets.filter((s) => s.on).forEach((s) => s.docs.forEach((x) => { const k = PM.normName(x.docNo || x.title); if (!seen.has(k)) seen.set(k, x); }));
@@ -475,19 +491,21 @@
     const show = () => {
       merge();
       const have = listOf(p);
-      const isOld = (x) => have.some((d) => (x.docNo && PM.normName(d.docNo) === PM.normName(x.docNo)) || (!x.docNo && PM.normName(d.title) === PM.normName(x.title)));
-      const nNew = st.docs.filter((x) => !isOld(x)).length;
+      const nNew = st.docs.filter((x) => !isOld(x)).length, nOld = st.docs.length - nNew, skip = st.mode === 'skip';
+      const doing = nNew + (skip ? 0 : nOld);
+      submit.textContent = doing ? `นำเข้า ${doing} เอกสาร${skip && nOld ? ` · ข้าม ${nOld}` : ''}` : 'ไม่มีเอกสารใหม่';
+      submit.disabled = !doing;
       work.innerHTML = `${st.sheets.length > 1 ? `<div class="vd-sheets"><b>ชีตที่นำเข้า</b> <span class="muted">ไฟล์ของลูกค้าบางไฟล์มีชีตของโครงการเก่าติดมา — ติ๊กเฉพาะชีตของโครงการนี้</span>
           ${st.sheets.map((s, i) => `<label class="avl-chk"><input type="checkbox" data-vd-sheet="${i}"${s.on ? ' checked' : ''}><span>${esc(s.name)} · ${s.docs.length} เอกสาร${s.title ? `<small>${esc(s.title)}</small>` : ''}</span></label>`).join('')}</div>` : ''}
-        ${st.docs.length ? `<div class="imp-sum">${U.badge('neutral', `${st.docs.length} เอกสาร`)} ${U.badge('good', `เพิ่มใหม่ ${nNew}`)} ${st.docs.length - nNew ? U.badge('info', `อัปเดต ${st.docs.length - nNew}`) : ''}
+        ${st.docs.length ? `<div class="imp-sum">${U.badge('neutral', `${st.docs.length} เอกสาร`)} ${U.badge('good', `เพิ่มใหม่ ${nNew}`)} ${nOld ? (skip ? U.badge('neutral', `มีอยู่แล้ว · ข้าม ${nOld}`) : U.badge('info', `อัปเดตทับ ${nOld}`)) : ''}
           ${U.badge('neutral', `Rev ที่อ่านได้ ${st.docs.reduce((a, x) => a + x.revs.length, 0)}`)}</div>
         <div class="table-wrap imp-table"><table class="tbl"><thead><tr><th class="num">No.</th><th>เลขที่ / ชื่อเอกสาร</th><th>ไปอยู่ทะเบียน</th><th>Purpose</th><th>กำหนดส่ง</th><th>Rev ที่อ่านได้</th><th>ผล</th></tr></thead><tbody>
           ${st.docs.map((x) => { const s = PM.vdrlState(Object.assign({}, x, { poId: form.poId.value })), old = have.find((d) => (x.docNo && PM.normName(d.docNo) === PM.normName(x.docNo))), ph = (old && old.phase) || PM.vdrlPhaseOf(x.title);
-            return `<tr><td class="num">${esc(x.no || '–')}</td><td><span class="title">${esc(x.title || '–')}</span><small>${esc([x.docNo, x.altNo].filter(Boolean).join(' · '))}</small></td>
+            return `<tr class="${skip && old ? 'imp-off-row' : ''}"><td class="num">${esc(x.no || '–')}</td><td><span class="title">${esc(x.title || '–')}</span><small>${esc([x.docNo, x.altNo].filter(Boolean).join(' · '))}</small></td>
             <td><span class="chip">${esc((PM.PHASES.find((y) => y.key === ph) || {}).label || ph)}</span></td>
             <td>${esc(x.purpose || '–')}</td><td class="nowrap">${x.planDate ? U.date(x.planDate) : esc(x.planText || '–')}</td>
             <td>${x.revs.map((r) => `<span class="chip">${esc(r.rev || '?')}${r.issued ? ` · ส่ง ${U.date(r.issued)}` : ''}${r.code ? ` · ${esc(r.code)}` : ''}</span>`).join(' ') || '–'}</td>
-            <td>${U.badge(STATES[s.key].level, STATES[s.key].label)} ${isOld(x) ? U.badge('info', 'อัปเดต') : U.badge('good', 'ใหม่')}</td></tr>`; }).join('')}
+            <td>${U.badge(STATES[s.key].level, STATES[s.key].label)} ${isOld(x) ? (skip ? U.badge('neutral', 'มีอยู่แล้ว · ข้าม') : U.badge('info', 'อัปเดตทับ')) : U.badge('good', 'ใหม่')}</td></tr>`; }).join('')}
         </tbody></table></div>` : '<p class="empty">ยังไม่ได้เลือกชีต</p>'}`;
     };
     const take = async (file) => {

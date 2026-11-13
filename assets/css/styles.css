@@ -1527,6 +1527,17 @@ label.avl-chk small { color: var(--muted); font-size: 12px; }
 .vd-revs td { padding: 4px 4px; }
 .vd-revs input { height: 32px; padding: 0 6px; font-size: 13px; width: 100%; }
 .vd-sheets { display: flex; flex-direction: column; gap: 6px; margin: 4px 0 10px; }
+.vd-mode { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 10px; }
+.vd-mode-opt { display: flex; flex-direction: column; gap: 4px; text-align: left; padding: 11px 14px 11px 38px; border: 1.5px solid var(--border-strong); border-radius: 10px;
+  background: var(--surface); color: var(--ink); cursor: pointer; position: relative; font: inherit; }
+.vd-mode-opt::before { content: ''; position: absolute; left: 13px; top: 14px; width: 16px; height: 16px; border-radius: 50%; border: 2px solid var(--border-strong); background: var(--surface); }
+.vd-mode-opt.on { border-color: var(--accent); background: var(--accent-soft); }
+.vd-mode-opt.on::before { border-color: var(--accent); background: radial-gradient(circle, var(--accent) 0 4px, var(--surface) 5px); }
+.vd-mode-opt b { font-size: 14px; }
+.vd-mode-opt small { color: var(--muted); font-size: 12.5px; line-height: 1.5; }
+.vd-mode-opt:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.imp-table tr.imp-off-row td { color: var(--muted); }
+.imp-table tr.imp-off-row .title { text-decoration: line-through; text-decoration-color: var(--border-strong); }
 .vd-empty { padding: 26px 16px; text-align: center; display: flex; flex-direction: column; align-items: center; gap: 10px; }
 select.pi-st.itp-st-pending { background-color: var(--surface-2); color: var(--ink-2); }
 select.pi-st.itp-st-pass { background-color: var(--good-bg); color: var(--good-text); }
