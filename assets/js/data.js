@@ -338,7 +338,8 @@
   };
   /* data saved by older versions may miss newer collections */
   PM.ensureShape = () => {
-    ['bids', 'projects', 'ncrs', 'safety', 'resources', 'levels', 'timesheets', 'plans', 'pos', 'costs', 'prices', 'settings', 'dailies', 'punch', 'meetings', 'avl', 'qms', 'planrules', 'projfin'].forEach((c) => { if (!Array.isArray(PM.db[c])) PM.db[c] = []; });
+    ['bids', 'projects', 'ncrs', 'safety', 'resources', 'levels', 'timesheets', 'plans', 'pos', 'costs', 'prices', 'settings', 'dailies', 'punch', 'meetings', 'avl', 'qms', 'planrules', 'projfin',
+      'vdrl', 'itp', 'warranty', 'service', 'lessons', 'linecfg'].forEach((c) => { if (!Array.isArray(PM.db[c])) PM.db[c] = []; });
     // fixed person levels: Engineer, Technician & Other (only these three exist)
     PM.PERSON_LEVELS.forEach((l) => { if (!PM.db.levels.some((x) => x.id === l.id)) PM.db.levels.push(Object.assign({}, l)); });
     const allowed = PM.PERSON_LEVELS.map((l) => l.id);
@@ -373,6 +374,7 @@
     meta: { version: 1, company: PM.COMPANY, created: PM.today() },
     levels: PM.PERSON_LEVELS.map((l) => Object.assign({}, l)),
     resources: [], bids: [], projects: [], ncrs: [], safety: [], timesheets: [], plans: [], pos: [], costs: [], prices: [], settings: [], dailies: [], punch: [], meetings: [], avl: [], qms: [], planrules: [], projfin: [],
+    vdrl: [], itp: [], warranty: [], service: [], lessons: [], linecfg: [],
   });
 
   /* Build the 4 EPC phases for a new project from its dates and budget */
@@ -1070,6 +1072,9 @@
     if (PM.buildSampleMeetings) db.meetings = PM.buildSampleMeetings(db.projects, T, db.resources); // meetings.js
     if (PM.buildSampleAvl) db.avl = PM.buildSampleAvl(db.projects, T); // approved vendor list (avl.js)
     if (PM.buildSampleQms) db.qms = PM.buildSampleQms(db, T); // ISO 9001 records (iso.js)
+    if (PM.buildSampleItp) db.itp = PM.buildSampleItp(db, T); // inspection & test plan (itp.js)
+    if (PM.buildSampleWarranty) Object.assign(db, PM.buildSampleWarranty(db, T)); // warranty & service tickets (warranty.js)
+    if (PM.buildSampleLessons) db.lessons = PM.buildSampleLessons(db, T); // lessons learned (lessons.js)
 
     /* weekly plan — 6 past weeks, this week, next week (built from each person's allocation) */
     const TASKS = {
@@ -1228,6 +1233,12 @@
       if (b.result === 'won') customers.add(b.client);
     });
     db.projects.forEach((p) => { const b = db.bids.find((x) => x.id === p.bidId); if (b) { p.sales = b.sales; p.salesName = b.salesName; } });
+    if (PM.buildSampleVdrl) { // vendor documents, tied to the demo POs, each also in its phase register (vdrl.js)
+      const keep = PM.db; PM.db = db;
+      db.vdrl = PM.buildSampleVdrl(db, T);
+      db.projects.forEach((p) => PM.vdrlSync(p));
+      PM.db = keep;
+    }
 
     /* price list — 2–3 vendors per item, some quotes renewed (price history), some expiring / expired */
     const PRICE_ITEMS = [

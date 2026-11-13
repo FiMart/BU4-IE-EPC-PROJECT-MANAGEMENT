@@ -3,16 +3,64 @@
    Charts show counts to everyone; bid money only in the tiles and tooltips of those who may see it. */
 (function () {
   const U = PM.ui, V = PM.common, esc = U.esc;
-  // Cost overrun filter: active | closed | all
-  const state = U.keep('dashboard', { overrun: 'active' }, ['overrun']);
+  // Cost overrun filter: active | closed | all · period: week | month | year (kept) · at: a day in the period shown (not kept: opens on today)
+  const state = U.keep('dashboard', { overrun: 'active', per: 'month', at: '' }, ['overrun', 'per']);
+
+  /* ---------- the period the Dashboard shows: a week (Mon–Sun) · a calendar month · a calendar year ---------- */
+  const PERIODS = {
+    week: { label: 'รายสัปดาห์', unit: 'สัปดาห์', prev: 'สัปดาห์ก่อน', now: 'สัปดาห์นี้', trend: 12 },
+    month: { label: 'รายเดือน', unit: 'เดือน', prev: 'เดือนก่อน', now: 'เดือนนี้', trend: 12 },
+    year: { label: 'รายปี', unit: 'ปี', prev: 'ปีก่อน', now: 'ปีนี้', trend: 5 },
+  };
+  const lastDay = (ym) => { const [y, m] = ym.split('-').map(Number); return PM.iso(new Date(y, m, 0)); };
+  const addMonths = (d, n) => { const [y, m] = d.split('-').map(Number); return PM.iso(new Date(y, m - 1 + n, 1)); };
+  function periodOf(per, at) {
+    if (per === 'week') { const from = PM.monday(at); return { from, to: PM.addDays(from, 6) }; }
+    if (per === 'year') return { from: `${at.slice(0, 4)}-01-01`, to: `${at.slice(0, 4)}-12-31` };
+    return { from: `${at.slice(0, 7)}-01`, to: lastDay(at.slice(0, 7)) };
+  }
+  const shiftAt = (per, at, n) => (per === 'week' ? PM.addDays(at, 7 * n) : per === 'year' ? `${Number(at.slice(0, 4)) + n}-01-01` : addMonths(at, n));
+  const periodLabel = (per, p) => (per === 'week' ? `${U.date(p.from)} – ${U.date(p.to)}` : per === 'year' ? `ปี ${p.from.slice(0, 4)}` : `เดือน ${U.month(p.from.slice(0, 7))}`);
+  /* the key of the bucket a date falls in, and the buckets of a trend chart ending at the period shown */
+  const bucketOf = (per, d) => (!d ? '' : per === 'week' ? PM.monday(d) : per === 'year' ? d.slice(0, 4) : d.slice(0, 7));
+  function buckets(per, p) {
+    const n = PERIODS[per].trend;
+    return Array.from({ length: n }, (_, i) => {
+      const at = shiftAt(per, p.from, i - n + 1), b = periodOf(per, at);
+      return { key: bucketOf(per, b.from), from: b.from, to: b.to, label: per === 'week' ? `${b.from.slice(8)}/${b.from.slice(5, 7)}` : per === 'year' ? b.from.slice(0, 4) : U.month(b.from.slice(0, 7)) };
+    });
+  }
+  /* the period before, cut to the same number of days when this one is still running (month to date ↔ the same days last month) */
+  function previous(per, p, upto) {
+    const b = periodOf(per, shiftAt(per, p.from, -1));
+    const span = PM.diffDays(p.from, upto);
+    return { from: b.from, to: upto < p.to ? PM.min(b.to, PM.addDays(b.from, span)) : b.to, partial: upto < p.to };
+  }
+  const inP = (d, p) => !!d && d >= p.from && d <= p.to;
+  /* "▲ 3 จากเดือนก่อน" under a number */
+  function delta(cur, prev, fmt, label, goodUp) {
+    if (cur == null || prev == null) return '';
+    const d = cur - prev;
+    if (!d) return `<span class="dash-delta">เท่ากับ${esc(label)}</span>`;
+    const up = d > 0, good = goodUp == null ? null : up === goodUp;
+    return `<span class="dash-delta ${good == null ? '' : good ? 'up-good' : 'up-bad'}">${up ? '▲' : '▼'} ${esc((fmt || U.num)(Math.abs(d)))} จาก${esc(label)}</span>`;
+  }
 
   const chartCard = (id, title, sub) => `<div class="card"><div class="card-h"><h2>${esc(title)}</h2><p>${esc(sub)}</p></div><div class="card-b"><div class="chart" id="${id}"></div></div></div>`;
   const tableBox = (title, html, id) => `<details class="dash-table"><summary>ดูเป็นตาราง — ${esc(title)}</summary><div class="card-b flush table-wrap"${id ? ` id="${id}"` : ''}>${html}</div></details>`;
 
   PM.views.dashboard = function (el) {
     const db = PM.db, T = PM.today();
-    const from12 = PM.addDays(T, -364);
-    const bs = PM.bidStats(db.bids, from12, T);
+    if (!PERIODS[state.per]) state.per = 'month';
+    if (!state.at || state.at > T) state.at = T;
+    const per = state.per, P = PERIODS[per], pd = periodOf(per, state.at);
+    const upto = PM.min(pd.to, T), current = pd.from <= T && T <= pd.to;
+    const pl = periodLabel(per, pd), pv = previous(per, pd, upto), prevLabel = pv.partial ? `ช่วงเดียวกันของ${P.prev}` : P.prev;
+    const tr = buckets(per, pd); // trend charts: 12 weeks · 12 months · 5 years ending at the period shown
+    const nextAt = shiftAt(per, pd.from, 1);
+    // safety is recorded per month: a week shows the month it falls in
+    const safMonths = per === 'year' ? PM.months(pd.from.slice(0, 7), upto.slice(0, 7)) : per === 'week' ? [upto.slice(0, 7)] : [pd.from.slice(0, 7)];
+    const bs = PM.bidStats(db.bids.filter((b) => b.dates.inquiry), pd.from, upto);
     const allPending = db.bids.filter((b) => b.result === 'pending');
 
     const active = db.projects.filter((p) => p.status !== 'closed');
@@ -20,12 +68,14 @@
     const sEV = PM.sum(rows, (r) => r.m.ev), sPV = PM.sum(rows, (r) => r.m.pv), sAC = PM.sum(rows, (r) => r.m.ac);
     const pSPI = sPV ? sEV / sPV : null, pCPI = sAC ? sEV / sAC : null;
     const openNcr = PM.sum(rows, (r) => r.m.ncrOpen);
-    const saf12 = db.safety.filter((s) => s.month >= from12.slice(0, 7));
-    const mh12 = PM.sum(saf12, (s) => s.manhours), lti12 = PM.sum(saf12, (s) => s.lti);
+    const safP = db.safety.filter((s) => safMonths.includes(s.month));
+    const mh12 = PM.sum(safP, (s) => s.manhours), lti12 = PM.sum(safP, (s) => s.lti);
     const ltifr = mh12 ? (lti12 * 1e6) / mh12 : 0;
 
-    const ut = PM.utilization(PM.addDays(T, -27), T);
-    const wp = PM.planStats((db.plans || []).filter((p) => p.week === PM.monday(T)));
+    const ut = PM.utilization(pd.from, upto);
+    const planWeeks = (db.plans || []).filter((x) => x.week >= PM.monday(pd.from) && x.week <= upto);
+    const wp = PM.planStats(per === 'week' ? planWeeks.filter((x) => x.week === pd.from) : planWeeks);
+    const sum = periodSummary(db, pd, upto, pv, prevLabel);
     const po = PM.poStats(db.pos || [], T);
     const poWatch = po.late.concat(po.soon)
       .sort((a, b) => (PM.poDaysLate(b, T) - PM.poDaysLate(a, T)) || String(a.deliveryDue).localeCompare(String(b.deliveryDue)))
@@ -49,7 +99,15 @@
     const nBy = (lv) => nt.filter((x) => x.level === lv).length;
     const top = nt.filter((x) => x.level === 'critical').slice(0, 3);
     el.innerHTML = `
-      <div class="row dash-tools"><span class="muted">ข้อมูลทุกส่วน ณ ${U.date(T)}</span><span class="spacer"></span>
+      <div class="row dash-tools">
+        ${V.seg('dashper', Object.keys(PERIODS).map((k) => ({ key: k, label: PERIODS[k].label })), per)}
+        <span class="dash-period" role="group" aria-label="เลือกช่วงเวลา">
+          <button type="button" class="btn sm icon-btn" data-per-step="-1" aria-label="${esc(P.unit)}ก่อนหน้า" title="${esc(P.unit)}ก่อนหน้า">‹</button>
+          <b>${esc(pl)}</b>
+          <button type="button" class="btn sm icon-btn" data-per-step="1" aria-label="${esc(P.unit)}ถัดไป" title="${esc(P.unit)}ถัดไป"${nextAt > T ? ' disabled' : ''}>›</button>
+          ${current ? `<span class="chip">${esc(P.now)}</span>` : `<button type="button" class="link-btn" data-per-now>กลับไป${esc(P.now)}</button>`}
+        </span>
+        <span class="muted">${current ? `ข้อมูลถึง ${U.date(T)}` : ''}</span><span class="spacer"></span>
         ${fin ? '<button class="btn" data-action="dash-report" title="รายงานภาพรวมแผนกขนาด A4 — พิมพ์ หรือบันทึกเป็น PDF">📄 พิมพ์รายงาน PDF</button>' : ''}</div>
       <button type="button" class="att-bar${nBy('critical') ? ' crit' : ''}" data-open-bell title="เปิดรายการทั้งหมดที่กระดิ่ง">
         <span class="att-bar-h"><b>ต้องดำเนินการวันนี้</b>${nt.length
@@ -59,16 +117,24 @@
         <span class="att-bar-go">ดูทั้งหมด 🔔 →</span>
       </button>
       <nav class="sec-nav" aria-label="ไปยังส่วนของ Dashboard">
+        <a href="#/dashboard" data-jump="#sec-sum"><span class="idx">0</span>สรุป${esc(P.label)}</a>
         <a href="#/dashboard" data-jump="#sec-bid"><span class="idx">1</span>Bidding</a>
         <a href="#/dashboard" data-jump="#sec-exec"><span class="idx">2</span>Execution · ต้นทุน</a>
         <a href="#/dashboard" data-jump="#sec-po"><span class="idx">3</span>Purchase Orders</a>
         ${seesResources ? '<a href="#/dashboard" data-jump="#sec-res"><span class="idx">4</span>Resource</a>' : ''}
       </nav>
 
-      <div class="section-h" id="sec-bid"><span class="idx">1</span><h2>Bidding Performance</h2><p>Before Award · 12 เดือนล่าสุด</p><span class="spacer"></span><a href="#/bidding">เปิด Bidding →</a></div>
+      <div class="section-h" id="sec-sum"><span class="idx">0</span><h2>สรุป${esc(P.label)}</h2><p>${esc(pl)}${current ? ` · ถึง ${U.date(T)}` : ''} · เทียบกับ${esc(prevLabel)}</p></div>
+      <div class="grid cols-4 dash-sum">${sum.tiles.map((t) => V.tile(t)).join('')}</div>
+      <div class="grid cols-2">
+        ${chartCard('c-sum-flow', `งานเข้า · ยื่น · ชนะ ${P.label}`, `จำนวนงานประมูล ${tr.length} ${P.unit}ล่าสุด ถึง${per === 'week' ? 'สัปดาห์' : per === 'year' ? 'ปี' : 'เดือน'}ที่เลือก`)}
+        ${chartCard('c-sum-work', `PO · NCR ${P.label}`, `PO ที่ออก และ NCR ที่เปิด / ปิด ${tr.length} ${P.unit}ล่าสุด`)}
+      </div>
+
+      <div class="section-h" id="sec-bid"><span class="idx">1</span><h2>Bidding Performance</h2><p>Before Award · งานที่รับ Inquiry ใน${esc(pl)}</p><span class="spacer"></span><a href="#/bidding">เปิด Bidding →</a></div>
       <div class="grid cols-5">
         ${V.proposalTotalTile(PM.proposalList())}
-        ${V.tile({ label: 'Inquiries', tag: 'Quantity', value: bs.total, sub: `12 เดือนล่าสุด · ยื่นใบเสนอราคาแล้ว ${bs.submitted} งาน` })}
+        ${V.tile({ label: 'Inquiries', tag: 'Quantity', value: bs.total, sub: `${esc(pl)} · ยื่นใบเสนอราคาแล้ว ${bs.submitted} งาน` })}
         ${V.tile({ label: 'Win rate', value: U.pct(bs.winRate), sub: PM.myRole() === 'admin' ? `by value ${U.pct(bs.winRateValue)} · won ${U.money(bs.wonValue)}` : `${bs.won} won / ${bs.won + bs.lost} decided` })}
         ${V.tile({ label: 'On-time submission', tag: 'Time', value: U.pct(bs.onTimeRate), sub: U.badge(bs.onTimeRate >= 0.9 ? 'good' : bs.onTimeRate >= 0.75 ? 'warning' : 'critical', 'target 90%') })}
         ${PM.seesBidValues()
@@ -77,7 +143,7 @@
       </div>
       <div class="grid cols-2">
         ${chartCard('c-stages', 'งานประมูลในแต่ละขั้นตอนตอนนี้', 'จำนวนงานที่ยังไม่รู้ผล · คลิกแถบเพื่อเปิดขั้นนั้น')}
-        ${chartCard('c-inq', 'Inquiries per month', 'จำนวนงานที่เข้ามาแต่ละเดือน แยกตามผล')}
+        ${chartCard('c-inq', `Inquiries ${P.label}`, `จำนวนงานที่เข้ามาแต่ละ${P.unit} แยกตามผล · ${tr.length} ${P.unit}ล่าสุด`)}
         ${chartCard('c-stage', 'Average days in each stage', 'ระยะเวลาเฉลี่ยของแต่ละขั้นตอน')}
         ${chartCard('c-prop-status', 'สถานะ Proposal', 'ทุกงานตาม Proposal Status List · คลิกแถบเพื่อเปิดหน้า Proposal')}
       </div>
@@ -91,17 +157,17 @@
         ${V.tile({ label: 'Portfolio CPI', tag: 'Cost', value: U.ratio(pCPI), sub: U.badge(U.health(pCPI), U.healthLabel[U.health(pCPI)]), tip: 'CPI = EV / AC (Earned Value ÷ Actual Cost)' })}
         ${V.tile({ label: 'Quantity progress', tag: 'Quantity', value: U.pct(PM.sum(rows, (r) => r.m.act * r.p.contractValue) / (PM.sum(rows, (r) => r.p.contractValue) || 1)), sub: 'weighted by contract value' })}
         ${V.tile({ label: 'Open NCR', tag: 'Quality', value: openNcr, sub: openNcr ? U.badge(rows.some((r) => r.m.ncrCriticalOpen) ? 'critical' : 'warning', `${PM.sum(rows, (r) => r.m.ncrCriticalOpen)} critical`) : U.badge('good', 'None open') })}
-        ${V.tile({ label: 'LTIFR (12m)', tag: 'Safety', value: U.num(ltifr, 2), sub: `${U.num(mh12)} man-hours · LTI ${lti12}`, tip: 'LTIFR = LTI × 1,000,000 / man-hours' })}
+        ${V.tile({ label: `LTIFR (${per === 'year' ? pd.from.slice(0, 4) : U.month(safMonths[0])})`, tag: 'Safety', value: U.num(ltifr, 2), sub: `${U.num(mh12)} man-hours · LTI ${lti12}`, tip: `LTIFR = LTI × 1,000,000 / man-hours${per === 'week' ? '\nข้อมูล Safety บันทึกรายเดือน — แสดงของเดือนที่สัปดาห์นี้อยู่' : ''}` })}
       </div>
       <div class="grid cols-2">
         ${chartCard('c-progress', 'ความคืบหน้าแต่ละโครงการ', 'แท่ง = ทำได้จริง · เส้นดำ = ตามแผน ณ วันนี้ · คลิกเพื่อเปิดโครงการ')}
         ${chartCard('c-health', 'สุขภาพโครงการ SPI × CPI', 'จุดละ 1 โครงการ · ขวาบน = ตามแผนและในงบ · ซ้ายล่างสีแดง = ช้าและเกินงบ ต้องดูก่อน · คลิกจุดเพื่อเปิดโครงการ')}
         ${fin ? `${chartCard('c-scurve', 'ต้นทุนสะสมทุกโครงการ Active', 'PV ตามแผน · EV มูลค่างานที่ทำได้ · AC จ่ายจริง')}
-        ${chartCard('c-spend', 'ค่าใช้จ่ายรายเดือน', 'ผลรวมรายการค่าใช้จ่ายทุกโครงการ 12 เดือน แยกตาม phase')}
+        ${chartCard('c-spend', `ค่าใช้จ่าย${P.label}`, `ผลรวมรายการค่าใช้จ่ายทุกโครงการ ${tr.length} ${P.unit}ล่าสุด แยกตาม phase`)}
         ${chartCard('c-actual', 'Actual cost เทียบ Plan cost', 'โครงการ Active · เส้นดำ = Plan cost (งบ) · คลิกเพื่อเปิดค่าใช้จ่าย')}
         <div class="card" id="d-overrun">${overrunCard(overrun)}</div>` : ''}
         ${chartCard('c-ncr', 'NCR ของแต่ละโครงการ', 'เปิดอยู่ / ปิดแล้ว')}
-        ${chartCard('c-safety', 'เหตุการณ์ความปลอดภัยต่อเดือน', 'ทุกโครงการ 12 เดือน · สีเข้มขึ้น = รุนแรงขึ้น')}
+        ${chartCard('c-safety', per === 'year' ? 'เหตุการณ์ความปลอดภัยรายปี' : 'เหตุการณ์ความปลอดภัยต่อเดือน', `ทุกโครงการ ${per === 'year' ? `${tr.length} ปีล่าสุด` : '12 เดือนล่าสุด'}${per === 'week' ? ' (ข้อมูล Safety บันทึกรายเดือน)' : ''} · สีเข้มขึ้น = รุนแรงขึ้น`)}
       </div>
       ${tableBox('สถานะโครงการ', projectTable(rows))}
       ${fin ? `<div id="d-overrun-table">${tableBox('ต้นทุนเกินงบ', overrunTable(overrunList(overrun)))}</div>` : ''}
@@ -116,9 +182,9 @@
       </div>
       ${tableBox('PO ที่ต้องติดตาม (เลยกำหนด / ต้องส่งใน 14 วัน)', PM.poTable(poWatch, { compact: true, empty: 'ไม่มี PO ที่ต้องติดตาม' }), 'd-po-watch')}
 
-      ${seesResources ? `<div class="section-h" id="sec-res"><span class="idx">4</span><h2>Resource Utilization</h2><p>4 สัปดาห์ล่าสุด · Level & Timesheet</p><span class="spacer"></span><a href="#/resources">เปิด Resources →</a></div>
+      ${seesResources ? `<div class="section-h" id="sec-res"><span class="idx">4</span><h2>Resource Utilization</h2><p>${esc(pl)} · Level & Timesheet</p><span class="spacer"></span><a href="#/resources">เปิด Resources →</a></div>
       <div class="grid cols-5">
-        ${V.tile({ label: 'Weekly Plan สัปดาห์นี้', tag: 'PPC', value: U.pct(wp.ppc), sub: wp.total ? `${wp.done}/${wp.total} งานเสร็จ · <a href="#/weekly">เปิด Weekly Plan →</a>` : '<a href="#/weekly">ยังไม่มีแผน — วางแผนงาน →</a>' })}
+        ${V.tile({ label: per === 'week' ? (current ? 'Weekly Plan สัปดาห์นี้' : 'Weekly Plan สัปดาห์นั้น') : `Weekly Plan ทั้ง${P.unit}`, tag: 'PPC', value: U.pct(wp.ppc), sub: wp.total ? `${wp.done}/${wp.total} งานเสร็จ · <a href="#/weekly">เปิด Weekly Plan →</a>` : '<a href="#/weekly">ยังไม่มีแผน — วางแผนงาน →</a>' })}
         ${V.tile({ label: 'Utilization', value: U.pct(ut.total.util), sub: 'Billable ÷ Available hours' })}
         ${V.tile({ label: 'Billable hours', value: U.num(ut.total.billable), sub: `Project ${U.num(ut.total.project)} · Bidding ${U.num(ut.total.bid)}` })}
         ${V.tile({ label: 'Over / under allocated', value: `${over} <small>/ ${under}</small>`, sub: `${over ? U.badge('critical', over + ' over 105%') : U.badge('good', 'no overload')}` })}
@@ -126,14 +192,20 @@
       </div>
       <div class="grid cols-2">
         ${chartCard('c-level', 'Utilization by level', 'เส้นดำ = Target ของแต่ละ level')}
-        ${chartCard('c-hours', 'Hours by category', 'ชั่วโมงจาก Timesheet แยกตามประเภท (4 สัปดาห์)')}
-        ${chartCard('c-ppc', 'PPC — 8 สัปดาห์ล่าสุด', 'งานที่เสร็จ ÷ งานในแผน · เป้า ≥ 80%')}
-        ${chartCard('c-people', 'ภาระงานสูงสุด 8 คน', 'Utilization 4 สัปดาห์ · เส้นดำ = เป้า · สีแดง = เกิน 105%')}
+        ${chartCard('c-hours', 'Hours by category', `ชั่วโมงจาก Timesheet แยกตามประเภท · ${pl}`)}
+        ${chartCard('c-ppc', 'PPC — 8 สัปดาห์ล่าสุด', `งานที่เสร็จ ÷ งานในแผน · ถึงสัปดาห์ ${U.date(PM.monday(upto))} · เป้า ≥ 80%`)}
+        ${chartCard('c-people', 'ภาระงานสูงสุด 8 คน', `Utilization ${pl} · เส้นดำ = เป้า · สีแดง = เกิน 105%`)}
       </div>` : ''}`;
 
     el.onclick = (e) => {
       if (e.target.closest('[data-action="dash-report"]')) { PM.dashboardReport(); return; } // report.js
       if (e.target.closest('[data-open-bell]')) { e.stopPropagation(); if (PM.notify) PM.notify.open(); return; } // stop: the page click would close it again
+      // the period: week / month / year · step back and forward · back to now (the whole page follows)
+      const perSeg = e.target.closest('[data-seg="dashper"]');
+      if (perSeg) { state.per = perSeg.dataset.val; state.at = current ? T : PM.min(upto, T); PM.views.dashboard(el); return; }
+      const step = e.target.closest('[data-per-step]');
+      if (step && !step.disabled) { state.at = PM.min(shiftAt(per, pd.from, Number(step.dataset.perStep)), T); PM.views.dashboard(el); return; }
+      if (e.target.closest('[data-per-now]')) { state.at = T; PM.views.dashboard(el); return; }
       const seg = e.target.closest('[data-seg="overrun"]');
       if (seg) {
         state.overrun = seg.dataset.val;
@@ -152,20 +224,38 @@
     };
 
     /* ---------- 1 · bidding ---------- */
-    const months = PM.months(PM.addDays(T, -334).slice(0, 7), T.slice(0, 7));
-    const inMonth = (fn) => months.map((m) => db.bids.filter((b) => b.dates.inquiry.slice(0, 7) === m && fn(b)).length);
+    /* ---------- 0 · the period in figures ---------- */
+    PM.charts.columns(document.getElementById('c-sum-flow'), {
+      categories: tr.map((b) => b.label), label: 'Bids by period',
+      series: [
+        { name: 'Inquiry เข้า', color: 'var(--s1)', values: tr.map((b) => db.bids.filter((x) => inP(x.dates.inquiry, b)).length) },
+        { name: 'ยื่นใบเสนอราคา', color: 'var(--s2)', values: tr.map((b) => db.bids.filter((x) => inP(x.dates.submit, b)).length) },
+        { name: 'ชนะ', color: 'var(--s3)', values: tr.map((b) => db.bids.filter((x) => x.result === 'won' && inP(x.resultDate, b)).length) },
+      ],
+    });
+    PM.charts.columns(document.getElementById('c-sum-work'), {
+      categories: tr.map((b) => b.label), label: 'POs and NCRs by period',
+      series: [
+        { name: 'PO ที่ออก', color: 'var(--s1)', values: tr.map((b) => (db.pos || []).filter((x) => PM.poIsCommitted(x) && inP(x.poDate, b)).length) },
+        { name: 'NCR เปิดใหม่', color: 'var(--s2)', values: tr.map((b) => db.ncrs.filter((x) => inP(x.date, b)).length) },
+        { name: 'NCR ปิด', color: 'var(--s-neutral)', values: tr.map((b) => db.ncrs.filter((x) => inP(x.closedDate, b)).length) },
+      ],
+    });
+
+    /* ---------- 1 · bidding ---------- */
+    const inBucket = (fn) => tr.map((b) => db.bids.filter((x) => inP(x.dates.inquiry, b) && fn(x)).length);
     PM.charts.hbars(document.getElementById('c-stages'), {
       items: PM.BID_STAGES.map((s, i) => {
         const inStage = allPending.filter((b) => b.stage === s.key), money = V.bidSum(inStage);
         return { label: s.label, sub: s.th, value: inStage.length, display: `${inStage.length} งาน`, href: '#/bidding/' + s.key, tip: `${s.label}: ${inStage.length} งาน${money ? ` · ${money}` : ''}\nเฉลี่ยในขั้นนี้ ${U.days(bs.stageDays[i].avg)}` };
-      }).concat([{ label: 'Award', sub: 'ชนะ 12 เดือน', value: bs.won, display: `${bs.won} งาน`, href: '#/bidding/award', tip: `ชนะ ${bs.won} จาก ${bs.won + bs.lost} งานที่ประกาศผล\nWin rate ${U.pct(bs.winRate)}` }]),
+      }).concat([{ label: 'Award', sub: `ชนะ · ${pl}`, value: bs.won, display: `${bs.won} งาน`, href: '#/bidding/award', tip: `ชนะ ${bs.won} จาก ${bs.won + bs.lost} งานที่ประกาศผล\nWin rate ${U.pct(bs.winRate)}` }]),
     });
     PM.charts.columns(document.getElementById('c-inq'), {
-      categories: months.map(U.month), label: 'Inquiries per month',
+      categories: tr.map((b) => b.label), label: 'Inquiries by period',
       series: [
-        { name: 'Won', color: 'var(--s1)', values: inMonth((b) => b.result === 'won') },
-        { name: 'Lost / No-bid', color: 'var(--s2)', values: inMonth((b) => b.result === 'lost' || b.result === 'nobid') },
-        { name: 'In progress', color: 'var(--s-neutral)', values: inMonth((b) => b.result === 'pending') }, // not decided yet → quiet gray
+        { name: 'Won', color: 'var(--s1)', values: inBucket((b) => b.result === 'won') },
+        { name: 'Lost / No-bid', color: 'var(--s2)', values: inBucket((b) => b.result === 'lost' || b.result === 'nobid') },
+        { name: 'In progress', color: 'var(--s-neutral)', values: inBucket((b) => b.result === 'pending') }, // not decided yet → quiet gray
       ],
     });
     PM.charts.hbars(document.getElementById('c-stage'), {
@@ -189,10 +279,10 @@
     if (fin) drawCostCharts();
     function drawCostCharts() {
     drawPortfolioCurve(rows, T);
-    const spend = (db.costs || []).filter((c) => c.date.slice(0, 7) >= months[0] && c.date <= T && PM.costCounts(c));
+    const spend = (db.costs || []).filter((c) => c.date >= tr[0].from && c.date <= T && PM.costCounts(c));
     PM.charts.columns(document.getElementById('c-spend'), {
-      categories: months.map(U.month), fmt: U.money, axisFmt: U.money, label: 'Monthly spend',
-      series: PM.PHASES.map((ph, i) => ({ name: ph.label, color: `var(--s${i + 1})`, values: months.map((ym) => PM.sum(spend.filter((c) => c.phase === ph.key && c.date.slice(0, 7) === ym), (c) => Number(c.amount) || 0)) })),
+      categories: tr.map((b) => b.label), fmt: U.money, axisFmt: U.money, label: 'Spend by period',
+      series: PM.PHASES.map((ph, i) => ({ name: ph.label, color: `var(--s${i + 1})`, values: tr.map((b) => PM.sum(spend.filter((c) => c.phase === ph.key && inP(c.date, b)), (c) => Number(c.amount) || 0)) })),
     });
     PM.charts.hbars(document.getElementById('c-actual'), {
       items: rows.map((r) => ({
@@ -211,9 +301,12 @@
         { name: 'ปิดแล้ว', color: 'var(--s-neutral)', values: rows.map((r) => r.m.ncrTotal - r.m.ncrOpen) },
       ],
     }); else document.getElementById('c-ncr').innerHTML = '<p class="empty">ยังไม่มีโครงการ</p>';
-    const sumBy = (k) => months.map((ym) => PM.sum(saf12.filter((s) => s.month === ym), (s) => s[k] || 0));
+    // safety is kept per month: monthly bars (12 months to the period shown) · yearly bars in year view
+    const safB = per === 'year' ? tr.map((b) => ({ label: b.label, has: (ym) => ym.slice(0, 4) === b.key }))
+      : PM.months(addMonths(upto, -11).slice(0, 7), upto.slice(0, 7)).map((ym) => ({ label: U.month(ym), has: (x) => x === ym }));
+    const sumBy = (k) => safB.map((b) => PM.sum(db.safety.filter((s) => b.has(s.month)), (s) => s[k] || 0));
     PM.charts.columns(document.getElementById('c-safety'), {
-      categories: months.map(U.month), label: 'Safety incidents',
+      categories: safB.map((b) => b.label), label: 'Safety incidents',
       series: [
         { name: 'Near miss', color: 'var(--seq-3)', values: sumBy('nearMiss') }, { name: 'First aid', color: 'var(--seq-4)', values: sumBy('firstAid') },
         { name: 'Recordable', color: 'var(--seq-5)', values: sumBy('recordable') }, { name: 'LTI', color: 'var(--seq-6)', values: sumBy('lti') },
@@ -269,7 +362,7 @@
         { name: 'Leave', value: ut.total.leave, color: 'var(--s4)' },
       ],
     });
-    const weeks = Array.from({ length: 8 }, (_, i) => PM.addDays(PM.monday(T), (i - 7) * 7));
+    const weeks = Array.from({ length: 8 }, (_, i) => PM.addDays(PM.monday(upto), (i - 7) * 7));
     const ppc = weeks.map((w) => { const s = PM.planStats((db.plans || []).filter((x) => x.week === w)); return s.total && s.ppc != null ? Math.round(s.ppc * 100) : null; });
     PM.charts.lines(document.getElementById('c-ppc'), {
       labels: weeks.map((w) => `${w.slice(8)}/${w.slice(5, 7)}`), tipTitle: weeks.map((w) => `สัปดาห์ ${U.date(w)}`), yMax: 100, height: 230, ref: { value: 80, label: 'เป้า 80%' },
@@ -284,6 +377,40 @@
       })),
     });
   };
+
+  /* section 0: what happened in the period, each figure next to the same span of the period before.
+     Money only for those who may see it (bid value: PM.seesBidValues · costs: project finance) */
+  function periodSummary(db, pd, upto, pv, prevLabel) {
+    const cur = { from: pd.from, to: upto };
+    const both = (fn) => [fn(cur), fn(pv)];
+    const bids = (fn) => both((p) => db.bids.filter((b) => fn(b, p)));
+    const [inq, inq0] = bids((b, p) => inP(b.dates.inquiry, p));
+    const [sub, sub0] = bids((b, p) => inP(b.dates.submit, p));
+    const [won, won0] = bids((b, p) => b.result === 'won' && inP(b.resultDate, p));
+    const [lost] = bids((b, p) => (b.result === 'lost' || b.result === 'nobid') && inP(b.resultDate, p));
+    const [pos, pos0] = both((p) => (db.pos || []).filter((x) => PM.poIsCommitted(x) && inP(x.poDate, p)));
+    const [ncrO, ncrO0] = both((p) => db.ncrs.filter((x) => inP(x.date, p)));
+    const [ncrC] = both((p) => db.ncrs.filter((x) => inP(x.closedDate, p)));
+    const amt = (list) => PM.sum(list, (x) => Number(x.amount) || 0);
+    const tiles = [
+      { label: 'Inquiry เข้า', tag: 'Bidding', value: inq.length, sub: delta(inq.length, inq0.length, null, prevLabel, true), icon: 'inquiry' },
+      { label: 'ยื่นใบเสนอราคา', tag: 'Bidding', value: sub.length, sub: delta(sub.length, sub0.length, null, prevLabel, true), icon: 'submit' },
+      { label: 'ชนะงาน', tag: 'Award', value: `${won.length} <small>/ ${won.length + lost.length} ประกาศผล</small>`,
+        sub: [V.bidSum(won) ? `มูลค่า ${V.bidSum(won)}` : '', delta(won.length, won0.length, null, prevLabel, true)].filter(Boolean).join('<br>'), icon: 'award' },
+      { label: 'PO ที่ออก', tag: 'Purchase', value: pos.length, sub: [`มูลค่า ${U.money(amt(pos))}`, delta(pos.length, pos0.length, null, prevLabel)].join('<br>'), icon: 'truck' },
+    ];
+    if (PM.seesProjectFinance()) {
+      const [cost, cost0] = both((p) => (db.costs || []).filter((c) => inP(c.date, p) && PM.costCounts(c)));
+      tiles.push({ label: 'ค่าใช้จ่ายที่บันทึก', tag: 'Cost', value: U.money(amt(cost)), sub: `${cost.length} รายการ<br>${delta(amt(cost), amt(cost0), U.money, prevLabel)}`, icon: 'coins' });
+    }
+    tiles.push({ label: 'NCR เปิดใหม่', tag: 'Quality', value: `${ncrO.length} <small>· ปิด ${ncrC.length}</small>`, sub: delta(ncrO.length, ncrO0.length, null, prevLabel, false), icon: 'quality' });
+    if (PM.can('resource.view')) {
+      const hrs = (p) => PM.sum(db.timesheets.filter((t) => t.kind !== 'ot' && inP(t.date, p)), (t) => Number(t.hours) || 0);
+      const [h, h0] = both(hrs);
+      tiles.push({ label: 'ชั่วโมงที่บันทึก', tag: 'Timesheet', value: `${U.num(h)} <small>ชม.</small>`, sub: delta(h, h0, U.num, prevLabel), icon: 'clock' });
+    }
+    return { tiles };
+  }
 
   /* every active project's cumulative PV / EV / AC added up, month by month (a project holds its last value after it ends) */
   function drawPortfolioCurve(rows, T) {

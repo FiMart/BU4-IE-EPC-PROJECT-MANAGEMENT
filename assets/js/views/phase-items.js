@@ -5,6 +5,8 @@
    Engineering documents also have "Return" (sent back by the client with comments): sending it again bumps the revision (A → B, 0 → 1),
    and every status change is kept in the item's log (a simple transmittal history).
    Data: p.phaseItems = [{ id, phase, no, name, rev, status (todo · wip · review · return · done), owner, due, doneDate, ref, comment, note, files, log: [{ date, status, rev }] }]
+   A line can come from a vendor document (vdrl.js: vdrlId · vdrlAuto when vdrl.js made it · vdrlInfo = vendor · PO): its Rev, status,
+   due date, Transmittal and comment follow the document, the row opens the document, and a Transmittal sent from here is recorded in it.
    Stored inside the project — no SQL needed. Files: Storage <projectId>/items/<itemId> (open to every role). */
 (function () {
   const U = PM.ui, esc = U.esc;
@@ -101,6 +103,8 @@
 
   /* ---------- the card under the phase cards ---------- */
   PM.phaseItemsCard = function (p, key) {
+    // vendor documents (vdrl.js) not in their register yet — e.g. added on another computer: put them in once
+    if (PM.vdrlSync && PM.can('vdrl.edit') && (PM.db.vdrl || []).some((d) => d.projectId === p.id && !(p.phaseItems || []).some((x) => x.vdrlId === d.id))) { PM.vdrlSync(p); PM.save(); }
     const c = cfg(key), def = PM.PHASES.find((x) => x.key === key), T = PM.today();
     const list = itemsOf(p, key).sort((a, b) => String(a.no).localeCompare(String(b.no), undefined, { numeric: true }));
     const st = PM.phaseItemStats(p, key, T);
@@ -139,11 +143,11 @@
         return `<tr class="click${x.status === 'return' ? ' pi-returned' : ''}" data-pi-row="${esc(x.id)}">
           ${canEdit ? `<td class="pi-sel"><input type="checkbox" data-pi-pick="${esc(x.id)}" aria-label="เลือก ${esc(x.no)}"${picked.has(x.id) ? ' checked' : ''}></td>` : ''}
           <td class="nowrap"><b>${esc(x.no)}</b></td>
-          <td>${esc(x.name)}${x.status === 'return' && x.comment ? `<small class="pi-comment">↩ ความเห็นลูกค้า: ${esc(x.comment)}</small>` : ''}${x.note ? `<small>${esc(x.note)}</small>` : ''}</td>
+          <td>${esc(x.name)}${x.vdrlId ? `<small><span class="chip pi-vd" data-tip="รายการนี้มาจากแท็บเอกสารผู้ขาย — Rev · สถานะ · Transmittal · Code อัปเดตตามเอกสารผู้ขาย · คลิกเพื่อเปิด">เอกสารผู้ขาย</span>${x.vdrlInfo ? ` ${esc(x.vdrlInfo)}` : ''}</small>` : ''}${x.status === 'return' && x.comment ? `<small class="pi-comment">↩ ความเห็นลูกค้า: ${esc(x.comment)}</small>` : ''}${x.note ? `<small>${esc(x.note)}</small>` : ''}</td>
           ${c.rev ? `<td>${esc(x.rev || '–')}</td>` : ''}
           <td>${esc(x.owner ? PM.common.personName(x.owner, x.owner) : '–')}</td>
           <td class="nowrap">${U.date(x.due)}${late ? `<small class="neg">เลย ${PM.diffDays(x.due, T)} วัน</small>` : ''}</td>
-          <td>${canEdit ? `<select class="pi-st st-${x.status || 'todo'}" data-pi-st="${esc(x.id)}" aria-label="สถานะ">${steps.map((s) => `<option value="${s}"${(x.status || 'todo') === s ? ' selected' : ''}>${esc(c.steps[s])}</option>`).join('')}</select>`
+          <td>${canEdit && !x.vdrlId ? `<select class="pi-st st-${x.status || 'todo'}" data-pi-st="${esc(x.id)}" aria-label="สถานะ">${steps.map((s) => `<option value="${s}"${(x.status || 'todo') === s ? ' selected' : ''}>${esc(c.steps[s])}</option>`).join('')}</select>`
             : U.badge(STEP_LEVEL[x.status || 'todo'], c.steps[x.status || 'todo'])}</td>
           <td class="nowrap">${x.doneDate ? U.date(x.doneDate) : '–'}</td>
           <td>${esc(x.ref || '')}</td>
@@ -201,7 +205,9 @@
           if (x.status === prev) logStep(x); // the sending is in the history even when the status stays
           x.log[x.log.length - 1].tr = f.no;
           x.ref = f.no;
+          if (x.vdrlId && PM.vdrlIssued) PM.vdrlIssued(p, x.vdrlId, f.no, f.date); // a vendor document: the issue and TR go into it (vdrl.js)
         });
+        if (items.some((x) => x.vdrlId) && PM.vdrlSync) PM.vdrlSync(p);
         const t = { id: PM.uid('TR'), no: f.no, date: f.date, to: f.to, attn: f.attn, purpose: f.purpose, via: f.via, note: f.note,
           items: items.map((x) => ({ id: x.id, phase: x.phase, no: x.no, name: x.name, rev: x.rev || '' })),
           createdBy: u ? u.id : '', createdByName: u ? PM.auth.displayName(u) : '' };
@@ -314,7 +320,12 @@
       return true;
     }
     const row = e.target.closest('[data-pi-row]');
-    if (row) { const x = (p.phaseItems || []).find((i) => i.id === row.dataset.piRow); if (x) itemForm(p, x.phase, x, rerender); return true; }
+    if (row) {
+      const x = (p.phaseItems || []).find((i) => i.id === row.dataset.piRow);
+      if (x && x.vdrlId && PM.vdrlEdit && PM.find('vdrl', x.vdrlId)) PM.vdrlEdit(p, x.vdrlId, rerender); // the vendor document is where it is kept
+      else if (x) itemForm(p, x.phase, x, rerender);
+      return true;
+    }
     return false;
   };
 

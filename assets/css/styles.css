@@ -1518,6 +1518,40 @@ label.avl-chk small { color: var(--muted); font-size: 12px; }
 .avl-imp-opts input[type=checkbox] { width: 16px; height: 16px; margin: 0 6px 0 0; vertical-align: -3px; }
 .avl-imp tr.avl-imp-d td { background: var(--accent-soft); color: var(--accent); font-weight: 700; }
 .avl-imp td small { display: block; }
+/* vendor documents (vdrl.js) · ITP (itp.js) · warranty & service (warranty.js) · lessons (lessons.js) · LINE (line.js) */
+.vd-table td small, .itp-table td small { display: block; }
+.itp-table tr.avl-d td { background: var(--accent-soft); color: var(--accent); font-weight: 700; padding-top: 8px; padding-bottom: 8px; }
+.itp-table tr.avl-d td small { display: inline; margin-left: 8px; font-weight: 500; }
+.vd-table[hidden] { display: none; }
+.vd-revs-h { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 6px; }
+.vd-revs td { padding: 4px 4px; }
+.vd-revs input { height: 32px; padding: 0 6px; font-size: 13px; width: 100%; }
+.vd-sheets { display: flex; flex-direction: column; gap: 6px; margin: 4px 0 10px; }
+.vd-empty { padding: 26px 16px; text-align: center; display: flex; flex-direction: column; align-items: center; gap: 10px; }
+select.pi-st.itp-st-pending { background-color: var(--surface-2); color: var(--ink-2); }
+select.pi-st.itp-st-pass { background-color: var(--good-bg); color: var(--good-text); }
+select.pi-st.itp-st-fail { background-color: var(--critical-bg); color: var(--critical-text); }
+select.pi-st.itp-st-na { background-color: var(--surface-2); color: var(--muted); }
+.itp-fail-act { display: flex; gap: 8px; flex-wrap: wrap; }
+select.pi-st.sv-st-open { background-color: var(--critical-bg); color: var(--critical-text); }
+select.pi-st.sv-st-progress { background-color: var(--warning-bg); color: var(--warning-text); }
+select.pi-st.sv-st-waiting { background-color: var(--accent-soft); color: var(--accent); }
+select.pi-st.sv-st-closed { background-color: var(--good-bg); color: var(--good-text); }
+.ll-list { display: flex; flex-direction: column; gap: 10px; }
+.ll-item { border: 1px solid var(--border); border-radius: 10px; padding: 12px 14px; background: var(--surface); }
+.ll-item:hover { border-color: var(--border-strong); }
+.ll-h { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 6px; }
+.ll-t { display: block; font-size: 15px; color: var(--ink); }
+.ll-item p { margin: 6px 0 0; color: var(--ink-2); font-size: 14px; line-height: 1.6; white-space: pre-line; }
+.ll-item .ll-rec { color: var(--ink); }
+.ln-setup summary { padding: 14px 18px; cursor: pointer; }
+.ln-steps { margin: 0; padding-left: 20px; line-height: 1.9; font-size: 14px; }
+.ln-steps code, .st-line code { font-size: 12.5px; background: var(--surface-2); padding: 1px 5px; border-radius: 4px; overflow-wrap: anywhere; }
+.ln-actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.ln-preview { margin: 0 18px 16px; padding: 12px 14px; background: var(--surface-2); border-radius: 10px; white-space: pre-wrap; font-family: var(--font); font-size: 13.5px; line-height: 1.6; max-height: 420px; overflow: auto; }
+.ln-add { display: flex; gap: 10px; align-items: flex-end; flex-wrap: wrap; }
+.ln-add label { display: flex; flex-direction: column; gap: 4px; flex: 1 1 200px; }
+.ln-add label span { font-size: 13px; color: var(--muted); }
 .avl-imp th:first-child, .avl-imp td:first-child { width: 34px; padding-right: 0; }
 .avl-imp td:first-child input { width: 17px; height: 17px; margin: 0; }
 .avl-imp td.avl-rm, .avl-imp td:nth-child(5) { min-width: 160px; }

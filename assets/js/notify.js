@@ -21,7 +21,8 @@
     { key: 'other', label: 'อื่น ๆ', icon: 'info' },
   ];
   const TOPIC_OF = { apr: 'approval', spi: 'schedule', ms: 'schedule', ms7: 'schedule', task: 'schedule', wp: 'schedule', over: 'money', fc: 'money', inv: 'money', vo: 'money',
-    po: 'purchase', po7: 'purchase', avl: 'purchase', ret: 'docs', risk: 'quality', riskd: 'quality', ncr: 'quality', pl: 'quality', act: 'team', daily: 'team', ts: 'team', bid: 'bid', bid3: 'bid' };
+    po: 'purchase', po7: 'purchase', avl: 'purchase', ret: 'docs', risk: 'quality', riskd: 'quality', ncr: 'quality', pl: 'quality', act: 'team', daily: 'team', ts: 'team', bid: 'bid', bid3: 'bid',
+    vd: 'docs', itp: 'quality', itph: 'schedule', sv: 'quality', wty: 'other', retn: 'money', loss: 'bid' };
   const topicOf = (x) => x.topic || TOPIC_OF[String(x.id).split('-')[0]] || 'other';
   const view = { tab: 'all' };
   let items = [], timer = null;
@@ -88,6 +89,19 @@
         if (av.off.length) add({ id: `avl-po-${p.id}-${av.off.length}`, level: 'warning', icon: 'truck', title: `${p.code} มี PO นอก AVL ${av.off.length} ใบ`, sub: `มูลค่า ${U.money(av.offValue)} · ${av.off.slice(0, 2).map((x) => x.po.supplier).join(', ')}`, href: at('avl'), mine });
         if (av.waiting) add({ id: `avl-wait-${p.id}-${av.waiting}`, level: 'info', icon: 'check', title: `${p.code} AVL รอลูกค้าอนุมัตินาน ${av.waiting} ราย`, sub: `${p.name} — ส่งขออนุมัติเกิน 14 วัน`, href: at('avl'), mine });
       }
+      // vendor documents (vdrl.js): one line per kind per project, with the count
+      if (PM.vdrlStats) {
+        const vd = PM.vdrlStats(p, T);
+        if (vd.latePlan) add({ id: `vd-plan-${p.id}-${vd.latePlan}`, level: 'warning', icon: 'proposal', title: `${p.code} เอกสารผู้ขายเลยกำหนดส่ง ${vd.latePlan} ฉบับ`, sub: vd.all.filter((x) => x.s.key === 'plan' && x.s.late).slice(0, 2).map((x) => x.d.title).join(', '), href: at('vdrl'), mine });
+        if (vd.lateResubmit) add({ id: `vd-re-${p.id}-${vd.lateResubmit}`, level: 'warning', icon: 'proposal', title: `${p.code} เอกสารต้องแก้ไขส่งใหม่เลยกำหนด ${vd.lateResubmit} ฉบับ`, sub: vd.all.filter((x) => x.s.key === 'resubmit' && x.s.late).slice(0, 2).map((x) => `${x.d.title} (${x.s.rev.code})`).join(', '), href: at('vdrl'), mine });
+        if (vd.lateReview) add({ id: `vd-rv-${p.id}-${vd.lateReview}`, level: 'info', icon: 'proposal', title: `${p.code} ลูกค้ายังไม่ตอบกลับเอกสาร ${vd.lateReview} ฉบับ`, sub: 'เกินกำหนดตอบ — ติดตามลูกค้า', href: at('vdrl'), mine });
+      }
+      // inspection & test plan (itp.js): Hold / Witness coming (invite the client) · fails not fixed yet
+      if (PM.itpStats) {
+        const it = PM.itpStats(p, T);
+        it.soon.forEach((x) => add({ id: `itph-${x.id}-${x.planDate}`, level: x.point === 'H' ? 'warning' : 'info', icon: 'calendar', title: `${x.point === 'H' ? 'Hold point' : 'Witness'} ใน ${PM.diffDays(T, x.planDate)} วัน: ${x.activity}`, sub: `${p.code} · ${U.date(x.planDate)} — แจ้งลูกค้าให้มาตรวจ`, href: at('itp'), mine, date: x.planDate }));
+        if (it.failOpen) add({ id: `itp-fail-${p.id}-${it.failOpen}`, level: 'warning', icon: 'quality', title: `${p.code} ITP ไม่ผ่าน ยังไม่ปิด ${it.failOpen} รายการ`, sub: it.all.filter(PM.itpFailOpen).slice(0, 2).map((x) => x.activity).join(', '), href: at('itp'), mine });
+      }
       // daily site report missing for the last working day (projects that keep daily reports — daily.js)
       const dm = PM.dailyMissing && PM.dailyMissing(p, T);
       if (dm) add({ id: `daily-${p.id}-${dm}`, level: 'info', icon: 'calendar', title: `${p.code} ยังไม่มีรายงานประจำวัน ${U.date(dm)}`, sub: `${p.name} — เขียนที่แท็บรายงานประจำวัน`, href: at('daily'), mine, date: dm });
@@ -95,6 +109,15 @@
         .forEach((n) => add({ id: `ncr-${n.id}`, level: 'critical', icon: 'quality', title: `NCR ระดับวิกฤต: ${n.no}`, sub: `${p.code} · ${n.description || ''}`, href: at('quality'), mine, date: n.date }));
       (db.ncrs || []).filter((n) => n.projectId === p.id && n.status === 'open' && n.severity !== 'Critical' && n.dueDate && n.dueDate < T)
         .forEach((n) => add({ id: `ncrd-${n.id}`, level: 'warning', icon: 'quality', title: `NCR เลยกำหนด: ${n.no}`, sub: `${p.code} · กำหนด ${U.date(n.dueDate)}`, href: at('quality'), mine, date: n.dueDate, topic: 'quality' }));
+    });
+    // after handover (warranty.js) — closed projects too: service requests past their time · warranty ending · retention due back
+    if (PM.warrantyStats) (db.projects || []).forEach((p) => {
+      const mine = mineProject(p), at = `#/projects/${p.id}/warranty`;
+      const w = PM.warrantyStats(p, T);
+      w.late.forEach((x) => add({ id: `sv-${x.id}`, level: x.priority === 'urgent' ? 'critical' : 'warning', icon: 'wrench', title: `ใบแจ้งซ่อมเกินกำหนด: ${x.no} ${x.description}`, sub: `${p.code} · ${p.client || ''} · รับแจ้ง ${U.date(x.date)}`, href: at, mine: mine || (I.name && PM.normName(x.assignee || '') === I.name), date: x.date }));
+      w.soon.forEach(({ w: x, s }) => add({ id: `wty-${x.id}-${s.end}`, level: 'info', icon: 'safety', title: `ประกันใกล้หมด (${s.left} วัน): ${x.item}`, sub: `${p.code} · หมด ${U.date(s.end)} — ตรวจสภาพก่อนหมดประกัน`, href: at, mine, date: s.end }));
+      const r = PM.retentionDue && PM.retentionDue(p, T);
+      if (r && r.ready) add({ id: `retn-${p.id}-${r.due}`, level: 'warning', icon: 'coins', title: `${p.code} หมดประกันแล้ว — ขอคืน Retention ${U.money(r.held)}`, sub: `${p.name} · หมดประกัน ${U.date(r.due)}`, href: `#/projects/${p.id}/billing`, mine, date: r.due });
     });
     // ISO 9001 records: calibration, CAR, documents to review, complaints … (iso.js)
     if (PM.qmsAlerts) PM.qmsAlerts(T, I.name).forEach(add);

@@ -184,6 +184,7 @@
           .then((ok) => { if (ok) V.projectForm(null, b, (p) => (location.hash = '#/projects/' + p.id)); });
       }
       done();
+      if ((a === 'lost' || a === 'nobid') && PM.askLoss) PM.askLoss(b, done); // why — counted on the Lessons page (lessons.js)
       return true;
     }
     if (a === 'convert') { V.projectForm(null, b, (p) => (location.hash = '#/projects/' + p.id)); return true; }

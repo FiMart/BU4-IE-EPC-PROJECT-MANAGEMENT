@@ -16,6 +16,7 @@
     { key: 'org', label: 'องค์กร & การอนุมัติ', sub: 'บริษัท · วงเงินอนุมัติ · OT', icon: 'building' },
     { key: 'users', label: 'ผู้ใช้ & สิทธิ์', sub: 'Role ผู้ใช้ · ตารางสิทธิ์', icon: 'people' },
     { key: 'iso', label: 'ISO 9001', sub: 'เอกสาร · Audit · CAR · สอบเทียบ · ประวัติการแก้ไข', icon: 'quality' },
+    { key: 'line', label: 'แจ้งเตือนผ่าน LINE', sub: 'เรื่องด่วนทุกเช้า · สรุปทุกวันจันทร์', icon: 'info' },
     { key: 'data', label: 'ข้อมูล & Cloud', sub: 'ซิงค์ · สำรอง · Reset', icon: 'database' },
     { key: 'kpi', label: 'สูตร KPI', sub: 'วิธีคำนวณตัวชี้วัด', icon: 'book' },
   ];
@@ -56,6 +57,7 @@
   /* ================= sections ================= */
   const BODY = {
     iso() { return '<div class="st-iso"></div>'; },
+    line() { return '<div class="st-line"></div>'; },
     account() {
       const A = PM.auth, user = A && A.user;
       if (!user) return '<div class="card"><div class="card-b"><p class="empty">ยังไม่ได้เข้าสู่ระบบ</p></div></div>';
@@ -201,6 +203,7 @@
   /* ================= per-section wiring ================= */
   const BIND = {
     iso(el, params) { PM.isoSection(el.querySelector('.st-iso'), params[1]); },
+    line(el) { if (PM.line) PM.line.render(el.querySelector('.st-line')); }, // line.js
     account(el) {
       const A = PM.auth;
       const busy = async (form, fn) => {

@@ -9,15 +9,19 @@
     { key: 'cost', label: 'ค่าใช้จ่าย', icon: 'coins', group: 'ต้นทุนและการเงิน' },
     { key: 'po', label: 'PO', icon: 'truck', group: 'ต้นทุนและการเงิน' },
     { key: 'avl', label: 'AVL ผู้ขาย', icon: 'check', group: 'ต้นทุนและการเงิน' },
+    { key: 'vdrl', label: 'เอกสารผู้ขาย', icon: 'proposal', group: 'ต้นทุนและการเงิน' },
     { key: 'changes', label: 'VO งานเพิ่ม-ลด', icon: 'wrench', group: 'ต้นทุนและการเงิน' },
     { key: 'billing', label: 'งวดเงิน', icon: 'proposal', group: 'ต้นทุนและการเงิน' },
     { key: 'risks', label: 'ความเสี่ยง', icon: 'alert', group: 'หน้างานและทีม' },
     { key: 'quality', label: 'Quality · NCR', icon: 'quality', group: 'หน้างานและทีม' },
+    { key: 'itp', label: 'ITP · FAT/SAT', icon: 'gauge', group: 'หน้างานและทีม' },
     { key: 'daily', label: 'รายงานประจำวัน', icon: 'calendar', group: 'หน้างานและทีม' },
     { key: 'meetings', label: 'ประชุม (MOM)', icon: 'people', group: 'หน้างานและทีม' },
     { key: 'punch', label: 'Punch List', icon: 'tasks', group: 'หน้างานและทีม' },
+    { key: 'warranty', label: 'ประกัน & บริการ', icon: 'wrench', group: 'หน้างานและทีม' },
     { key: 'safety', label: 'Safety', icon: 'safety', group: 'หน้างานและทีม' },
     { key: 'team', label: 'ทีม & ชั่วโมง', icon: 'people', group: 'หน้างานและทีม' },
+    { key: 'lessons', label: 'บทเรียน', icon: 'book', group: 'หน้างานและทีม' },
   ];
   // tabs that are a project's money: BOQ prices · expense ledger · VO values · billing — Admin · Dept Manager · PM · Engineer (roles.js → 'project.finance')
   const MONEY_TABS = ['boq', 'cost', 'changes', 'billing'];
@@ -90,7 +94,7 @@
 
     const tabEl = el.querySelector('#tab');
     const rerender = () => PM.views.project(el, params);
-    ({ overview, timeline: timelineTab, boq: boqTab, changes: (...a) => PM.changesTab(...a), billing: (...a) => PM.billingTab(...a), risks: (...a) => PM.risksTab(...a), daily: (...a) => PM.dailyTab(...a), meetings: (...a) => PM.meetingsTab(...a), punch: (...a) => PM.punchTab(...a), avl: (...a) => PM.avlTab(...a), cost: costTab, quality, safety, team, po: poTab }[tab] || overview)(tabEl, p, m, rerender);
+    ({ overview, timeline: timelineTab, boq: boqTab, changes: (...a) => PM.changesTab(...a), billing: (...a) => PM.billingTab(...a), risks: (...a) => PM.risksTab(...a), daily: (...a) => PM.dailyTab(...a), meetings: (...a) => PM.meetingsTab(...a), punch: (...a) => PM.punchTab(...a), avl: (...a) => PM.avlTab(...a), vdrl: (...a) => PM.vdrlTab(...a), itp: (...a) => PM.itpTab(...a), warranty: (...a) => PM.warrantyTab(...a), lessons: (...a) => PM.lessonsTab(...a), cost: costTab, quality, safety, team, po: poTab }[tab] || overview)(tabEl, p, m, rerender);
     // the tab bar sits right under the header on every tab; the EPC phase cards and their line items open the Overview tab
     if (full) tabEl.insertAdjacentHTML('afterbegin', `${PM.projectUpdateCard(p)}${phaseFlow(p, m, sel)}${PM.phaseItemsCard(p, sel)}`);
 

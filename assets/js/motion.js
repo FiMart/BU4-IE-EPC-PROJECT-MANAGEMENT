@@ -98,6 +98,8 @@
         if (p < 1) requestAnimationFrame(tick);
       };
       requestAnimationFrame(tick);
+      // a tab in the background (or a paused page) does not run animation frames: never leave the number at 0
+      setTimeout(() => { if (node.isConnected && node.nodeValue !== final) node.nodeValue = final; }, dur + 250);
     });
   };
 })();

@@ -182,6 +182,13 @@ assets/js/views/daily.js     รายงานประจำวันหน้
 assets/js/views/punch.js     Punch List (collection punch) + พิมพ์รายการค้าง
 assets/js/views/avl.js       AVL รายชื่อผู้ขายที่ลูกค้าอนุมัติของแต่ละโครงการ (collection avl) แบบ Vendor List: หมวดงาน → รายการ → ผู้ขาย · ประเทศที่ผลิต · เสนอเพิ่ม / COO · ตัดออก + ตรวจ PO นอก AVL + พิมพ์
 assets/js/views/avl-import.js  นำเข้า Vendor List จาก PDF (pdf.js 4.10.38 จาก cdnjs, อ่านในเบราว์เซอร์) / .xlsx / .ods / .csv / วาง: หาหัวตาราง · หมวดงาน · รายการที่ merge · ขีดฆ่า (font / เส้น / mark-up / กล่องขาว) · สีตาม legend · ความเห็นบน PDF
+assets/js/views/vdrl.js      เอกสารผู้ขาย (collection vdrl): VDRL / VMDL / Vendor Print Index · Rev · Transmittal · Code · สถานะและกำหนด · รายการมาตรฐาน · นำเข้า VMDL / VPI ของลูกค้า · Export Excel
+assets/js/views/itp.js       ITP · FAT / SAT / Commissioning (collection itp): จุด Hold / Witness · ผลผ่าน / ไม่ผ่าน → เปิด NCR / Punch · แม่แบบ Metering Skid · พิมพ์
+assets/js/views/warranty.js  ประกัน & บริการหลังส่งมอบ (collections warranty · service): ระยะประกัน · ใบแจ้งซ่อม + กำหนดแก้ · Retention ที่ขอคืนได้
+assets/js/views/lessons.js   บทเรียน (collection lessons) หน้า #/lessons + แท็บโครงการ · เหตุผลที่แพ้ / ไม่ยื่น (bid.loss)
+assets/js/line.js            ตั้งค่า → แจ้งเตือนผ่าน LINE (collection linecfg — Admin เท่านั้น บังคับใน data.sql)
+supabase/functions/line-notify/index.ts  Edge Function: สร้างข้อความเรื่องด่วน / สรุปรายสัปดาห์ (ไม่มีตัวเงิน) แล้ว push เข้า LINE · webhook ตอบรหัสกลุ่ม
+supabase/line.sql            ตั้งเวลาส่ง LINE ด้วย pg_cron + pg_net (จ.–ศ. 08:00 เรื่องด่วน · จันทร์ 08:05 สรุป)
 assets/js/views/meetings.js  บันทึกการประชุม MOM + Action (collection meetings) + พิมพ์ PDF
 assets/js/approvals.js       อนุมัติ PO / ค่าใช้จ่ายที่ถึงวงเงิน (วงเงินใน collection settings id 'approval')
 assets/js/views/sheet-import.js  นำเข้า Proposal / โครงการจาก Excel: อ่าน .xlsx / .ods / .csv ในเบราว์เซอร์ · วางเซลล์จาก Excel · จับคู่คอลัมน์ · แสดงผลก่อนบันทึก · ยกเลิกรอบนำเข้า · รับฟอร์ม Project list

@@ -105,25 +105,34 @@ returns boolean language sql stable security definer set search_path = public as
   select public.can_read_bid_price() or public.can_see_bid_price(owner);
 $$;
 
+-- LINE notification settings (collection 'linecfg': recipients' LINE ids, on / off) — Admin only, read and write.
+-- The Edge Function line-notify reads them with the service role.
+create or replace function public.can_manage_line()
+returns boolean language sql stable security definer set search_path = public as $$
+  select public.is_admin();
+$$;
+
 create policy "records: read"   on public.app_records for select to authenticated using (
   public.has_app_role() and (collection <> 'bidprices' or public.can_read_bid_price() or public.can_see_bid_price(data ->> 'owner'))
   and (collection <> 'bidvalues' or public.can_see_bid_value(id, data ->> 'owner'))
-  and (collection <> 'projfin' or public.can_see_project_finance()));
+  and (collection <> 'projfin' or public.can_see_project_finance())
+  and (collection <> 'linecfg' or public.can_manage_line()));
 create policy "records: insert" on public.app_records for insert to authenticated with check (
   public.can_write_record(collection) and (collection not in ('bidprices', 'bidvalues') or public.can_see_bid_price(data ->> 'owner'))
-  and (collection <> 'projfin' or public.can_see_project_finance()));
+  and (collection <> 'projfin' or public.can_see_project_finance())
+  and (collection <> 'linecfg' or public.can_manage_line()));
 create policy "records: update" on public.app_records for update to authenticated
   using (public.can_write_record(collection) and (collection not in ('bidprices', 'bidvalues') or public.can_see_bid_price(data ->> 'owner'))
-         and (collection <> 'projfin' or public.can_see_project_finance()))
+         and (collection <> 'projfin' or public.can_see_project_finance()) and (collection <> 'linecfg' or public.can_manage_line()))
   with check (public.can_write_record(collection) and (collection not in ('bidprices', 'bidvalues') or public.can_see_bid_price(data ->> 'owner'))
-         and (collection <> 'projfin' or public.can_see_project_finance()));
+         and (collection <> 'projfin' or public.can_see_project_finance()) and (collection <> 'linecfg' or public.can_manage_line()));
 -- Weekly Plan tasks can only be deleted by the person who created them
 -- (tasks without a recorded creator — older data / demo — only by Admin)
 -- A project (with everything in it): Admin, Department Manager & Project Manager only.
 -- A bid: Admin and the Sales who owns it — the only people who may see its price and quotation files, which go with it.
 create policy "records: delete" on public.app_records for delete to authenticated using (
   public.can_write_record(collection) and (collection not in ('bidprices', 'bidvalues') or public.can_see_bid_price(data ->> 'owner'))
-  and (collection <> 'projfin' or public.can_see_project_finance()) and (
+  and (collection <> 'projfin' or public.can_see_project_finance()) and (collection <> 'linecfg' or public.can_manage_line()) and (
     collection <> 'plans'
     or data ->> 'createdBy' = auth.uid()::text
     or (coalesce(data ->> 'createdBy', '') = '' and public.is_admin())
@@ -147,7 +156,7 @@ returns trigger language plpgsql security definer set search_path = public as $$
 begin
   if old.collection = 'projects' then
     delete from public.app_records
-     where (collection in ('ncrs', 'safety', 'pos', 'costs', 'avl', 'punch', 'meetings', 'dailies') and data ->> 'projectId' = old.id)
+     where (collection in ('ncrs', 'safety', 'pos', 'costs', 'avl', 'punch', 'meetings', 'dailies', 'vdrl', 'itp', 'warranty', 'service') and data ->> 'projectId' = old.id)
         or (collection = 'projfin' and id = old.id)
         or (collection in ('timesheets', 'plans') and data ->> 'kind' = 'project' and data ->> 'refId' = old.id);
   elsif old.collection = 'bids' then
@@ -394,10 +403,12 @@ begin
     raise exception 'Only Admin, Department Manager or Project Manager can reset or import data';
   end if;
   perform set_config('app.bulk', '1', true); -- this transaction only: one line in the audit trail, not one per row
-  delete from public.app_records where true;
+  -- the LINE settings belong to Admin: someone else's Reset / Import neither removes nor replaces them
+  delete from public.app_records where collection <> 'linecfg' or public.can_manage_line();
   insert into public.app_records (collection, id, data, ord)
   select r ->> 'collection', r ->> 'id', r -> 'data', coalesce((r ->> 'ord')::bigint, 0)
-  from jsonb_array_elements(payload) as r;
+  from jsonb_array_elements(payload) as r
+  where (r ->> 'collection') <> 'linecfg' or public.can_manage_line();
   get diagnostics n = row_count;
   insert into public.app_audit (actor, actor_name, action, label) values (auth.uid(), public.app_actor_name(), 'replace_all', n || ' records');
   return n;

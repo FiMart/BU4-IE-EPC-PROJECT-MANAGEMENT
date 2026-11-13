@@ -9,7 +9,9 @@
      PO      → files (expenses paid against it stay: they are money spent; they only lose the link) */
 (function () {
   const U = PM.ui;
-  const PROJECT_DATA = [['ncrs', 'NCR'], ['safety', 'Safety'], ['pos', 'PO'], ['costs', 'ค่าใช้จ่าย'], ['avl', 'AVL'], ['punch', 'Punch List'], ['meetings', 'MOM'], ['dailies', 'รายงานประจำวัน']];
+  const PROJECT_DATA = [['ncrs', 'NCR'], ['safety', 'Safety'], ['pos', 'PO'], ['costs', 'ค่าใช้จ่าย'], ['avl', 'AVL'], ['punch', 'Punch List'], ['meetings', 'MOM'], ['dailies', 'รายงานประจำวัน'],
+    ['vdrl', 'เอกสารผู้ขาย (VDRL)'], ['itp', 'ITP · FAT / SAT'], ['warranty', 'ประกัน'], ['service', 'ใบแจ้งซ่อม']];
+  // lessons learned outlive the project: they keep the project's code and name (lessons.js) and only lose the link
   const db = () => PM.db;
   const list = (c) => db()[c] || [];
   const worksOn = (kind, id) => (t) => t.kind === kind && t.refId === id;
@@ -41,6 +43,7 @@
       d.planrules = list('planrules').filter((x) => !worksOn('project', id)(x));
       d.projfin = list('projfin').filter((x) => x.id !== id); // the database removes it too (data.sql cascade)
       list('bids').forEach((b) => { if (b.projectId === id) delete b.projectId; }); // the bid can make a new project
+      list('lessons').forEach((x) => { if (x.projectId === id) x.projectId = ''; }); // the lesson stays, with the code it was written under
       d.projects = list('projects').filter((x) => x.id !== id);
       PM.save();
     },

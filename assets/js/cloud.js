@@ -7,9 +7,10 @@
   const U = PM.ui;
   const C = (PM.cloud = { enabled: false, state: 'idle', blocking: false });
   const TABLE = 'app_records';
-  const COLLS = ['bids', 'projects', 'ncrs', 'safety', 'resources', 'levels', 'timesheets', 'plans', 'pos', 'costs', 'prices', 'settings', 'dailies', 'punch', 'meetings', 'avl', 'qms', 'planrules', 'projfin'];
+  const COLLS = ['bids', 'projects', 'ncrs', 'safety', 'resources', 'levels', 'timesheets', 'plans', 'pos', 'costs', 'prices', 'settings', 'dailies', 'punch', 'meetings', 'avl', 'qms', 'planrules', 'projfin',
+    'vdrl', 'itp', 'warranty', 'service', 'lessons', 'linecfg'];
   /* rows the database shows to some roles only: never parked under 'meta', which every role can read */
-  const SECRET = ['bidprices', 'bidvalues', 'projfin'];
+  const SECRET = ['bidprices', 'bidvalues', 'projfin', 'linecfg'];
   // collections accepted by every version of data.sql
   const LEGACY = ['bids', 'projects', 'ncrs', 'safety', 'resources', 'levels', 'timesheets'];
   /* Collections the cloud table doesn't accept yet (older data.sql): their records are "parked" as
@@ -137,6 +138,8 @@
   const GUARDED = {
     projfin: { fn: 'can_see_project_finance', args: undefined, has: () => (PM.db.projfin || []).length > 0 },
     bidvalues: { fn: 'can_see_bid_value', args: { bid_id: '', owner: '' }, has: () => writesPrices() && (PM.db.bids || []).some((b) => b.value != null) },
+    // LINE settings (line.js): Admin only — data.sql v1.81 adds can_manage_line()
+    linecfg: { fn: 'can_manage_line', args: undefined, has: () => (PM.db.linecfg || []).length > 0 },
   };
   const guardOk = {};
   async function secretReady() {
