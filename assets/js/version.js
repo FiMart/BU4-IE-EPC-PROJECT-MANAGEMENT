@@ -2,9 +2,17 @@
    When the website changes: bump PM.VERSION and add a new entry at the TOP of PM.CHANGELOG.
    type: 'feature' (ฟีเจอร์ใหม่) · 'improve' (ปรับปรุง) · 'fix' (แก้ไข) */
 (function () {
-  PM.VERSION = '1.82.0';
+  PM.VERSION = '1.82.1';
 
   PM.CHANGELOG = [
+    {
+      version: '1.82.1', date: '2026-11-17', type: 'improve', title: 'เอกสารผู้ขาย: Rev 1 · AB · As-Built = Revision Final',
+      items: [
+        'Rev 1 · AB · As-Built (เขียนแบบ Rev.1 · As Built · Final ก็ได้) นับเป็น Revision Final — ส่งแล้วเอกสารปิดเป็น "Final (ฉบับสุดท้าย)" ทันทีโดยไม่ต้องรอลูกค้าตอบ · ถ้าลูกค้าส่งกลับให้แก้ (A2 · A3 · RW · NA) ยังนับเป็น "ต้องแก้ไขส่งใหม่"',
+        'ตารางเอกสารผู้ขายขึ้นป้าย Final ข้าง Rev · การ์ด "อนุมัติ / ปิดแล้ว" บอกจำนวนที่เป็น Revision Final · ทะเบียนของขั้นงานแสดง "Revision Final" · Export Excel ใช้สถานะ Final',
+        'ฟอร์มเอกสาร: ปุ่ม "+ Rev Final (1)" และช่อง Rev แนะนำ 1 · AB · As-Built · ข้อความสรุป LINE นับ Revision Final เป็นเอกสารที่เสร็จแล้ว',
+      ],
+    },
     {
       version: '1.82.0', date: '2026-11-13', type: 'improve', title: 'เอกสารผู้ขายเชื่อมกับทะเบียน Engineering · Procurement · Construction · Closing',
       items: [

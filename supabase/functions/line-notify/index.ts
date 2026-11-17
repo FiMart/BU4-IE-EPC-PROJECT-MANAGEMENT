@@ -74,7 +74,9 @@ function vdrlState(d: Rec, T: string, pos: Rec[]) {
     if (!due && po?.poDate) due = addDays(po.poDate, Number(m![1]));
     return { key: 'plan', late: !!due && due < T };
   }
-  if (!r.returned && !r.code) return { key: 'review', late: (r.planReturn || addDays(r.issued, 14)) < T };
+  // Revision Final (Rev 1 · AB · As-Built) issued = done, as in the app (vdrl.js)
+  const fin = /^(0*1|AB|AS-?BUILT|FINAL)$/.test(String(r.rev ?? '').trim().toUpperCase().replace(/^REV(ISION)?\.?\s*/, '').replace(/\s+/g, '-'));
+  if (!r.returned && !r.code) return fin ? { key: 'done', late: false } : { key: 'review', late: (r.planReturn || addDays(r.issued, 14)) < T };
   const c = String(r.code ?? '').toUpperCase();
   if (!c || /^(A1|AP|1|C1|A4|NR|4|C4|FI|APPROVED)$/.test(c)) return { key: 'done', late: false };
   return { key: 'resubmit', late: addDays(r.returned || r.issued, 14) < T };

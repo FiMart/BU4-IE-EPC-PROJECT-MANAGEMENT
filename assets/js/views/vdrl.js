@@ -7,6 +7,7 @@
      review   รอลูกค้าตอบ        — overdue after the planned return date, or REVIEW_DAYS after issue
      resubmit ต้องแก้ไขส่งใหม่    — returned with comments / not approved; due RESUBMIT_DAYS after the return
      done     เสร็จ              — approved, or returned for information only
+              "Final" when the revision is Revision Final: Rev 1 · AB · As-Built (done once issued, unless returned to revise)
    Return codes: A1 · AP · 1 = approved · A2 · AN · 2 = approved with comments (revise) · RW = review with comments ·
                  A3 · NA · 3 = not approved · A4 · NR · 4 = for information
    Import: the client's VMDL / VPI Excel as it is — a document over 3–5 rows (Plan Issue · Actual Issue · Transmittal ·
@@ -58,22 +59,32 @@
     const po = m && d.poId && PM.find('pos', d.poId);
     return po && po.poDate ? PM.addDays(po.poDate, Number(m[1])) : '';
   }
-  /* where a document stands, the date that matters next, and whether that date has passed */
+  /* Revision Final: Rev 1 · AB · As-Built (also written "Rev.1", "As Built", "Final") — the last issue of a document */
+  const FINAL_REV = /^(0*1|AB|AS-?BUILT|FINAL)$/;
+  PM.vdrlIsFinal = (rev) => FINAL_REV.test(String(rev || '').trim().toUpperCase().replace(/^REV(ISION)?\.?\s*/, '').replace(/\s+/g, '-'));
+  /* where a document stands, the date that matters next, and whether that date has passed.
+     A Final revision (Rev 1 · AB · As-Built) once issued closes the document as "Final" — unless the client sends it back to be revised */
   PM.vdrlState = function (d, T) {
     T = T || PM.today();
     const r = lastRev(d);
     if (!r || !r.issued) { const due = (r && r.planIssue) || planOf(d); return { key: 'plan', due, late: !!due && due < T, rev: r }; }
-    if (!r.returned && !r.code) { const due = r.planReturn || PM.addDays(r.issued, REVIEW_DAYS); return { key: 'review', due, late: due < T, rev: r }; }
+    const fin = PM.vdrlIsFinal(r.rev);
+    if (!r.returned && !r.code) {
+      if (fin) return { key: 'done', final: true, due: '', late: false, rev: r };
+      const due = r.planReturn || PM.addDays(r.issued, REVIEW_DAYS); return { key: 'review', due, late: due < T, rev: r };
+    }
     const c = codeOf(r.code);
-    if (c && (c.key === 'approved' || c.key === 'info')) return { key: 'done', due: '', late: false, rev: r, code: c };
-    if (!c) return { key: 'done', due: '', late: false, rev: r }; // returned without a code: nothing asked of us
+    if (c && (c.key === 'approved' || c.key === 'info')) return { key: 'done', final: fin, due: '', late: false, rev: r, code: c };
+    if (!c) return { key: 'done', final: fin, due: '', late: false, rev: r }; // returned without a code: nothing asked of us
     const due = PM.addDays(r.returned || r.issued, RESUBMIT_DAYS);
     return { key: 'resubmit', due, late: due < T, rev: r, code: c };
   };
+  const stateLabel = (s) => (s.final ? 'Final (ฉบับสุดท้าย)' : STATES[s.key].label);
+  const stateBadge = (s) => U.badge(STATES[s.key].level, stateLabel(s));
   PM.vdrlStats = function (p, T) {
     const all = listOf(p).map((d) => ({ d, s: PM.vdrlState(d, T) }));
     const n = (fn) => all.filter(fn).length;
-    return { all, total: all.length, done: n((x) => x.s.key === 'done'), plan: n((x) => x.s.key === 'plan'), review: n((x) => x.s.key === 'review'), resubmit: n((x) => x.s.key === 'resubmit'),
+    return { all, total: all.length, done: n((x) => x.s.key === 'done'), final: n((x) => x.s.final), plan: n((x) => x.s.key === 'plan'), review: n((x) => x.s.key === 'review'), resubmit: n((x) => x.s.key === 'resubmit'),
       latePlan: n((x) => x.s.key === 'plan' && x.s.late), lateReview: n((x) => x.s.key === 'review' && x.s.late), lateResubmit: n((x) => x.s.key === 'resubmit' && x.s.late) };
   };
   /* ---------------- link to the EPC phase registers (phase-items.js) ----------------
@@ -114,7 +125,7 @@
       it.doneDate = status === 'done' ? r.returned || r.issued || T : '';
       it.ref = r.transmittal || it.ref || '';
       it.comment = status === 'return' ? [r.code && `Code ${r.code}`, r.comment].filter(Boolean).join(' — ') : '';
-      it.vdrlInfo = [vendorOf(d), (poOf(d) || {}).poNo].filter(Boolean).join(' · ');
+      it.vdrlInfo = [vendorOf(d), (poOf(d) || {}).poNo, s.final && 'Revision Final'].filter(Boolean).join(' · ');
     });
   };
   /* sync and save (a document changed) */
@@ -164,7 +175,7 @@
         ${canEdit ? '<button class="btn" data-vd="import">นำเข้าจาก Excel</button><button class="btn primary" data-vd="new">+ เพิ่มเอกสาร</button>' : ''}
       </div>
       <div class="grid cols-4">
-        ${PM.common.tile({ label: 'อนุมัติ / ปิดแล้ว', value: `${s.done} <small>/ ${s.total}</small>`, sub: `<div class="pbar-wrap">${U.progress(pct || 0, null)}<span class="num">${U.pct(pct)}</span></div>`, icon: 'check' })}
+        ${PM.common.tile({ label: 'อนุมัติ / ปิดแล้ว', value: `${s.done} <small>/ ${s.total}</small>`, sub: `<div class="pbar-wrap">${U.progress(pct || 0, null)}<span class="num">${U.pct(pct)}</span></div>${s.final ? `<small>Revision Final แล้ว ${s.final}</small>` : ''}`, icon: 'check' })}
         ${PM.common.tile({ label: 'ยังไม่ส่ง', value: s.plan, sub: s.latePlan ? U.badge('critical', `เลยกำหนดส่ง ${s.latePlan}`) : 'ไม่มีเอกสารเลยกำหนดส่ง', icon: 'proposal' })}
         ${PM.common.tile({ label: 'รอลูกค้าตอบ', value: s.review, sub: s.lateReview ? U.badge('warning', `เกินกำหนดตอบ ${s.lateReview}`) : `ตอบภายใน ${REVIEW_DAYS} วัน ถ้าไม่ได้ระบุ`, icon: 'clock' })}
         ${PM.common.tile({ label: 'ต้องแก้ไขส่งใหม่', value: s.resubmit, sub: s.lateResubmit ? U.badge('critical', `เลยกำหนดส่งใหม่ ${s.lateResubmit}`) : `ส่งใหม่ภายใน ${RESUBMIT_DAYS} วันหลังได้รับคืน`, icon: 'alert' })}
@@ -179,10 +190,10 @@
             <td class="num">${esc(d.no || '–')}</td>
             <td><span class="title">${esc(d.title || '–')}</span><small>${esc([d.docNo, d.altNo].filter(Boolean).join(' · ') || '–')}</small>${d.phase ? `<small class="muted">ทะเบียน ${esc((PM.PHASES.find((x) => x.key === d.phase) || {}).label || d.phase)}</small>` : ''}</td>
             <td>${esc(vendorOf(d) || '–')}${po ? `<small>${esc(po.poNo)}</small>` : ''}</td>
-            <td class="nowrap">${r.rev ? `<b>${esc(r.rev)}</b>` : '–'}${r.purpose || d.purpose ? `<small>${esc(r.purpose || d.purpose)}</small>` : ''}</td>
+            <td class="nowrap">${r.rev ? `<b>${esc(r.rev)}</b>` : '–'}${PM.vdrlIsFinal(r.rev) ? ' <span class="vd-final">Final</span>' : ''}${r.purpose || d.purpose ? `<small>${esc(r.purpose || d.purpose)}</small>` : ''}</td>
             <td class="nowrap">${r.issued ? U.date(r.issued) : '–'}${r.transmittal ? `<small>${esc(r.transmittal)}</small>` : ''}</td>
             <td class="nowrap">${st.code ? `${U.badge(st.code.level, r.code)}<small>${U.date(r.returned)}</small>` : r.returned ? U.date(r.returned) : '–'}</td>
-            <td class="nowrap">${U.badge(STATES[st.key].level, STATES[st.key].label)}${st.due ? `<small class="${st.late ? 'neg' : ''}">${st.late ? `เลย ${PM.diffDays(st.due, T)} วัน · ` : 'กำหนด '}${U.date(st.due)}</small>` : ''}</td>
+            <td class="nowrap">${stateBadge(st)}${st.due ? `<small class="${st.late ? 'neg' : ''}">${st.late ? `เลย ${PM.diffDays(st.due, T)} วัน · ` : 'กำหนด '}${U.date(st.due)}</small>` : ''}</td>
             <td class="num">${(d.files || []).length ? `📎 ${d.files.length}` : '–'}</td></tr>`; }).join('')}
           </tbody></table><p class="empty" id="vd-none" hidden>ไม่พบเอกสารที่ตรงกับคำค้นหา</p>` : s.total ? '<p class="empty">ไม่มีเอกสารในมุมมองนี้</p>' : `<div class="pi-empty vd-empty"><b>ยังไม่มีทะเบียนเอกสารผู้ขาย</b>
             ${canEdit ? `<button type="button" class="btn primary" data-vd="standard">ใส่รายการมาตรฐาน (${STANDARD.length} เอกสาร)</button>
@@ -243,7 +254,7 @@
   /* ---------------- one document: its fields and every revision ---------------- */
   const REV_FIELDS = [['rev', 'Rev', 'text', 52], ['purpose', 'วัตถุประสงค์', 'text', 70], ['planIssue', 'แผนส่ง', 'date'], ['issued', 'ส่งจริง', 'date'], ['transmittal', 'Transmittal', 'text', 150],
     ['planReturn', 'แผนรับคืน', 'date'], ['returned', 'รับคืน', 'date'], ['code', 'Code', 'text', 58], ['comment', 'คอมเมนต์', 'text', 160]];
-  const revRow = (r, i, ro) => `<tr data-rev-row>${REV_FIELDS.map(([k, , type, w]) => `<td><input type="${type}" data-k="${k}" value="${esc(r[k] || '')}"${w ? ` style="min-width:${w}px"` : ''}${k === 'purpose' ? ' list="vd-purposes"' : ''}${ro ? ' disabled' : ''} aria-label="${esc(k)} rev ${i + 1}"></td>`).join('')}
+  const revRow = (r, i, ro) => `<tr data-rev-row>${REV_FIELDS.map(([k, , type, w]) => `<td><input type="${type}" data-k="${k}" value="${esc(r[k] || '')}"${w ? ` style="min-width:${w}px"` : ''}${k === 'purpose' ? ' list="vd-purposes"' : k === 'rev' ? ' list="vd-revcodes"' : ''}${ro ? ' disabled' : ''} aria-label="${esc(k)} rev ${i + 1}"></td>`).join('')}
     ${ro ? '' : '<td><button type="button" class="link-btn neg" data-rev-del aria-label="ลบ Rev นี้">ลบ</button></td>'}</tr>`;
   function vdForm(p, item, done) {
     const canEdit = PM.can('vdrl.edit');
@@ -257,6 +268,7 @@
       onDelete: item && canEdit ? () => { PM.poFiles.trash(`${p.id}/vdrl/${d.id}`, (d.files || []).map((f) => f.path)); PM.db.vdrl = PM.db.vdrl.filter((x) => x.id !== d.id); syncSave(p); U.toast('ลบแล้ว'); done(); } : null,
       body: `
         <datalist id="vd-purposes">${PURPOSES.map((x) => `<option value="${x}">`).join('')}</datalist>
+        <datalist id="vd-revcodes">${['A', 'B', 'C', 'D', 'E', '0'].map((x) => `<option value="${x}">`).join('')}${['1', 'AB', 'As-Built'].map((x) => `<option value="${x}" label="Revision Final">`).join('')}</datalist>
         ${U.field('No.', 'no', d.no)}
         ${U.field('เลขที่เอกสาร (Doc. / Dwg. No.)', 'docNo', d.docNo, { required: true, placeholder: 'เช่น EMERSON-FQI-FLS-IE-0005' })}
         ${U.field('ชื่อเอกสาร', 'title', d.title, { required: true, full: true, placeholder: 'เช่น Factory Acceptance Test Procedure' })}
@@ -270,11 +282,12 @@
         ${U.field('วัตถุประสงค์ (Purpose)', 'purpose', d.purpose || '', { placeholder: 'IFA / IFC / IFF' })}
         ${U.field('กำหนดส่งครั้งแรก', 'planDate', d.planDate || '', { type: 'date' })}
         ${U.field('กำหนดส่ง (ข้อความ)', 'planText', d.planText || '', { placeholder: 'เช่น 15 day after PO — ใช้วันที่ PO คำนวณให้' })}
-        <div class="full"><div class="vd-revs-h"><b>Revision</b> <span class="muted">${item ? `สถานะตอนนี้: ${U.badge(STATES[st.key].level, STATES[st.key].label)}${st.due ? ` · กำหนด ${U.date(st.due)}` : ''}` : ''}</span><span class="spacer"></span>
-          ${canEdit ? '<button type="button" class="btn sm" data-rev-add>+ Rev ใหม่</button>' : ''}</div>
+        <div class="full"><div class="vd-revs-h"><b>Revision</b> <span class="muted">${item ? `สถานะตอนนี้: ${stateBadge(st)}${st.due ? ` · กำหนด ${U.date(st.due)}` : ''}` : ''}</span><span class="spacer"></span>
+          ${canEdit ? '<button type="button" class="btn sm" data-rev-add>+ Rev ใหม่</button><button type="button" class="btn sm" data-rev-final title="เพิ่ม Rev 1 — Revision Final (ฉบับสุดท้าย / IFF)">+ Rev Final (1)</button>' : ''}</div>
           <div class="table-wrap"><table class="tbl vd-revs"><thead><tr>${REV_FIELDS.map(([, l]) => `<th>${esc(l)}</th>`).join('')}${canEdit ? '<th></th>' : ''}</tr></thead>
             <tbody>${(d.revs || []).map((r, i) => revRow(r, i, !canEdit)).join('')}</tbody></table></div>
-          <small class="muted">ส่งแล้วใส่วันที่ "ส่งจริง" + Transmittal · ลูกค้าตอบกลับใส่วันที่ "รับคืน" + Code · Code ที่ต้องแก้ (A2 · A3 · RW · NA) ระบบนับกำหนดส่งใหม่ ${RESUBMIT_DAYS} วัน</small></div>
+          <small class="muted">ส่งแล้วใส่วันที่ "ส่งจริง" + Transmittal · ลูกค้าตอบกลับใส่วันที่ "รับคืน" + Code · Code ที่ต้องแก้ (A2 · A3 · RW · NA) ระบบนับกำหนดส่งใหม่ ${RESUBMIT_DAYS} วัน ·
+            <b>Rev 1 · AB · As-Built = Revision Final</b> — ส่งแล้วเอกสารปิดเป็น "Final" (ยกเว้นลูกค้าส่งกลับให้แก้)</small></div>
         ${U.field('หมายเหตุ', 'note', d.note || '', { full: true })}
         ${PM.poFiles.boxHtml(canEdit, 'ไฟล์เอกสาร', 'ไฟล์ที่ส่ง · ฉบับที่ลูกค้าตอบกลับ (มีคอมเมนต์)', 'vdrl')}`,
       onSubmit: !canEdit ? null : (f, frm) => {
@@ -325,6 +338,10 @@
         const prev = last ? last.querySelector('[data-k="rev"]').value.trim() : '';
         const next = /^[A-Y]$/i.test(prev) ? String.fromCharCode(prev.toUpperCase().charCodeAt(0) + 1) : /^\d+$/.test(prev) ? String(Number(prev) + 1) : prev ? '' : 'A';
         tbody.insertAdjacentHTML('beforeend', revRow({ rev: next, purpose: last ? last.querySelector('[data-k="purpose"]').value : 'IFA', planIssue: PM.today() }, rows.length, false));
+        return;
+      }
+      if (e.target.closest('[data-rev-final]')) {
+        tbody.insertAdjacentHTML('beforeend', revRow({ rev: '1', purpose: 'IFF', planIssue: PM.today() }, tbody.querySelectorAll('[data-rev-row]').length, false));
         return;
       }
       const del = e.target.closest('[data-rev-del]');
@@ -505,7 +522,7 @@
             <td><span class="chip">${esc((PM.PHASES.find((y) => y.key === ph) || {}).label || ph)}</span></td>
             <td>${esc(x.purpose || '–')}</td><td class="nowrap">${x.planDate ? U.date(x.planDate) : esc(x.planText || '–')}</td>
             <td>${x.revs.map((r) => `<span class="chip">${esc(r.rev || '?')}${r.issued ? ` · ส่ง ${U.date(r.issued)}` : ''}${r.code ? ` · ${esc(r.code)}` : ''}</span>`).join(' ') || '–'}</td>
-            <td>${U.badge(STATES[s.key].level, STATES[s.key].label)} ${isOld(x) ? (skip ? U.badge('neutral', 'มีอยู่แล้ว · ข้าม') : U.badge('info', 'อัปเดตทับ')) : U.badge('good', 'ใหม่')}</td></tr>`; }).join('')}
+            <td>${stateBadge(s)} ${isOld(x) ? (skip ? U.badge('neutral', 'มีอยู่แล้ว · ข้าม') : U.badge('info', 'อัปเดตทับ')) : U.badge('good', 'ใหม่')}</td></tr>`; }).join('')}
         </tbody></table></div>` : '<p class="empty">ยังไม่ได้เลือกชีต</p>'}`;
     };
     const take = async (file) => {
@@ -545,7 +562,7 @@
     const T = PM.today();
     const rows = listOf(p).slice().sort((a, b) => natural(a.no, b.no)).flatMap((d) => {
       const s = PM.vdrlState(d, T), po = poOf(d), revs = (d.revs || []).length ? d.revs : [{}];
-      return revs.map((r, i) => [i ? '' : d.no, i ? '' : d.docNo, i ? '' : d.title, i ? '' : vendorOf(d), i ? '' : po ? po.poNo : '', r.rev || '', r.purpose || '', r.planIssue || '', r.issued || '', r.transmittal || '', r.planReturn || '', r.returned || '', r.code || '', r.comment || '', i ? '' : STATES[s.key].label, i ? '' : s.due || '']);
+      return revs.map((r, i) => [i ? '' : d.no, i ? '' : d.docNo, i ? '' : d.title, i ? '' : vendorOf(d), i ? '' : po ? po.poNo : '', r.rev || '', r.purpose || '', r.planIssue || '', r.issued || '', r.transmittal || '', r.planReturn || '', r.returned || '', r.code || '', r.comment || '', i ? '' : stateLabel(s), i ? '' : s.due || '']);
     });
     PM.xport.excel({
       filename: `VDRL ${p.code} ${T}`, title: `Vendor Document Register — ${p.code}`, subtitle: p.name,
